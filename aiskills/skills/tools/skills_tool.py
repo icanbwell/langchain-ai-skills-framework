@@ -9,7 +9,7 @@ from langchain_core.callbacks import (
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
 
-from aiskills.skills.skill_loader import (
+from aiskills.skills.loaders.skill_loader import (
     SkillLoaderProtocol,
     SkillNotFoundError,
 )

@@ -7,7 +7,7 @@ from threading import RLock
 from typing import Mapping, Optional
 from uuid import UUID, uuid4
 
-from aiskills.skills.skills_model import SkillDetails, SkillSummary
+from aiskills.skills.models.skills_model import SkillDetails, SkillSummary
 from aiskills.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)

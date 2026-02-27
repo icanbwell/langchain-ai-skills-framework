@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import logging
 import re
-import sys
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
@@ -11,13 +11,11 @@ from uuid import UUID, uuid4
 import yaml
 
 from aiskills.skills.skills_model import SkillDetails, SkillSummary
-from baileyai.utilities.cache.skill_cache import SkillCache, SkillCacheSnapshot
-from baileyai.utilities.logger.log_levels import (
-    SRC_LOG_LEVELS,
-    logger,
-)
+from aiskills.utilities.cache.skill_cache import SkillCache, SkillCacheSnapshot
+from aiskills.utilities.logger.log_levels import SRC_LOG_LEVELS
 
-logger.add(sys.stderr, level=SRC_LOG_LEVELS["CONFIG"])
+logger = logging.getLogger(__name__)
+logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
 
 class SkillLoaderError(RuntimeError):

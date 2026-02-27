@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from baileyai.skills.skill_loader import (
+from aiskills.skills.skill_loader import (
     SkillDirectoryLoader,
     SkillNotFoundError,
     SkillValidationError,
 )
-from baileyai.utilities.cache.skill_cache import SkillCache
+from aiskills.utilities.cache.skill_cache import SkillCache
 
 
 def _write_skill(

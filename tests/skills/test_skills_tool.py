@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping
 
-from baileyai.skills.skill_loader import SkillNotFoundError
-from baileyai.skills.skills_model import SkillDetails, SkillSummary
-from baileyai.skills.skills_tool import LoadSkillTool
+from aiskills.skills.skill_loader import SkillNotFoundError
+from aiskills.skills.skills_model import SkillDetails, SkillSummary
+from aiskills.skills.skills_tool import LoadSkillTool
 
 
 class _StubSkillLoader:

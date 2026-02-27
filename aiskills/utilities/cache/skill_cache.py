@@ -35,28 +35,32 @@ class SkillCache:
         self._identifier: UUID = uuid4()
 
     def is_valid(self) -> bool:
-        if self._snapshot is None:
-            return False
-        if self._ttl is None:
-            return True
-        assert self._timestamp is not None
-        current_time = time.time()
-        is_valid = current_time - self._timestamp < self._ttl
-        logger.debug(
-            "SkillCache %s validity check: %s (now=%s, ts=%s, ttl=%s)",
-            self._identifier,
-            is_valid,
-            current_time,
-            self._timestamp,
-            self._ttl,
-        )
-        return is_valid
+        with self._lock:
+            if self._snapshot is None:
+                return False
+            if self._ttl is None:
+                return True
+            assert self._timestamp is not None
+            current_time = time.time()
+            is_valid = current_time - self._timestamp < self._ttl
+            logger.debug(
+                "SkillCache %s validity check: %s (now=%s, ts=%s, ttl=%s)",
+                self._identifier,
+                is_valid,
+                current_time,
+                self._timestamp,
+                self._ttl,
+            )
+            return is_valid
 
     def get(self) -> Optional[SkillCacheSnapshot]:
-        if self.is_valid():
-            logger.debug("SkillCache %s returning cached snapshot", self._identifier)
-            return self._snapshot
-        return None
+        with self._lock:
+            if self.is_valid():
+                logger.debug(
+                    "SkillCache %s returning cached snapshot", self._identifier
+                )
+                return self._snapshot
+            return None
 
     def set(self, snapshot: SkillCacheSnapshot) -> None:
         with self._lock:

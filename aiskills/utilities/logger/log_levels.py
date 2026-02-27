@@ -32,6 +32,7 @@ log_sources = [
     "AGENTS",
     "ERRORS",
     "BAILEY",
+    "CACHE",
 ]
 
 SRC_LOG_LEVELS = {}

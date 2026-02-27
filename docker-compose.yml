@@ -1,0 +1,13 @@
+version: '3.5'
+services:
+  dev:
+    user: root
+    build:
+      dockerfile: Dockerfile
+      context: .
+    volumes:
+      - ./:/usr/src/aiskills
+    container_name: aiskills_dev
+    working_dir: /usr/src/aiskills
+    env_file:
+      - docker.env

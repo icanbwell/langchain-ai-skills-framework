@@ -55,7 +55,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/icanbwell/ai-skills",
     packages=find_packages(),
-    install_requires=["pyyaml>=6.0.3"],
+    install_requires=["pyyaml>=6.0.3", "langchain-core>=1.0.0", "pydantic<3.0.0,>=2.0"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3",

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from aiskills.skills.loaders.skill_loader import (
+from aiskills.loaders.skill_loader import (
     SkillDirectoryLoader,
     SkillNotFoundError,
     SkillValidationError,

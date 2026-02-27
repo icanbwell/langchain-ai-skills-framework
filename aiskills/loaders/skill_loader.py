@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 import yaml
 
-from aiskills.skills.models.skills_model import SkillDetails, SkillSummary
+from aiskills.models.skills_model import SkillDetails, SkillSummary
 from aiskills.utilities.cache.skill_cache import SkillCache, SkillCacheSnapshot
 from aiskills.utilities.logger.log_levels import SRC_LOG_LEVELS
 

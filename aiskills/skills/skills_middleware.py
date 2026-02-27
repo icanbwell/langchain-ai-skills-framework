@@ -52,7 +52,7 @@ class SkillMiddleware(AgentMiddleware):
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any] | AIMessage | ExtendedModelResponse[Any]:
-        """Sync: Inject skill descriptions into system prompt."""
+        """Async: Inject skill descriptions into system prompt."""
         skills_addendum = (
             f"\n\n{self.skills_prompt}\n\n"
             "Use the load_skill tool when you need detailed information "

@@ -55,7 +55,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/icanbwell/ai-skills",
     packages=find_packages(),
-    install_requires=[],
+    install_requires=["pyyaml>=6.0.3"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3",
@@ -66,5 +66,5 @@ setup(
     dependency_links=[],
     include_package_data=True,
     zip_safe=False,
-    package_data={"aiskills": ["py.typed"]}
+    package_data={"aiskills": ["py.typed"]},
 )

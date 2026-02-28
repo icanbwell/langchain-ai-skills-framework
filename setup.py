@@ -7,7 +7,7 @@ from os import path, getcwd
 # from https://packaging.python.org/tutorials/packaging-projects/
 
 # noinspection SpellCheckingInspection
-package_name = "aiskills"
+package_name = "langchain-ai-skills-framework"
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -50,7 +50,7 @@ setup(
     version=version,
     author="Imran Qureshi",
     author_email="imran.qureshi@bwell.com",
-    description="aiskills",
+    description="ai-skills-framework",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/icanbwell/ai-skills",

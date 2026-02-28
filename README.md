@@ -1,7 +1,7 @@
-# aiskills
+# langchain-ai-skills-framework
 
 ## Overview
-- aiskills loads Agent Skills from `SKILL.md` files and serves them via LangChain middleware and tools.
+- langchain-ai-skills-framework loads Agent Skills from `SKILL.md` files and serves them via LangChain middleware and tools.
 - Skills are parsed and validated by `SkillDirectoryLoader`, cached with `SkillCache`, and surfaced through `SkillMiddleware` and `LoadSkillTool`.
 
 ## Skill authoring

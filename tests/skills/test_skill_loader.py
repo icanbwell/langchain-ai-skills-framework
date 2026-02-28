@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from aiskills.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillDirectoryLoader,
     SkillNotFoundError,
     SkillValidationError,
 )
-from aiskills.utilities.cache.skill_cache import SkillCache
+from langchain_ai_skills_framework.utilities.cache.skill_cache import SkillCache
 
 
 def _write_skill(

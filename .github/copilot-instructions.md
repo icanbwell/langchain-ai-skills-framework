@@ -20,7 +20,7 @@
 - **Tooling**: Pipenv (`Pipfile`), Ruff/mypy/bandit via pre-commit, Docker Compose in `docker-compose.yml`, pytest config in `setup.cfg`.
 
 ## Code Style and Quality Rules
-- Absolute imports only (e.g., `from aiskills.skills.skill_loader import SkillDirectoryLoader`). No relative imports within the project.
+- Absolute imports only (e.g., `from langchain_ai_skills_framework.skills.skill_loader import SkillDirectoryLoader`). No relative imports within the project.
 - Provide full type annotations (functions, class attrs, module-level constants). Avoid `Any`; use Protocols/dataclasses/TypedDicts when needed.
 - Keep mypy strict and Ruff clean; do not add unchecked `# type: ignore` or blanket `noqa`.
 - Use `SkillCache` for shared snapshots and avoid repeated filesystem scans in request paths.

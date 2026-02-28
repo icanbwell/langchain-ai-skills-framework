@@ -8,8 +8,8 @@ from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain.messages import SystemMessage
 from langchain_core.messages import AIMessage, BaseMessage
 
-from aiskills.middleware.skills_middleware import SkillMiddleware
-from aiskills.models.skills_model import SkillDetails, SkillSummary
+from langchain_ai_skills_framework.middleware.skills_middleware import SkillMiddleware
+from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 
 
 class _StubSkillLoader:

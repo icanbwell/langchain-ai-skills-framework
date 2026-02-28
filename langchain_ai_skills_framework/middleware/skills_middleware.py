@@ -10,10 +10,10 @@ from typing import Callable, Any, Awaitable
 
 from langchain_core.messages import AIMessage, AnyMessage
 
-from aiskills.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillLoaderProtocol,
 )
-from aiskills.models.skills_model import SkillSummary
+from langchain_ai_skills_framework.models.skills_model import SkillSummary
 
 
 class SkillMiddleware(AgentMiddleware):

@@ -7,8 +7,8 @@ from threading import RLock
 from typing import Mapping, Optional
 from uuid import UUID, uuid4
 
-from aiskills.models.skills_model import SkillDetails, SkillSummary
-from aiskills.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
+from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["CACHE"])

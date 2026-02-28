@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping
 
-from aiskills.loaders.skill_loader import SkillNotFoundError
-from aiskills.models.skills_model import SkillDetails, SkillSummary
-from aiskills.tools.skills_tool import LoadSkillTool
+from langchain_ai_skills_framework.loaders.skill_loader import SkillNotFoundError
+from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
+from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
 
 
 class _StubSkillLoader:

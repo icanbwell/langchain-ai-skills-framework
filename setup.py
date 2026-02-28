@@ -71,5 +71,5 @@ setup(
     dependency_links=[],
     include_package_data=True,
     zip_safe=False,
-    package_data={"aiskills": ["py.typed"]},
+    package_data={"langchain_ai_skills_framework": ["py.typed"]},
 )

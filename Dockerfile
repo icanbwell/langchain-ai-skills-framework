@@ -15,12 +15,12 @@ RUN apk add --no-cache git
 RUN pip install pipenv
 
 # Set the working directory inside the container
-WORKDIR /usr/src/aiskills/
+WORKDIR /usr/src/langchain_ai_skills_framework/
 
 # Copy Pipfile and Pipfile.lock to the working directory
 # Pipfile defines the Python packages required for the project
 # Pipfile.lock ensures consistency by locking the exact versions of packages
-COPY Pipfile* /usr/src/aiskills/
+COPY Pipfile* /usr/src/langchain_ai_skills_framework/
 
 # Show the current pip configuration (for debugging purposes)
 RUN pip config list
@@ -65,8 +65,8 @@ RUN apk add --no-cache git
 RUN pip install --no-cache-dir pipenv
 
 # Set environment variables for project configuration
-ENV PROJECT_DIR=/usr/src/aiskills
-ENV FLASK_APP=aiskills.api
+ENV PROJECT_DIR=/usr/src/langchain_ai_skills_framework
+ENV FLASK_APP=langchain_ai_skills_framework.api
 ENV PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
 
 # Create the directory for Prometheus metrics
@@ -83,13 +83,13 @@ COPY --from=python_packages /usr/local/lib/python3.12/site-packages /usr/local/l
 COPY --from=python_packages /usr/local/bin /usr/local/bin
 
 # Copy the application code into the runtime image
-COPY ./aiskills ${PROJECT_DIR}
+COPY ./langchain_ai_skills_framework ${PROJECT_DIR}
 
 # Copy the Pipfile.lock from the previous stage in case it was locked
-COPY --from=python_packages /usr/src/aiskills/Pipfile.lock /usr/src/aiskills/Pipfile.lock
+COPY --from=python_packages /usr/src/langchain_ai_skills_framework/Pipfile.lock /usr/src/langchain_ai_skills_framework/Pipfile.lock
 
 # Copy Pipfile.lock to a temporary directory so it can be retrieved if needed
-COPY --from=python_packages /usr/src/aiskills/Pipfile.lock /tmp/Pipfile.lock
+COPY --from=python_packages /usr/src/langchain_ai_skills_framework/Pipfile.lock /tmp/Pipfile.lock
 
 # Create directories and list their contents (for debugging and verification)
 RUN mkdir -p /usr/local/lib/python3.12/site-packages && ls -halt /usr/local/lib/python3.12/site-packages

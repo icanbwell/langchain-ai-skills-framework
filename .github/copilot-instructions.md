@@ -1,7 +1,7 @@
-# aiskills – Copilot Code Review Instructions
+# langchain_ai_skills_framework – Copilot Code Review Instructions
 
 ## Objectives
-- Keep every change aligned with the aiskills library for loading and serving Agent Skills (SKILL.md) through LangChain tools and middleware.
+- Keep every change aligned with the langchain_ai_skills_framework library for loading and serving Agent Skills (SKILL.md) through LangChain tools and middleware.
 - Preserve strict typing (mypy --strict), Ruff compliance, formatting, and pre-commit rules while using absolute imports across the repo.
 - Protect skill content from accidental leakage in logs or examples; avoid committing secrets in test fixtures or sample skills.
 - Maintain Docker Compose and Makefile workflows (`make up`, `make tests`, `make run-pre-commit`, `make build`, etc.).
@@ -10,12 +10,12 @@
 ## Repository Context Summary
 - **Stack**: Python 3.12, LangChain + langchain-core, Pydantic v2, PyYAML, Docker/Compose, Pipenv.
 - **Key modules**:
-  - `aiskills/skills/skill_loader.py` – SKILL.md discovery, parsing, validation, and caching.
-  - `aiskills/skills/skills_model.py` – SkillSummary/SkillDetails dataclasses.
-  - `aiskills/skills/skills_middleware.py` – LangChain middleware that injects skill summaries into system prompts.
-  - `aiskills/skills/skills_tool.py` – LangChain tool to load a full skill on demand.
-  - `aiskills/utilities/cache/skill_cache.py` – TTL-aware cache for skill snapshots.
-  - `aiskills/utilities/logger/log_levels.py` – logging defaults and per-source levels.
+  - `langchain_ai_skills_framework/skills/skill_loader.py` – SKILL.md discovery, parsing, validation, and caching.
+  - `langchain_ai_skills_framework/skills/skills_model.py` – SkillSummary/SkillDetails dataclasses.
+  - `langchain_ai_skills_framework/skills/skills_middleware.py` – LangChain middleware that injects skill summaries into system prompts.
+  - `langchain_ai_skills_framework/skills/skills_tool.py` – LangChain tool to load a full skill on demand.
+  - `langchain_ai_skills_framework/utilities/cache/skill_cache.py` – TTL-aware cache for skill snapshots.
+  - `langchain_ai_skills_framework/utilities/logger/log_levels.py` – logging defaults and per-source levels.
 - **Tests & fixtures**: `tests/skills/test_skill_loader.py`, `tests/skills/test_skills_middleware.py`, `tests/skills/test_skills_tool.py`.
 - **Tooling**: Pipenv (`Pipfile`), Ruff/mypy/bandit via pre-commit, Docker Compose in `docker-compose.yml`, pytest config in `setup.cfg`.
 
@@ -24,7 +24,7 @@
 - Provide full type annotations (functions, class attrs, module-level constants). Avoid `Any`; use Protocols/dataclasses/TypedDicts when needed.
 - Keep mypy strict and Ruff clean; do not add unchecked `# type: ignore` or blanket `noqa`.
 - Use `SkillCache` for shared snapshots and avoid repeated filesystem scans in request paths.
-- Logging uses the standard library with per-source levels from `aiskills.utilities.logger.log_levels.SRC_LOG_LEVELS`.
+- Logging uses the standard library with per-source levels from `langchain_ai_skills_framework.utilities.logger.log_levels.SRC_LOG_LEVELS`.
 - Do not log full skill content or any secrets; inside `except` blocks prefer `logger.exception("context message")` to preserve stack traces.
 
 ## Review Focus Areas (in priority order)
@@ -109,7 +109,7 @@
 - **LangChain tool**: `LoadSkillTool` loads full skill content for agent use.
 
 ## Enforcement Checklist for Reviewers
-- Imports use absolute `aiskills.*` paths; typing is complete and mypy-clean.
+- Imports use absolute `langchain_ai_skills_framework.*` paths; typing is complete and mypy-clean.
 - Pre-commit hooks (Ruff, formatting, bandit, mypy) run successfully.
 - Skill parsing/validation stays centralized in `SkillDirectoryLoader`.
 - Cache usage is preserved and thread-safe.

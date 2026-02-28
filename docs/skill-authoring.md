@@ -1,6 +1,6 @@
 # Skill Authoring Guide
 
-This guide describes how to author a valid `SKILL.md` for the aiskills loader.
+This guide describes how to author a valid `SKILL.md` for the langchain_ai_skills_framework loader.
 
 ## Location and layout
 - Each skill lives in its own directory under the configured skills root.
@@ -65,3 +65,6 @@ allowed-tools: load_skill
 Use this skill to guide support interactions. Follow escalation rules for billing or security issues.
 ```
 
+
+## Best Practices
+Follow https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices

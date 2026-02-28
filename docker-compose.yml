@@ -6,8 +6,8 @@ services:
       dockerfile: Dockerfile
       context: .
     volumes:
-      - ./:/usr/src/aiskills
-    container_name: aiskills_dev
-    working_dir: /usr/src/aiskills
+      - ./:/usr/src/langchain_ai_skills_framework
+    container_name: langchain_ai_skills_framework_dev
+    working_dir: /usr/src/langchain_ai_skills_framework
     env_file:
       - docker.env

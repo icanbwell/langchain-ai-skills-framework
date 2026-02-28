@@ -5,7 +5,7 @@ export LANG
 .PHONY: Pipfile.lock
 Pipfile.lock:
 	docker compose --progress=plain build --no-cache --build-arg RUN_PIPENV_LOCK=true dev && \
-	docker compose --progress=plain run --rm dev sh -c "cp -f /tmp/Pipfile.lock /usr/src/aiskills/Pipfile.lock"
+	docker compose --progress=plain run --rm dev sh -c "cp -f /tmp/Pipfile.lock /usr/src/langchain_ai_skills_framework/Pipfile.lock"
 
 .PHONY:devdocker
 devdocker: ## Builds the docker for dev
@@ -42,25 +42,25 @@ update: down Pipfile.lock setup-pre-commit  ## Updates all the packages using Pi
 
 .PHONY:tests
 tests: up
-	docker compose run --rm --name aiskills dev pytest tests aiskills
+	docker compose run --rm --name langchain_ai_skills_framework dev pytest tests langchain_ai_skills_framework
 
 .PHONY:shell
 shell:devdocker ## Brings up the bash shell in dev docker
-	docker compose run --rm --name aiskills dev sh
+	docker compose run --rm --name langchain_ai_skills_framework dev sh
 
 .PHONY:build
 build:
-	docker compose run --rm --name aiskills dev rm -rf dist/
-	docker compose run --rm --name aiskills dev python3 setup.py sdist bdist_wheel
+	docker compose run --rm --name langchain_ai_skills_framework dev rm -rf dist/
+	docker compose run --rm --name langchain_ai_skills_framework dev python3 setup.py sdist bdist_wheel
 
 .PHONY:testpackage
 testpackage:build
-	docker compose run --rm --name aiskills dev python3 -m twine upload -u __token__ --repository testpypi dist/*
+	docker compose run --rm --name langchain_ai_skills_framework dev python3 -m twine upload -u __token__ --repository testpypi dist/*
 # password can be set in TWINE_PASSWORD. https://twine.readthedocs.io/en/latest/
 
 .PHONY:package
 package:build
-	docker compose run --rm --name aiskills dev python3 -m twine upload -u __token__ --repository pypi dist/*
+	docker compose run --rm --name langchain_ai_skills_framework dev python3 -m twine upload -u __token__ --repository pypi dist/*
 # password can be set in TWINE_PASSWORD. https://twine.readthedocs.io/en/latest/ (note this is the token not your password)
 
 .DEFAULT_GOAL := help

@@ -264,11 +264,11 @@
         },
         "langsmith": {
             "hashes": [
-                "sha256:6effa4c3d8a58b6939a08b3756ade1605f956302dc152a54288a0010c0d543de",
-                "sha256:e8ad38b9fb3239283a32bcf312629694c1555af426310223797751f9580e3f97"
+                "sha256:c6dfcc4cb8fea249714ac60a1963faa84cc59ded9cd1882794ffce8a8d1d1588",
+                "sha256:e73478f4c4ae9b7407e0fcdced181f9f8b0e024c62a1552dbf0667ef6b19e82d"
             ],
             "markers": "python_version >= '3.10'",
-            "version": "==0.7.8"
+            "version": "==0.7.9"
         },
         "orjson": {
             "hashes": [

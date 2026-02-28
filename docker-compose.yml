@@ -1,0 +1,13 @@
+version: '3.5'
+services:
+  dev:
+    user: root
+    build:
+      dockerfile: Dockerfile
+      context: .
+    volumes:
+      - ./:/usr/src/langchain_ai_skills_framework
+    container_name: langchain_ai_skills_framework_dev
+    working_dir: /usr/src/langchain_ai_skills_framework
+    env_file:
+      - docker.env

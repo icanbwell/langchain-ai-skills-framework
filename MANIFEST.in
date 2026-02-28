@@ -1,0 +1,4 @@
+include README.md
+include VERSION
+include Makefile
+include langchain_ai_skills_framework/py.typed

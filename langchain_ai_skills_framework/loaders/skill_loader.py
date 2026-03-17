@@ -42,6 +42,15 @@ class SkillLoaderProtocol(Protocol):
     def refresh(self) -> None: ...
 
 
+@runtime_checkable
+class SkillLoaderEnvironmentVariables(Protocol):
+    @property
+    def excluded_skills(self) -> set[str]: ...
+
+    @property
+    def excluded_skill_groups(self) -> set[str]: ...
+
+
 class SkillDirectoryLoader(SkillLoaderProtocol):
     """Loads Agent Skills from a directory following the AgentSkills specification."""
 
@@ -52,6 +61,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         skills_directory: str | Path,
         *,
         cache: SkillCache,
+        excluded_skills: set[str] | None = None,
+        environment_variables: SkillLoaderEnvironmentVariables | None = None,
     ) -> None:
         self._identifier: UUID = uuid4()
         if cache is None:
@@ -68,10 +79,10 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._lock = RLock()
         self._cache = cache
         self._snapshot: SkillCacheSnapshot | None = None
+        self._excluded_skills = self._normalize_excluded_skills(excluded_skills)
+        self._environment_variables = environment_variables
         logger.info(
-            "SkillDirectoryLoader %s initialized for %s",
-            self._identifier,
-            self._skills_directory,
+            f"SkillDirectoryLoader {self._identifier}initialized for {self._skills_directory}"
         )
 
     def list_skill_summaries(self) -> Sequence[SkillSummary]:
@@ -135,8 +146,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 return cached_snapshot
 
             logger.info(
-                "SkillDirectoryLoader %s cache miss; loading skills",
-                self._identifier,
+                f"SkillDirectoryLoader {self._identifier} cache miss; loading skills"
             )
             snapshot = self._build_snapshot()
             self._cache.set(snapshot)
@@ -145,9 +155,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     def _build_snapshot(self) -> SkillCacheSnapshot:
         logger.info(
-            "SkillDirectoryLoader %s scanning directory %s",
-            self._identifier,
-            self._skills_directory,
+            f"SkillDirectoryLoader {self._identifier} scanning directory {self._skills_directory}"
         )
         if not self._skills_directory.exists():
             logger.warning(
@@ -165,17 +173,17 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
         new_details: dict[str, SkillDetails] = {}
         new_summaries: list[SkillSummary] = []
-        for entry in sorted(self._skills_directory.iterdir()):
-            if not entry.is_dir():
+        excluded_skills = self._get_excluded_skills()
+        excluded_skill_groups = self._get_excluded_skill_groups()
+        for skill_dir, skill_file in self._iter_skill_files(self._skills_directory):
+            skill_group = self._resolve_skill_group(skill_dir)
+            if skill_group and skill_group in excluded_skill_groups:
+                logger.info("Skipping excluded skill group '%s'", skill_group)
                 continue
-            skill_file = entry / "SKILL.md"
-            if not skill_file.is_file():
-                logger.warning(
-                    "Skipping skill directory %s because SKILL.md is missing",
-                    entry,
-                )
+            definition = self._parse_skill(skill_dir.name, skill_file)
+            if definition.name in excluded_skills:
+                logger.info("Skipping excluded skill '%s'", definition.name)
                 continue
-            definition = self._parse_skill(entry.name, skill_file)
             if definition.name in new_details:
                 raise SkillValidationError(
                     f"Duplicate skill name '{definition.name}' detected"
@@ -190,11 +198,35 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             ordered_summaries=ordered_summaries,
         )
         logger.info(
-            "Loaded %d Agent Skills from %s",
-            len(ordered_summaries),
-            self._skills_directory,
+            f"Loaded {len(ordered_summaries)} Agent Skills from {self._skills_directory}"
         )
         return snapshot
+
+    @staticmethod
+    def _iter_skill_files(skills_directory: Path) -> Sequence[tuple[Path, Path]]:
+        skill_files: list[tuple[Path, Path]] = []
+        for entry in sorted(skills_directory.iterdir()):
+            if not entry.is_dir():
+                continue
+            skill_file = entry / "SKILL.md"
+            if skill_file.is_file():
+                skill_files.append((entry, skill_file))
+                continue
+            nested_skill_files: list[tuple[Path, Path]] = []
+            for nested_entry in sorted(entry.iterdir()):
+                if not nested_entry.is_dir():
+                    continue
+                nested_skill_file = nested_entry / "SKILL.md"
+                if nested_skill_file.is_file():
+                    nested_skill_files.append((nested_entry, nested_skill_file))
+            if nested_skill_files:
+                skill_files.extend(nested_skill_files)
+                continue
+            logger.warning(
+                "Skipping skill directory %s because SKILL.md is missing",
+                entry,
+            )
+        return tuple(skill_files)
 
     def _parse_skill(self, directory_name: str, skill_file: Path) -> SkillDetails:
         raw_content = skill_file.read_text(encoding="utf-8")
@@ -225,10 +257,6 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         if skill_name != normalized_name:
             raise SkillValidationError(
                 "Skill names must be lowercase and use hyphens only"
-            )
-        if normalized_name != self._normalize_skill_name(directory_name):
-            raise SkillValidationError(
-                f"Skill skill_name '{skill_name}' must match directory '{directory_name}'"
             )
         if len(skill_name) > 64:
             raise SkillValidationError(
@@ -297,6 +325,57 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         if not body.strip():
             logger.warning("Skill %s has empty body content", normalized_name)
         return SkillDetails(summary=summary, content=body, source_path=skill_file)
+
+    def _get_excluded_skills(self) -> frozenset[str]:
+        if self._environment_variables is None:
+            return self._excluded_skills
+        return self._normalize_excluded_skills(
+            self._environment_variables.excluded_skills
+        )
+
+    def _get_excluded_skill_groups(self) -> frozenset[str]:
+        if self._environment_variables is None:
+            return frozenset()
+        return self._normalize_excluded_skill_groups(
+            self._environment_variables.excluded_skill_groups
+        )
+
+    def _resolve_skill_group(self, skill_dir: Path) -> str | None:
+        try:
+            relative = skill_dir.relative_to(self._skills_directory)
+        except ValueError:
+            return None
+        if len(relative.parts) < 2:
+            return None
+        return self._normalize_skill_group(relative.parts[0])
+
+    @classmethod
+    def _normalize_excluded_skill_groups(
+        cls, values: set[str] | None
+    ) -> frozenset[str]:
+        if not values:
+            return frozenset()
+        normalized = {
+            cls._normalize_skill_group(value)
+            for value in values
+            if isinstance(value, str) and value.strip()
+        }
+        return frozenset(item for item in normalized if item)
+
+    @classmethod
+    def _normalize_skill_group(cls, value: str) -> str:
+        return cls._normalize_skill_name(value)
+
+    @classmethod
+    def _normalize_excluded_skills(cls, values: set[str] | None) -> frozenset[str]:
+        if not values:
+            return frozenset()
+        normalized = {
+            cls._normalize_skill_name(value)
+            for value in values
+            if isinstance(value, str) and value.strip()
+        }
+        return frozenset(item for item in normalized if item)
 
     @staticmethod
     def _load_frontmatter(frontmatter_text: str) -> MutableMapping[str, object]:

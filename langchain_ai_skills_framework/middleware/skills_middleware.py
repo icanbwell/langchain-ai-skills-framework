@@ -61,18 +61,12 @@ class SkillMiddleware(AgentMiddleware):
         skills_block_text = skills_addendum
         skills_message = SystemMessage(content=skills_block_text)
 
-        if request.system_message is None:
-            modified_request = request.override(system_message=skills_message)
-            return await handler(modified_request)
-
         existing_messages: list[AnyMessage] = list(request.messages or ())
 
-        if request.system_message not in existing_messages:
-            existing_messages.insert(0, request.system_message)
-
-        insertion_index = len(existing_messages)
+        insertion_index = 0
         for idx, message in enumerate(existing_messages):
             if isinstance(message, SystemMessage):
+                # insert after the first system message to ensure the skills information is included in the initial instructions but doesn't override any existing system-level context
                 insertion_index = idx + 1
                 break
 

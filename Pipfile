@@ -18,6 +18,14 @@ langchain-core = ">=1.0.0"
 pydantic = ">=2.0,<3.0.0"  # needed by langchain
 # langchain is a Python library for building language models
 langchain = ">=1.0.0"
+# fsspec is a Python library for working with filesystems
+fsspec = ">=2026.2.0"
+# s3fs is a Python library for working with S3 filesystems
+s3fs = ">=2026.2.0"
+# requests is needed for making HTTP requests
+requests = "*"
+# aiohttp is needed for making asynchronous HTTP requests
+aiohttp = ">=3.8.0"
 
 [dev-packages]
 setuptools=">=60.9.3"
@@ -37,6 +45,7 @@ ruff = ">=0.11.5"
 pytest-cov = ">=6.1.1"
 # types-PyYAML provides type hints for PyYAML
 types-PyYAML = ">=6.0.12"
+types-requests = ">=2.32.4"
 
 # These dependencies are required for pipenv-setup.  They conflict with ones above, so we install these
 # only when running pipenv-setup

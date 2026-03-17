@@ -22,25 +22,63 @@ class ClientScopedSkillLoader(SkillLoaderProtocol):
                 f"base_loader must be SkillLoaderProtocol, got {type(base_loader)}"
             )
         self._base_loader = base_loader
-        self._allowed_skills = {
-            skill.strip().lower() for skill in allowed_skills if skill
-        }
+        self._allowed_skills = frozenset(
+            self._normalize_skill_token(skill)
+            for skill in allowed_skills
+            if isinstance(skill, str) and skill.strip()
+        )
 
     def list_skill_summaries(self) -> Sequence[SkillSummary]:
         summaries = self._base_loader.list_skill_summaries()
         if not self._allowed_skills:
             return summaries
+        allowed_skill_names = self._resolve_allowed_skill_names(summaries)
         return tuple(
             summary
             for summary in summaries
-            if summary.name.strip().lower() in self._allowed_skills
+            if self._normalize_skill_token(summary.name) in allowed_skill_names
         )
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
-        normalized = skill_name.strip().lower()
-        if self._allowed_skills and normalized not in self._allowed_skills:
-            raise SkillNotFoundError(f"Skill '{skill_name}' not allowed")
+        normalized = self._normalize_skill_token(skill_name)
+        if self._allowed_skills:
+            allowed_skill_names = self._resolve_allowed_skill_names(
+                self._base_loader.list_skill_summaries()
+            )
+            if normalized not in allowed_skill_names:
+                raise SkillNotFoundError(f"Skill '{skill_name}' not allowed")
         return self._base_loader.get_skill_details(skill_name)
 
     def refresh(self) -> None:
         self._base_loader.refresh()
+
+    def _resolve_allowed_skill_names(
+        self, summaries: Sequence[SkillSummary]
+    ) -> set[str]:
+        if not self._allowed_skills:
+            return set()
+        allowed_skill_names: set[str] = set()
+        for summary in summaries:
+            normalized_name = self._normalize_skill_token(summary.name)
+            if normalized_name in self._allowed_skills:
+                allowed_skill_names.add(normalized_name)
+                continue
+            group_name = self._extract_group_name(summary)
+            if group_name and group_name in self._allowed_skills:
+                allowed_skill_names.add(normalized_name)
+        return allowed_skill_names
+
+    @classmethod
+    def _extract_group_name(cls, summary: SkillSummary) -> str | None:
+        skill_dir = summary.source_path.parent
+        group_dir = skill_dir.parent if skill_dir else None
+        if group_dir is None or not group_dir.name:
+            return None
+        return cls._normalize_skill_token(group_dir.name)
+
+    @staticmethod
+    def _normalize_skill_token(value: str) -> str:
+        normalized = value.strip().lower().replace("_", "-")
+        while "--" in normalized:
+            normalized = normalized.replace("--", "-")
+        return normalized.strip("-")

@@ -54,6 +54,26 @@ def _write_skill_frontmatter(
     _write_skill_raw(root, directory, content=content)
 
 
+class FakeEnvironmentVariables:
+    def __init__(self) -> None:
+        self._excluded_skills: set[str] = set()
+        self._excluded_skill_groups: set[str] = set()
+
+    @property
+    def excluded_skills(self) -> set[str]:
+        return set(self._excluded_skills)
+
+    @property
+    def excluded_skill_groups(self) -> set[str]:
+        return set(self._excluded_skill_groups)
+
+    def set_exclusions(self, values: set[str]) -> None:
+        self._excluded_skills = set(values)
+
+    def set_group_exclusions(self, values: set[str]) -> None:
+        self._excluded_skill_groups = set(values)
+
+
 def test_skill_loader_reads_metadata_and_content(
     tmp_path: Path,
 ) -> None:
@@ -72,6 +92,94 @@ def test_skill_loader_reads_metadata_and_content(
     assert details.source_path.name == "SKILL.md"
 
 
+def test_skill_loader_reads_nested_skills(
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "category/alpha-skill", name="alpha-skill")
+    _write_skill(tmp_path, "beta-skill")
+    cache = SkillCache()
+    loader = SkillDirectoryLoader(
+        skills_directory=str(tmp_path),
+        cache=cache,
+    )
+
+    summaries = loader.list_skill_summaries()
+    assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
+
+    details = loader.get_skill_details("alpha-skill")
+    assert details.source_path.parent.name == "alpha-skill"
+
+
+def test_skill_loader_skips_excluded_skills(
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    _write_skill(tmp_path, "beta-skill")
+    cache = SkillCache()
+    loader = SkillDirectoryLoader(
+        skills_directory=str(tmp_path),
+        cache=cache,
+        excluded_skills={"beta_skill"},
+    )
+
+    summaries = loader.list_skill_summaries()
+    assert [summary.name for summary in summaries] == ["alpha-skill"]
+
+    with pytest.raises(SkillNotFoundError):
+        loader.get_skill_details("beta-skill")
+
+
+def test_skill_loader_reads_exclusions_from_environment_variables(
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    _write_skill(tmp_path, "beta-skill")
+    cache = SkillCache()
+    environment_variables = FakeEnvironmentVariables()
+    loader = SkillDirectoryLoader(
+        skills_directory=str(tmp_path),
+        cache=cache,
+        environment_variables=environment_variables,
+    )
+
+    summaries = loader.list_skill_summaries()
+    assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
+
+    environment_variables.set_exclusions({"beta-skill"})
+    loader.refresh()
+
+    summaries = loader.list_skill_summaries()
+    assert [summary.name for summary in summaries] == ["alpha-skill"]
+
+
+def test_skill_loader_skips_excluded_skill_groups(
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "group_one/alpha-skill", name="alpha-skill")
+    _write_skill(tmp_path, "group-two/beta-skill", name="beta-skill")
+    _write_skill(tmp_path, "gamma-skill")
+    cache = SkillCache()
+    environment_variables = FakeEnvironmentVariables()
+    loader = SkillDirectoryLoader(
+        skills_directory=str(tmp_path),
+        cache=cache,
+        environment_variables=environment_variables,
+    )
+
+    summaries = loader.list_skill_summaries()
+    assert [summary.name for summary in summaries] == [
+        "alpha-skill",
+        "beta-skill",
+        "gamma-skill",
+    ]
+
+    environment_variables.set_group_exclusions({"group-one"})
+    loader.refresh()
+
+    summaries = loader.list_skill_summaries()
+    assert [summary.name for summary in summaries] == ["beta-skill", "gamma-skill"]
+
+
 def test_skill_loader_raises_for_missing_skill(
     tmp_path: Path,
 ) -> None:
@@ -86,10 +194,10 @@ def test_skill_loader_raises_for_missing_skill(
         loader.get_skill_details("beta")
 
 
-def test_skill_loader_validates_directory_name(
+def test_skill_loader_allows_directory_name_mismatch(
     tmp_path: Path,
 ) -> None:
-    _write_skill(tmp_path, "alpha", name="Alpha")
+    _write_skill(tmp_path, "alpha-skill-dir", name="alpha-skill")
 
     cache = SkillCache()
     loader = SkillDirectoryLoader(
@@ -97,8 +205,12 @@ def test_skill_loader_validates_directory_name(
         cache=cache,
     )
 
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries()
+
+    assert [summary.name for summary in summaries] == ["alpha-skill"]
+
+    details = loader.get_skill_details("alpha-skill")
+    assert details.source_path.name == "SKILL.md"
 
 
 def test_skill_loader_reuses_shared_cache_until_refresh(
@@ -294,6 +406,29 @@ def test_skill_loader_rejects_duplicate_normalized_names(
         tmp_path,
         "alpha_skill",
         frontmatter="name: alpha-skill\ndescription: Duplicate\n",
+    )
+
+    loader = SkillDirectoryLoader(
+        skills_directory=str(tmp_path),
+        cache=SkillCache(),
+    )
+
+    with pytest.raises(SkillValidationError):
+        loader.list_skill_summaries()
+
+
+def test_skill_loader_rejects_duplicate_across_nested_and_root(
+    tmp_path: Path,
+) -> None:
+    _write_skill_frontmatter(
+        tmp_path,
+        "alpha-skill",
+        frontmatter="name: alpha-skill\ndescription: Root\n",
+    )
+    _write_skill_frontmatter(
+        tmp_path,
+        "category/alpha-skill",
+        frontmatter="name: alpha-skill\ndescription: Nested\n",
     )
 
     loader = SkillDirectoryLoader(

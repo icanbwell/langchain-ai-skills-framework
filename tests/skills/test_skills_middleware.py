@@ -100,10 +100,12 @@ async def test_awrap_model_call_sets_system_message_when_missing() -> None:
     request = _DummyModelRequest(system_message=None, messages=None)
 
     async def handler(model_request: ModelRequest[Any]) -> ModelResponse[Any]:
-        assert model_request.system_message is not None
-        assert isinstance(model_request.system_message, SystemMessage)
-        assert "<available_skills>" in model_request.system_message.content
-        assert "beta" in model_request.system_message.content
+        assert model_request.system_message is None
+        assert model_request.messages is not None
+        assert len(model_request.messages) == 1
+        assert isinstance(model_request.messages[0], SystemMessage)
+        assert "<available_skills>" in model_request.messages[0].content
+        assert "beta" in model_request.messages[0].content
         return cast(ModelResponse[Any], AIMessage(content="ok"))
 
     response = await middleware.awrap_model_call(

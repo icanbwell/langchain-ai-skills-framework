@@ -9,7 +9,7 @@ from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillNotFoundError,
     SkillValidationError,
 )
-from langchain_ai_skills_framework.utilities.cache.skill_cache import SkillCache
+from langchain_ai_skills_framework.cache.skill_cache import SkillCache
 
 
 def _write_skill(

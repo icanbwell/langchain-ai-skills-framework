@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 import yaml
 
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.utilities.cache.skill_cache import (
+from langchain_ai_skills_framework.cache.skill_cache import (
     SkillCache,
     SkillCacheSnapshot,
 )

@@ -36,9 +36,6 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillDirectoryLoader,
             lambda c: SkillDirectoryLoader(
-                skills_directory=c.resolve(
-                    LangchainAISkillsFrameworkEnvironmentVariables
-                ).skills_directory,
                 cache=c.resolve(SkillCache),
                 environment_variables=c.resolve(
                     LangchainAISkillsFrameworkEnvironmentVariables

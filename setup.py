@@ -64,6 +64,7 @@ setup(
         "s3fs>=2026.2.0",
         "requests",
         "aiohttp>=3.8.0",
+        "simple-container>=1.0.2",
     ],
     classifiers=[
         "Development Status :: 4 - Beta",

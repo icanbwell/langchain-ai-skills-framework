@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 import yaml
 
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.utilities.cache.skill_cache import (
+from langchain_ai_skills_framework.cache.skill_cache import (
     SkillCache,
     SkillCacheSnapshot,
 )
@@ -50,6 +50,9 @@ class SkillLoaderEnvironmentVariables(Protocol):
     @property
     def excluded_skill_groups(self) -> set[str]: ...
 
+    @property
+    def skills_directory(self) -> str: ...
+
 
 class SkillDirectoryLoader(SkillLoaderProtocol):
     """Loads Agent Skills from a directory following the AgentSkills specification."""
@@ -58,15 +61,17 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     def __init__(
         self,
-        skills_directory: str | Path,
         *,
         cache: SkillCache,
-        excluded_skills: set[str] | None = None,
-        environment_variables: SkillLoaderEnvironmentVariables | None = None,
+        environment_variables: SkillLoaderEnvironmentVariables,
     ) -> None:
         self._identifier: UUID = uuid4()
         if cache is None:
             raise ValueError("cache must not be None")
+        if environment_variables is None:
+            raise ValueError("environment_variables must not be None")
+
+        skills_directory = environment_variables.skills_directory
         if isinstance(skills_directory, Path):
             configured_directory = str(skills_directory)
         elif isinstance(skills_directory, str):
@@ -79,7 +84,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._lock = RLock()
         self._cache = cache
         self._snapshot: SkillCacheSnapshot | None = None
-        self._excluded_skills = self._normalize_excluded_skills(excluded_skills)
+        self._excluded_skills = self._normalize_excluded_skills(
+            environment_variables.excluded_skills
+        )
         self._environment_variables = environment_variables
         logger.info(
             f"SkillDirectoryLoader {self._identifier}initialized for {self._skills_directory}"

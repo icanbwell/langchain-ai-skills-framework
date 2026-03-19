@@ -19,15 +19,26 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
         if configured and configured.strip():
             return configured
 
-        # Compute repository root (three levels up from this file):
-        # repo_root / baileyai / utilities / environment / baileyai_environment_variables.py
-        repo_root = Path(__file__).resolve().parents[3]
-        default_skills_dir = repo_root / "baileyai" / "skills" / "skills"
-        if default_skills_dir.is_dir():
-            return str(default_skills_dir)
+        # Attempt to infer a sensible default based on the current package layout.
+        # This file lives at: <repo_root>/langchain_ai_skills_framework/environment/environment_variables.py
+        package_root = Path(__file__).resolve().parents[1]
+        repo_root = package_root.parent
 
-        # Fallback to legacy Docker path for backward compatibility
-        return "/usr/src/baileyai/baileyai/skills/skills"
+        candidate_dirs = [
+            repo_root / "skills",
+            repo_root / "skills" / "skills",
+            package_root / "skills",
+        ]
+
+        for candidate in candidate_dirs:
+            if candidate.is_dir():
+                return str(candidate)
+
+        raise RuntimeError(
+            "SKILLS_DIRECTORY environment variable is not set and no default skills "
+            "directory could be found. Please set SKILLS_DIRECTORY to the directory "
+            "containing your Agent Skills."
+        )
 
     @property
     def excluded_skills(self) -> set[str]:

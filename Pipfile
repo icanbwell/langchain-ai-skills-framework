@@ -27,7 +27,7 @@ requests = "*"
 # aiohttp is needed for making asynchronous HTTP requests
 aiohttp = ">=3.8.0"
 # simple-container is a Python library for working with containers
-simple-container = ">=1.0.1"
+simple-container = ">=1.0.2"
 
 [dev-packages]
 setuptools=">=60.9.3"

@@ -68,6 +68,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._identifier: UUID = uuid4()
         if cache is None:
             raise ValueError("cache must not be None")
+        if environment_variables is None:
+            raise ValueError("environment_variables must not be None")
 
         skills_directory = environment_variables.skills_directory
         if isinstance(skills_directory, Path):

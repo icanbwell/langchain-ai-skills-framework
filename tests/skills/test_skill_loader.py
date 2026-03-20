@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
 
@@ -98,6 +100,62 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
         self.excluded_skill_groups = values
 
 
+class _StubFsspecFileSystem:
+    def __init__(self, files: dict[str, str]) -> None:
+        self._files = dict(files)
+        self._directories = self._build_directories(tuple(self._files.keys()))
+
+    @staticmethod
+    def _build_directories(files: tuple[str, ...]) -> set[str]:
+        directories: set[str] = set()
+        for file_path in files:
+            current = file_path.rsplit("/", 1)[0]
+            while current:
+                directories.add(current)
+                if "/" not in current:
+                    break
+                current = current.rsplit("/", 1)[0]
+        return directories
+
+    def exists(self, path: str) -> bool:
+        return path in self._directories or path in self._files
+
+    def isdir(self, path: str) -> bool:
+        return path in self._directories
+
+    def isfile(self, path: str) -> bool:
+        return path in self._files
+
+    def ls(self, path: str, detail: bool = True) -> list[dict[str, str]]:
+        _ = detail
+        prefix = f"{path.rstrip('/')}/"
+        children: set[str] = set()
+        for directory in self._directories:
+            if directory.startswith(prefix):
+                remainder = directory[len(prefix) :]
+                if remainder and "/" not in remainder:
+                    children.add(directory)
+        for file_path in self._files:
+            if file_path.startswith(prefix):
+                remainder = file_path[len(prefix) :]
+                if remainder and "/" not in remainder:
+                    children.add(file_path)
+        entries: list[dict[str, str]] = []
+        for child in sorted(children):
+            entries.append(
+                {
+                    "name": child,
+                    "type": "directory" if child in self._directories else "file",
+                }
+            )
+        return entries
+
+    def open(self, path: str, mode: str = "rb") -> BinaryIO:
+        if mode != "rb":
+            raise ValueError(f"Unsupported mode: {mode}")
+        return io.BytesIO(self._files[path].encode("utf-8"))
+
+
 def _create_environment_variables(skills_directory: Path) -> FakeEnvironmentVariables:
     return FakeEnvironmentVariables(skills_directory=str(skills_directory))
 
@@ -136,6 +194,55 @@ def test_skill_loader_reads_nested_skills(
 
     details = loader.get_skill_details("alpha-skill")
     assert details.source_path.parent.name == "alpha-skill"
+
+
+def test_skill_loader_reads_skills_from_github_uri(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    github_uri = "github://icanbwell:skill-repo@main/skills"
+    github_root = "icanbwell/skill-repo/main/skills"
+    filesystem = _StubFsspecFileSystem(
+        {
+            f"{github_root}/group-one/alpha-skill/SKILL.md": (
+                "---\n"
+                "name: alpha-skill\n"
+                "description: Example description for alpha-skill.\n"
+                "---\n"
+                "# Body\n\n"
+                "Alpha content\n"
+            ),
+            f"{github_root}/beta-skill/SKILL.md": (
+                "---\n"
+                "name: beta-skill\n"
+                "description: Example description for beta-skill.\n"
+                "---\n"
+                "# Body\n\n"
+                "Beta content\n"
+            ),
+        }
+    )
+
+    def _fake_url_to_fs(uri: str) -> tuple[_StubFsspecFileSystem, str]:
+        if uri != github_uri:
+            raise AssertionError(f"Unexpected URI: {uri}")
+        return filesystem, github_root
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.skill_directory_loader.fsspec.core.url_to_fs",
+        _fake_url_to_fs,
+    )
+
+    loader = SkillDirectoryLoader(
+        cache=SkillCache(),
+        environment_variables=FakeEnvironmentVariables(skills_directory=github_uri),
+    )
+
+    summaries = loader.list_skill_summaries()
+
+    assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
+    assert (
+        loader.get_skill_details("alpha-skill").source_path.parent.name == "alpha-skill"
+    )
 
 
 def test_skill_loader_skips_excluded_skills(

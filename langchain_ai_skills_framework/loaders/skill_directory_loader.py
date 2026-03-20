@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
 from typing import Mapping, MutableMapping, Sequence, cast
 from uuid import UUID, uuid4
 
+import fsspec
 import yaml
 
 from langchain_ai_skills_framework.cache.skill_cache import (
@@ -59,7 +60,10 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError("skills_directory must be a string or Path")
         if not configured_directory.strip():
             raise SkillValidationError("skills_directory is not configured")
-        self._skills_directory = Path(configured_directory).expanduser()
+        self._skills_directory = self._normalize_skills_directory(configured_directory)
+        self._filesystem, self._skills_path = fsspec.core.url_to_fs(
+            self._skills_directory
+        )
         self._lock = RLock()
         self._cache = cache
         self._snapshot: SkillCacheSnapshot | None = None
@@ -143,7 +147,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         logger.info(
             f"SkillDirectoryLoader {self._identifier} scanning directory {self._skills_directory}"
         )
-        if not self._skills_directory.exists():
+        if not self._path_exists(self._skills_path):
             logger.warning(
                 "Skills directory %s does not exist. No skills will be available.",
                 self._skills_directory,
@@ -152,7 +156,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 details_by_name=MappingProxyType({}), ordered_summaries=()
             )
 
-        if not self._skills_directory.is_dir():
+        if not self._is_dir(self._skills_path):
             raise SkillValidationError(
                 f"Configured skills path '{self._skills_directory}' is not a directory"
             )
@@ -161,12 +165,12 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         new_summaries: list[SkillSummary] = []
         excluded_skills = self._get_excluded_skills()
         excluded_skill_groups = self._get_excluded_skill_groups()
-        for skill_dir, skill_file in self._iter_skill_files(self._skills_directory):
+        for skill_dir, skill_file in self._iter_skill_files(self._skills_path):
             skill_group = self._resolve_skill_group(skill_dir)
             if skill_group and skill_group in excluded_skill_groups:
                 logger.info("Skipping excluded skill group '%s'", skill_group)
                 continue
-            definition = self._parse_skill(skill_dir.name, skill_file)
+            definition = self._parse_skill(Path(skill_dir).name, skill_file)
             if definition.name in excluded_skills:
                 logger.info("Skipping excluded skill '%s'", definition.name)
                 continue
@@ -188,22 +192,17 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot
 
-    @staticmethod
-    def _iter_skill_files(skills_directory: Path) -> Sequence[tuple[Path, Path]]:
-        skill_files: list[tuple[Path, Path]] = []
-        for entry in sorted(skills_directory.iterdir()):
-            if not entry.is_dir():
-                continue
-            skill_file = entry / "SKILL.md"
-            if skill_file.is_file():
+    def _iter_skill_files(self, skills_directory: str) -> Sequence[tuple[str, str]]:
+        skill_files: list[tuple[str, str]] = []
+        for entry in self._list_directories(skills_directory):
+            skill_file = self._join_path(entry, "SKILL.md")
+            if self._is_file(skill_file):
                 skill_files.append((entry, skill_file))
                 continue
-            nested_skill_files: list[tuple[Path, Path]] = []
-            for nested_entry in sorted(entry.iterdir()):
-                if not nested_entry.is_dir():
-                    continue
-                nested_skill_file = nested_entry / "SKILL.md"
-                if nested_skill_file.is_file():
+            nested_skill_files: list[tuple[str, str]] = []
+            for nested_entry in self._list_directories(entry):
+                nested_skill_file = self._join_path(nested_entry, "SKILL.md")
+                if self._is_file(nested_skill_file):
                     nested_skill_files.append((nested_entry, nested_skill_file))
             if nested_skill_files:
                 skill_files.extend(nested_skill_files)
@@ -214,8 +213,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             )
         return tuple(skill_files)
 
-    def _parse_skill(self, directory_name: str, skill_file: Path) -> SkillDetails:
-        raw_content = skill_file.read_text(encoding="utf-8")
+    def _parse_skill(self, directory_name: str, skill_file: str) -> SkillDetails:
+        raw_content = self._read_text(skill_file)
         normalized = raw_content.replace("\r\n", "\n")
         if not normalized.startswith("---\n"):
             raise SkillValidationError(
@@ -295,10 +294,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError(
                 f"Skill {skill_name} allowed-tools must be a space-delimited string"
             )
+        source_path = Path(skill_file)
         summary = SkillSummary(
             name=normalized_name,
             description=description.strip(),
-            source_path=skill_file,
+            source_path=source_path,
             license=license_value.strip() if isinstance(license_value, str) else None,
             compatibility=(
                 compatibility_value.strip()
@@ -310,7 +310,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         if not body.strip():
             logger.warning("Skill %s has empty body content", normalized_name)
-        return SkillDetails(summary=summary, content=body, source_path=skill_file)
+        return SkillDetails(summary=summary, content=body, source_path=source_path)
 
     def _get_excluded_skills(self) -> frozenset[str]:
         if self._environment_variables is None:
@@ -326,14 +326,68 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._environment_variables.excluded_skill_groups
         )
 
-    def _resolve_skill_group(self, skill_dir: Path) -> str | None:
+    def _resolve_skill_group(self, skill_dir: str) -> str | None:
         try:
-            relative = skill_dir.relative_to(self._skills_directory)
+            relative = PurePosixPath(skill_dir).relative_to(
+                PurePosixPath(self._skills_path)
+            )
         except ValueError:
             return None
         if len(relative.parts) < 2:
             return None
         return self._normalize_skill_group(relative.parts[0])
+
+    @staticmethod
+    def _normalize_skills_directory(value: str) -> str:
+        normalized = value.strip()
+        if "://" in normalized or "::" in normalized:
+            return normalized
+        return str(Path(normalized).expanduser())
+
+    def _path_exists(self, path: str) -> bool:
+        return bool(self._filesystem.exists(path))
+
+    def _is_dir(self, path: str) -> bool:
+        return bool(self._filesystem.isdir(path))
+
+    def _is_file(self, path: str) -> bool:
+        return bool(self._filesystem.isfile(path))
+
+    def _list_directories(self, path: str) -> tuple[str, ...]:
+        entries = self._filesystem.ls(path, detail=True)
+        items: Sequence[object]
+        if isinstance(entries, Mapping):
+            items = tuple(entries.values())
+        else:
+            items = tuple(entries)
+        directories: list[str] = []
+        for item in items:
+            if isinstance(item, Mapping):
+                name = item.get("name")
+                if not isinstance(name, str):
+                    continue
+                entry_type = item.get("type")
+                if entry_type in {"directory", "dir"} or self._is_dir(name):
+                    directories.append(name)
+                continue
+            if isinstance(item, str) and self._is_dir(item):
+                directories.append(item)
+        return tuple(sorted(directories))
+
+    @staticmethod
+    def _join_path(parent: str, child: str) -> str:
+        if not parent:
+            return child
+        return f"{parent.rstrip('/')}/{child}"
+
+    def _read_text(self, path: str) -> str:
+        with self._filesystem.open(path, mode="rb") as file_handle:
+            data = file_handle.read()
+        if isinstance(data, bytes):
+            return data.decode("utf-8")
+        if isinstance(data, str):
+            return data
+        raise SkillValidationError(f"Skill file '{path}' content is not text")
 
     @classmethod
     def _normalize_excluded_skill_groups(

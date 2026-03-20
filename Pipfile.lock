@@ -608,11 +608,11 @@
         },
         "langsmith": {
             "hashes": [
-                "sha256:68829e926e2742224dd73d1171af4b91b96d26ce194e97b5f4418e6df358c55a",
-                "sha256:e167d30ce82d63e54d515e0eaa31623f16ad2fc1c170db32f77f221d30b99936"
+                "sha256:35bfe795d648b069958280760564632fd28ebc9921c04f3e209c0db6a6c7dc04",
+                "sha256:6e9d5148314d74e86748cb9d3898632cad0320c9323d95f70f969e5bc078eee4"
             ],
             "markers": "python_version >= '3.10'",
-            "version": "==0.7.21"
+            "version": "==0.7.22"
         },
         "multidict": {
             "hashes": [

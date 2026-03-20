@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable, cast
 
 import fsspec
 import pytest
@@ -265,7 +265,10 @@ def test_skill_loader_does_not_send_github_token_for_local_path(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     captured_kwargs: dict[str, object] = {}
-    real_url_to_fs = fsspec.core.url_to_fs
+    real_url_to_fs = cast(
+        Callable[..., tuple[object, str]],
+        fsspec.core.url_to_fs,
+    )
 
     def _capturing_url_to_fs(uri: str, **kwargs: object) -> tuple[object, str]:
         captured_kwargs.update(kwargs)

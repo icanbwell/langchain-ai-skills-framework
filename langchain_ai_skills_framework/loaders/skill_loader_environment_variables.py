@@ -25,6 +25,9 @@ class SkillLoaderEnvironmentVariables(Protocol):
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated github:// skill loading.
 
+        The value may be a fine-grained PAT or a short-lived GitHub App
+        installation token.
+
         Expected environment variables:
         - SKILLS_GITHUB_TOKEN (preferred)
         - GITHUB_TOKEN (fallback)

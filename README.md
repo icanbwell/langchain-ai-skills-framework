@@ -7,6 +7,14 @@
 ## Skill authoring
 - See `docs/skill-authoring.md` for required frontmatter, naming rules, and examples.
 
+## GitHub authentication for remote skills
+- When `SKILLS_DIRECTORY` uses `github://...`, provide a token via `SKILLS_GITHUB_TOKEN` (preferred) or `GITHUB_TOKEN` (fallback).
+- Supported token types: fine-grained Personal Access Token (PAT) and GitHub App installation token.
+- Recommended usage:
+  - Local development: fine-grained PAT scoped to the required repositories.
+  - CI (GitHub Actions): workflow `GITHUB_TOKEN` when permissions are sufficient.
+  - Long-running services: short-lived GitHub App installation tokens.
+
 ## Quick start
 - `make init` – initialize the local dev environment.
 - `make up` – start the dev container.

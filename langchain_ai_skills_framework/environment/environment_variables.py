@@ -13,7 +13,10 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
 ):
     @property
     def skills_github_token(self) -> str | None:
-        """Optional token used for authenticated github:// skill loading."""
+        """Optional token used for authenticated github:// skill loading.
+
+        Supports fine-grained PATs and GitHub App installation tokens.
+        """
         token = os.environ.get("SKILLS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
         if token is None or not token.strip():
             return None

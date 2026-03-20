@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 from typing import BinaryIO
 
+import fsspec
 import pytest
 
 from langchain_ai_skills_framework.loaders.skill_loader import (
@@ -64,10 +65,12 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
         skills_directory: str,
         excluded_skills: set[str] | None = None,
         excluded_skill_groups: set[str] | None = None,
+        github_token: str | None = None,
     ) -> None:
         self._skills_directory = skills_directory
         self._excluded_skills = set(excluded_skills or set())
         self._excluded_skill_groups = set(excluded_skill_groups or set())
+        self._github_token = github_token
 
     @property
     def skills_directory(self) -> str:
@@ -98,6 +101,10 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
 
     def set_group_exclusions(self, values: set[str]) -> None:
         self.excluded_skill_groups = values
+
+    @property
+    def skills_github_token(self) -> str | None:
+        return self._github_token
 
 
 class _StubFsspecFileSystem:
@@ -199,7 +206,7 @@ def test_skill_loader_reads_nested_skills(
 def test_skill_loader_reads_skills_from_github_uri(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    github_uri = "github://icanbwell:skill-repo@main/skills"
+    github_uri = "github://icanbwell:skill-repo@main/skills"  # pragma: allowlist secret
     github_root = "icanbwell/skill-repo/main/skills"
     filesystem = _StubFsspecFileSystem(
         {
@@ -222,9 +229,13 @@ def test_skill_loader_reads_skills_from_github_uri(
         }
     )
 
-    def _fake_url_to_fs(uri: str) -> tuple[_StubFsspecFileSystem, str]:
+    def _fake_url_to_fs(
+        uri: str, **kwargs: object
+    ) -> tuple[_StubFsspecFileSystem, str]:
         if uri != github_uri:
             raise AssertionError(f"Unexpected URI: {uri}")
+        if kwargs.get("token") != "token-123":
+            raise AssertionError(f"Unexpected kwargs: {kwargs}")
         return filesystem, github_root
 
     monkeypatch.setattr(
@@ -234,7 +245,10 @@ def test_skill_loader_reads_skills_from_github_uri(
 
     loader = SkillDirectoryLoader(
         cache=SkillCache(),
-        environment_variables=FakeEnvironmentVariables(skills_directory=github_uri),
+        environment_variables=FakeEnvironmentVariables(
+            skills_directory=github_uri,
+            github_token="token-123",
+        ),
     )
 
     summaries = loader.list_skill_summaries()
@@ -243,6 +257,37 @@ def test_skill_loader_reads_skills_from_github_uri(
     assert (
         loader.get_skill_details("alpha-skill").source_path.parent.name == "alpha-skill"
     )
+
+
+def test_skill_loader_does_not_send_github_token_for_local_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    captured_kwargs: dict[str, object] = {}
+    real_url_to_fs = fsspec.core.url_to_fs
+
+    def _capturing_url_to_fs(uri: str, **kwargs: object) -> tuple[object, str]:
+        captured_kwargs.update(kwargs)
+        return real_url_to_fs(uri, **kwargs)
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.skill_directory_loader.fsspec.core.url_to_fs",
+        _capturing_url_to_fs,
+    )
+
+    loader = SkillDirectoryLoader(
+        cache=SkillCache(),
+        environment_variables=FakeEnvironmentVariables(
+            skills_directory=str(tmp_path),
+            github_token="token-123",
+        ),
+    )
+
+    assert [summary.name for summary in loader.list_skill_summaries()] == [
+        "alpha-skill"
+    ]
+    assert captured_kwargs == {}
 
 
 def test_skill_loader_skips_excluded_skills(

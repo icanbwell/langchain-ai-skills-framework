@@ -12,6 +12,14 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
     EnvironmentVariables, SkillLoaderEnvironmentVariables
 ):
     @property
+    def skills_github_token(self) -> str | None:
+        """Optional token used for authenticated github:// skill loading."""
+        token = os.environ.get("SKILLS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if token is None or not token.strip():
+            return None
+        return token.strip()
+
+    @property
     def skills_directory(self) -> str:
         """Return the absolute path to the Agent Skills directory."""
 

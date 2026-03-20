@@ -61,8 +61,13 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         if not configured_directory.strip():
             raise SkillValidationError("skills_directory is not configured")
         self._skills_directory = self._normalize_skills_directory(configured_directory)
+        fsspec_options = self._build_fsspec_options(
+            skills_directory=self._skills_directory,
+            github_token=environment_variables.skills_github_token,
+        )
         self._filesystem, self._skills_path = fsspec.core.url_to_fs(
-            self._skills_directory
+            self._skills_directory,
+            **fsspec_options,
         )
         self._lock = RLock()
         self._cache = cache
@@ -343,6 +348,16 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         if "://" in normalized or "::" in normalized:
             return normalized
         return str(Path(normalized).expanduser())
+
+    @staticmethod
+    def _build_fsspec_options(
+        *, skills_directory: str, github_token: str | None
+    ) -> Mapping[str, object]:
+        if not skills_directory.startswith("github://"):
+            return {}
+        if github_token is None or not github_token.strip():
+            return {}
+        return {"token": github_token.strip()}
 
     def _path_exists(self, path: str) -> bool:
         return bool(self._filesystem.exists(path))

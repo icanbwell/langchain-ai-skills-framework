@@ -268,12 +268,6 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     # TTL helpers
 
-    def _is_snapshot_valid(self) -> bool:
-        """Thread-safe snapshot validity check."""
-
-        with self._lock:
-            return self._is_snapshot_valid_unlocked()
-
     def _is_snapshot_valid_unlocked(self) -> bool:
         """Lock-held validity check based on snapshot presence and TTL age."""
 

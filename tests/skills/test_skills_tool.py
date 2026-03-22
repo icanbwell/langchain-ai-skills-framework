@@ -42,19 +42,26 @@ def test_load_skill_tool_returns_availability_for_empty_name() -> None:
 
     message = tool._load_skill("")
 
-    assert "No skill name provided." in message
-    assert "alpha" in message
+    assert message == "No skill name provided. Available skills: alpha"
 
 
 def test_load_skill_tool_returns_availability_when_missing() -> None:
-    details = _make_skill("alpha")
-    loader = _StubSkillLoader({"alpha": details})
+    details_alpha = _make_skill("alpha")
+    details_beta = _make_skill("beta")
+    loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message = tool._load_skill("beta")
+    message = tool._load_skill("gamma")
 
-    assert "Skill 'beta' not found." in message
-    assert "alpha" in message
+    assert message == "Skill 'gamma' not found. Available skills: alpha, beta"
+
+
+def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
+    tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
+
+    message = tool._load_skill("alpha")
+
+    assert message == "Skill 'alpha' not found. Available skills: None configured"
 
 
 def test_load_skill_tool_returns_skill_content() -> None:

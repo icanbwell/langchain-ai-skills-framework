@@ -83,9 +83,18 @@ class SkillMiddleware(AgentMiddleware):
         for message in messages:
             if not isinstance(message, SystemMessage):
                 continue
-            if (
-                isinstance(message.content, str)
-                and cls._SKILLS_BLOCK_MARKER in message.content
-            ):
+            if cls._content_contains_skills_marker(message.content):
                 return True
+        return False
+
+    @classmethod
+    def _content_contains_skills_marker(cls, content: object) -> bool:
+        if isinstance(content, str):
+            return cls._SKILLS_BLOCK_MARKER in content
+        if isinstance(content, (list, tuple)):
+            return any(cls._content_contains_skills_marker(item) for item in content)
+        if isinstance(content, dict):
+            return any(
+                cls._content_contains_skills_marker(item) for item in content.values()
+            )
         return False

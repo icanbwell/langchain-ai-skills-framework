@@ -67,7 +67,10 @@ class LoadSkillTool(BaseTool):
     def _format_availability_message(
         loader: SkillLoaderProtocol, normalized_name: str
     ) -> str:
-        available = ", ".join(summary.name for summary in loader.list_skill_summaries())
+        available_names = sorted(
+            summary.name for summary in loader.list_skill_summaries()
+        )
+        available = ", ".join(available_names)
         availability_message = (
             f"Skill '{normalized_name}' not found."
             if normalized_name

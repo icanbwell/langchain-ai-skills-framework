@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
 from typing import Mapping, Sequence, cast
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 from pydantic_ai_skills import SkillsToolset
@@ -57,9 +58,7 @@ class _GitLocation:
 class SkillDirectoryLoader(SkillLoaderProtocol):
     """Loads Agent Skills from local directories or GitHub repositories."""
 
-    _github_uri_pattern = re.compile(
-        r"^github://(?P<repo_spec>[^/]+)(?:/(?P<skills_path>.*))?$"
-    )
+    _github_uri_example = "github://my-org/private-skills/skills?ref=main"
 
     # Public API
 
@@ -419,28 +418,80 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     @classmethod
     def _parse_github_uri(cls, skills_directory: str) -> _GitLocation:
-        match = cls._github_uri_pattern.fullmatch(skills_directory)
-        if match is None:
+        parsed = urlsplit(skills_directory)
+        if parsed.scheme != "github":
             raise SkillValidationError(
-                "GitHub skill directory must match github://<owner>:<repo>[@branch]/<path>"
+                "GitHub skill directory must match github://<owner>/<repo>/<path>?ref=<branch>"
+            )
+        if parsed.fragment:
+            raise SkillValidationError(
+                "GitHub skill directory must not include a fragment"
             )
 
-        repository_spec = match.group("repo_spec")
-        path_value = (match.group("skills_path") or "").strip("/")
-        repository_without_ref, separator, branch = repository_spec.partition("@")
-
-        if ":" not in repository_without_ref:
+        query_values = parse_qs(parsed.query, keep_blank_values=True)
+        unsupported_query_params = set(query_values.keys()) - {"ref"}
+        if unsupported_query_params:
+            unsupported = ", ".join(sorted(unsupported_query_params))
             raise SkillValidationError(
-                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills/skills"
+                f"GitHub skill directory supports only '?ref=' query parameter; got: {unsupported}"
             )
 
-        owner, repo = repository_without_ref.split(":", 1)
+        ref_values = query_values.get("ref")
+        if ref_values and len(ref_values) > 1:
+            raise SkillValidationError(
+                "GitHub skill directory must include a single '?ref=' value"
+            )
+        if ref_values is not None and not ref_values[0].strip():
+            raise SkillValidationError(
+                "GitHub skill directory '?ref=' value must not be empty"
+            )
+        branch_from_query = ref_values[0].strip() if ref_values else None
+
+        owner = parsed.netloc.strip()
+        path_parts = [part for part in parsed.path.split("/") if part]
+
+        # Backward compatibility for the legacy owner:repo style while callers migrate.
+        if ":" in owner:
+            repository_without_ref, separator, branch = owner.partition("@")
+            if ":" not in repository_without_ref:
+                raise SkillValidationError(
+                    f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+                )
+            legacy_owner, repo = repository_without_ref.split(":", 1)
+            if not legacy_owner or not repo:
+                raise SkillValidationError(
+                    f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+                )
+            if (
+                branch_from_query is not None
+                and separator
+                and branch
+                and branch_from_query != branch
+            ):
+                raise SkillValidationError(
+                    "GitHub skill directory ref mismatch between legacy '@branch' and '?ref='"
+                )
+            owner = legacy_owner
+            path_value = "/".join(path_parts)
+            normalized_branch = (
+                branch_from_query
+                if branch_from_query is not None
+                else (branch if separator and branch else None)
+            )
+        else:
+            if not owner or not path_parts:
+                raise SkillValidationError(
+                    f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+                )
+            repo = path_parts[0]
+            path_value = "/".join(path_parts[1:])
+            normalized_branch = branch_from_query
+
         if not owner or not repo:
             raise SkillValidationError(
-                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills/skills"
+                f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
             )
 
-        normalized_branch = branch if separator and branch else None
         return _GitLocation(
             repo_url=f"https://github.com/{owner}/{repo}.git",
             owner=owner,

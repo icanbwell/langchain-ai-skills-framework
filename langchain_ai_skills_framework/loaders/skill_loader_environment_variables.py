@@ -20,7 +20,7 @@ class SkillLoaderEnvironmentVariables(Protocol):
 
         Examples:
         - Local filesystem: "/opt/app/skills"
-        - GitHub via pydantic-ai-skills: "github://my-org:private-skills/skills"
+        - GitHub via pydantic-ai-skills: "github://my-org/private-skills/skills?ref=main"
         """
         ...
 

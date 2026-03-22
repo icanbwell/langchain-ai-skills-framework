@@ -136,7 +136,7 @@ def test_skill_loader_reads_skills_from_github_uri(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    github_uri = "github://icanbwell:skill-repo@main/skills"  # pragma: allowlist secret
+    github_uri = "github://icanbwell/skill-repo/skills?ref=main"
     skills_root = tmp_path / "repo" / "skills"
     alpha_dir = skills_root / "group-one" / "alpha-skill"
     beta_dir = skills_root / "beta-skill"
@@ -214,7 +214,22 @@ def test_skill_loader_reads_skills_from_github_uri(
 
 
 def test_skill_loader_rejects_github_uri_without_owner() -> None:
-    github_uri = "github://skill-repo@main/skills"  # pragma: allowlist secret
+    github_uri = "github:///skill-repo/skills?ref=main"
+
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=github_uri,
+        github_token="token-123",
+    )
+    loader = SkillDirectoryLoader(
+        environment_variables=environment_variables,
+    )
+
+    with pytest.raises(SkillValidationError):
+        loader.list_skill_summaries()
+
+
+def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
+    github_uri = "github://icanbwell/skill-repo/skills?branch=main"
 
     environment_variables = FakeEnvironmentVariables(
         skills_directory=github_uri,

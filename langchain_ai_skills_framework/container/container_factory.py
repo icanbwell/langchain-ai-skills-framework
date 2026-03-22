@@ -16,7 +16,7 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillCache,
             lambda c: SkillCache(
-                environment_variables=c.resolve(EnvironmentVariables),
+                environment_variables=c.resolve(EnvironmentVariables), # type: ignore[arg-type]
             ),
         )
 
@@ -24,7 +24,7 @@ class LangchainAISkillsFrameworkContainerFactory:
             SkillDirectoryLoader,
             lambda c: SkillDirectoryLoader(
                 cache=c.resolve(SkillCache),
-                environment_variables=c.resolve(EnvironmentVariables),
+                environment_variables=c.resolve(EnvironmentVariables), # type: ignore[arg-type]
             ),
         )
         container.singleton(

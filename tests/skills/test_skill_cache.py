@@ -50,12 +50,11 @@ def test_skill_cache_reads_ttl_from_environment_variables() -> None:
     assert cache.is_valid() is True
 
 
-def test_skill_cache_prefers_explicit_ttl_over_environment_variables() -> None:
+def test_skill_cache_non_positive_environment_ttl_disables_expiration() -> None:
     cache = SkillCache(
-        ttl_seconds=0,
         environment_variables=_FakeSkillCacheEnvironmentVariables(
-            skills_cache_timeout_seconds=60
-        ),
+            skills_cache_timeout_seconds=0
+        )
     )
 
     cache.set(_snapshot())

@@ -39,6 +39,8 @@ logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
 @dataclass(frozen=True, slots=True)
 class _SkillSnapshot:
+    """Immutable, already-filtered view of skills used by public loader calls."""
+
     details_by_name: Mapping[str, SkillDetails]
     ordered_summaries: tuple[SkillSummary, ...]
 
@@ -58,6 +60,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     _github_uri_pattern = re.compile(
         r"^github://(?P<repo_spec>[^/]+)(?:/(?P<skills_path>.*))?$"
     )
+
+    # Public API
 
     def __init__(
         self,
@@ -97,6 +101,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
 
     def list_skill_summaries(self) -> Sequence[SkillSummary]:
+        """Return lightweight skill summaries from the current snapshot."""
+
         snapshot = self._get_snapshot()
         logger.debug(
             "SkillDirectoryLoader %s returning %d summaries",
@@ -106,6 +112,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         return snapshot.ordered_summaries
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
+        """Return full skill details for the normalized skill name."""
+
         normalized = self._normalize_skill_name(skill_name)
         snapshot = self._get_snapshot()
         try:
@@ -119,19 +127,30 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             raise SkillNotFoundError(f"Skill '{skill_name}' not found") from exc
 
     def refresh(self) -> None:
+        """Force an immediate reload regardless of TTL."""
+
         with self._lock:
             logger.info("SkillDirectoryLoader %s refreshing cache", self._identifier)
             self._reload_toolset(force=True)
             self._snapshot = self._build_snapshot()
             self._snapshot_loaded_at = time.monotonic()
 
+    # Snapshot lifecycle
+
     def _get_snapshot(self) -> _SkillSnapshot:
-        if self._is_snapshot_valid():
-            return self._snapshot  # type: ignore[return-value]
+        # Fast path: use the in-memory snapshot while TTL is still valid.
+        with self._lock:
+            if self._is_snapshot_valid_unlocked():
+                snapshot = self._snapshot
+                if snapshot is not None:
+                    return snapshot
 
         with self._lock:
-            if self._is_snapshot_valid():
-                return self._snapshot  # type: ignore[return-value]
+            # Double-check after acquiring the lock in case another thread refreshed.
+            if self._is_snapshot_valid_unlocked():
+                snapshot = self._snapshot
+                if snapshot is not None:
+                    return snapshot
 
             logger.info(
                 "SkillDirectoryLoader %s cache expired or empty; loading skills",
@@ -143,6 +162,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             return self._snapshot
 
     def _build_snapshot(self) -> _SkillSnapshot:
+        """Build a normalized, exclusion-aware snapshot from the loaded toolset."""
+
         logger.info(
             "SkillDirectoryLoader %s loading skills from %s",
             self._identifier,
@@ -193,7 +214,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot
 
+    # Toolset loading and reloading
+
     def _reload_toolset(self, *, force: bool) -> None:
+        """Refresh the underlying SkillsToolset when forced or when TTL expires."""
+
         try:
             if self._skills_toolset is None:
                 self._skills_toolset = self._create_toolset()
@@ -205,8 +230,10 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             ):
                 reload_method = getattr(self._skills_toolset, "reload", None)
                 if callable(reload_method):
+                    # Keep remote registries fresh on TTL refresh.
                     reload_method(include_registries=True)
                 else:
+                    # Backward-compatible fallback for older pydantic-ai-skills builds.
                     self._skills_toolset = self._create_toolset()
         except (
             PydanticSkillValidationError,
@@ -219,6 +246,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError(str(exc)) from exc
 
     def _create_toolset(self) -> SkillsToolset:
+        """Create a SkillsToolset from filesystem or github:// source."""
+
         if self._skills_directory.startswith("github://"):
             git_location = self._parse_github_uri(self._skills_directory)
             registry = GitSkillsRegistry(
@@ -238,11 +267,17 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
         return SkillsToolset(directories=[str(self._skills_root_path)])
 
+    # TTL helpers
+
     def _is_snapshot_valid(self) -> bool:
+        """Thread-safe snapshot validity check."""
+
         with self._lock:
             return self._is_snapshot_valid_unlocked()
 
     def _is_snapshot_valid_unlocked(self) -> bool:
+        """Lock-held validity check based on snapshot presence and TTL age."""
+
         if self._snapshot is None:
             return False
         if self._reload_ttl_seconds is None:
@@ -255,6 +290,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     def _resolve_reload_ttl_seconds(
         environment_variables: SkillLoaderEnvironmentVariables,
     ) -> float | None:
+        """Resolve loader TTL from environment, defaulting to one hour."""
+
         configured = getattr(
             environment_variables, "skills_cache_timeout_seconds", 3600
         )
@@ -267,7 +304,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             return None
         return configured_seconds
 
+    # Skill mapping and validation
+
     def _map_skill(self, skill: Skill) -> SkillDetails:
+        """Map a pydantic-ai-skills Skill into framework SkillDetails."""
+
         normalized_name = self._normalize_skill_name(skill.name)
         if not normalized_name:
             raise SkillValidationError("Skill name must not be empty")
@@ -355,6 +396,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 f"Skill {skill_name} allowed-tools must be a space-delimited string"
             )
         return tuple(tool for tool in value.split() if tool)
+
+    # Source path and name normalization
 
     def _resolve_skill_group(self, skill_dir: str) -> str | None:
         try:

@@ -431,13 +431,13 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
         if ":" not in repository_without_ref:
             raise SkillValidationError(
-                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills@main/skills"
+                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills/skills"
             )
 
         owner, repo = repository_without_ref.split(":", 1)
         if not owner or not repo:
             raise SkillValidationError(
-                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills@main/skills"
+                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills/skills"
             )
 
         normalized_branch = branch if separator and branch else None

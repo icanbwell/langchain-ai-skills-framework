@@ -9,7 +9,7 @@
 
 ## GitHub authentication for remote skills
 - When `SKILLS_DIRECTORY` uses `github://...`, provide a token via `SKILLS_GITHUB_TOKEN` (preferred) or `GITHUB_TOKEN` (fallback).
-- Expected GitHub directory format: `github://<owner>:<repo>[@branch]/<path>` (for example: `github://my-org:private-skills@main/skills`).
+- Expected GitHub directory format: `github://<owner>:<repo>[@branch]/<path>` (for example: `github://my-org:private-skills/skills`).
 - Supported token types: fine-grained Personal Access Token (PAT) and GitHub App installation token.
 - Recommended usage:
   - Local development: fine-grained PAT scoped to the required repositories.

@@ -30,7 +30,7 @@ def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries() -> 
     try:
         environment_variables = LangchainAISkillsFrameworkEnvironmentVariables()
         loader = SkillDirectoryLoader(
-            cache=SkillCache(),
+            cache=SkillCache(environment_variables=environment_variables),
             environment_variables=environment_variables,
         )
 

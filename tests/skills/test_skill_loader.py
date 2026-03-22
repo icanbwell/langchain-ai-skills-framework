@@ -66,11 +66,13 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
         excluded_skills: set[str] | None = None,
         excluded_skill_groups: set[str] | None = None,
         github_token: str | None = None,
+        skills_cache_timeout_seconds: int = 3600,
     ) -> None:
         self._skills_directory = skills_directory
         self._excluded_skills = set(excluded_skills or set())
         self._excluded_skill_groups = set(excluded_skill_groups or set())
         self._github_token = github_token
+        self._skills_cache_timeout_seconds = skills_cache_timeout_seconds
 
     @property
     def skills_directory(self) -> str:
@@ -105,6 +107,10 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
     @property
     def skills_github_token(self) -> str | None:
         return self._github_token
+
+    @property
+    def skills_cache_timeout_seconds(self) -> int:
+        return self._skills_cache_timeout_seconds
 
 
 class _StubFsspecFileSystem:
@@ -167,14 +173,21 @@ def _create_environment_variables(skills_directory: Path) -> FakeEnvironmentVari
     return FakeEnvironmentVariables(skills_directory=str(skills_directory))
 
 
+def _create_cache(
+    environment_variables: FakeEnvironmentVariables,
+) -> SkillCache:
+    return SkillCache(environment_variables=environment_variables)
+
+
 def test_skill_loader_reads_metadata_and_content(
     tmp_path: Path,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
-    cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
+    cache = _create_cache(environment_variables)
     loader = SkillDirectoryLoader(
         cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
     )
 
     summaries = loader.list_skill_summaries()
@@ -190,10 +203,11 @@ def test_skill_loader_reads_nested_skills(
 ) -> None:
     _write_skill(tmp_path, "category/alpha-skill", name="alpha-skill")
     _write_skill(tmp_path, "beta-skill")
-    cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
+    cache = _create_cache(environment_variables)
     loader = SkillDirectoryLoader(
         cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
     )
 
     summaries = loader.list_skill_summaries()
@@ -245,12 +259,13 @@ def test_skill_loader_reads_skills_from_github_uri(
         _fake_url_to_fs,
     )
 
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=github_uri,
+        github_token="token-123",
+    )
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=FakeEnvironmentVariables(
-            skills_directory=github_uri,
-            github_token="token-123",
-        ),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     summaries = loader.list_skill_summaries()
@@ -281,12 +296,13 @@ def test_skill_loader_does_not_send_github_token_for_local_path(
         _capturing_url_to_fs,
     )
 
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=str(tmp_path),
+        github_token="token-123",
+    )
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=FakeEnvironmentVariables(
-            skills_directory=str(tmp_path),
-            github_token="token-123",
-        ),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     assert [summary.name for summary in loader.list_skill_summaries()] == [
@@ -329,12 +345,13 @@ def test_skill_loader_uses_fallback_username_for_github_uri_without_org(
         _fake_url_to_fs,
     )
 
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=github_uri,
+        github_token="token-123",
+    )
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=FakeEnvironmentVariables(
-            skills_directory=github_uri,
-            github_token="token-123",
-        ),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     assert [summary.name for summary in loader.list_skill_summaries()] == [
@@ -347,11 +364,11 @@ def test_skill_loader_skips_excluded_skills(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     _write_skill(tmp_path, "beta-skill")
-    cache = SkillCache()
     environment_variables = FakeEnvironmentVariables(
         skills_directory=str(tmp_path),
         excluded_skills={"beta_skill"},
     )
+    cache = _create_cache(environment_variables)
     loader = SkillDirectoryLoader(
         cache=cache,
         environment_variables=environment_variables,
@@ -369,8 +386,8 @@ def test_skill_loader_reads_exclusions_from_environment_variables(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     _write_skill(tmp_path, "beta-skill")
-    cache = SkillCache()
     environment_variables = _create_environment_variables(tmp_path)
+    cache = _create_cache(environment_variables)
     loader = SkillDirectoryLoader(
         cache=cache,
         environment_variables=environment_variables,
@@ -392,8 +409,8 @@ def test_skill_loader_skips_excluded_skill_groups(
     _write_skill(tmp_path, "group_one/alpha-skill", name="alpha-skill")
     _write_skill(tmp_path, "group-two/beta-skill", name="beta-skill")
     _write_skill(tmp_path, "gamma-skill")
-    cache = SkillCache()
     environment_variables = _create_environment_variables(tmp_path)
+    cache = _create_cache(environment_variables)
     loader = SkillDirectoryLoader(
         cache=cache,
         environment_variables=environment_variables,
@@ -417,10 +434,11 @@ def test_skill_loader_raises_for_missing_skill(
     tmp_path: Path,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
-    cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
+    cache = _create_cache(environment_variables)
     loader = SkillDirectoryLoader(
         cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillNotFoundError):
@@ -432,9 +450,10 @@ def test_skill_loader_rejects_directory_name_mismatch(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill-dir", name="alpha-skill")
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -444,19 +463,20 @@ def test_skill_loader_rejects_directory_name_mismatch(
 def test_skill_loader_reuses_shared_cache_until_refresh(
     tmp_path: Path,
 ) -> None:
-    shared_cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
+    shared_cache = _create_cache(environment_variables)
     _write_skill(tmp_path, "alpha-skill", body="Version 1 content")
 
     loader_a = SkillDirectoryLoader(
         cache=shared_cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
     )
     assert "Version 1" in loader_a.get_skill_details("alpha-skill").content
 
     _write_skill(tmp_path, "alpha-skill", body="Version 2 content")
     loader_b = SkillDirectoryLoader(
         cache=shared_cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
     )
     # Snapshot should still reflect the cached data
     assert "Version 1" in loader_b.get_skill_details("alpha-skill").content
@@ -469,9 +489,10 @@ def test_skill_loader_returns_empty_when_directory_missing(
     tmp_path: Path,
 ) -> None:
     missing_path = tmp_path / "missing"
+    environment_variables = _create_environment_variables(missing_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(missing_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     summaries = loader.list_skill_summaries()
@@ -485,9 +506,10 @@ def test_skill_loader_rejects_non_directory_path(
     file_path = tmp_path / "skills.txt"
     file_path.write_text("not a directory", encoding="utf-8")
 
+    environment_variables = _create_environment_variables(file_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(file_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -509,9 +531,10 @@ def test_skill_loader_rejects_invalid_frontmatter(
 ) -> None:
     _write_skill_raw(tmp_path, f"skill-{case}", content=content)
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -527,9 +550,10 @@ def test_skill_loader_validates_required_fields(
         frontmatter="description: Missing name",
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -545,9 +569,10 @@ def test_skill_loader_rejects_empty_description(
         frontmatter="name: alpha-skill\ndescription: ''",
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -568,9 +593,10 @@ def test_skill_loader_rejects_invalid_metadata_and_tools(
         ),
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -591,9 +617,10 @@ def test_skill_loader_rejects_non_string_metadata_values(
         ),
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -614,9 +641,10 @@ def test_skill_loader_rejects_invalid_license_and_compatibility(
         ),
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -636,9 +664,10 @@ def test_skill_loader_parses_allowed_tools(
         ),
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     details = loader.get_skill_details("alpha-skill")
@@ -660,9 +689,10 @@ def test_skill_loader_rejects_duplicate_normalized_names(
         frontmatter="name: alpha-skill\ndescription: Duplicate\n",
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):
@@ -683,9 +713,10 @@ def test_skill_loader_rejects_duplicate_across_nested_and_root(
         frontmatter="name: alpha-skill\ndescription: Nested\n",
     )
 
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
     )
 
     with pytest.raises(SkillValidationError):

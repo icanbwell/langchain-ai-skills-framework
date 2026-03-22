@@ -34,7 +34,8 @@ skillkit = {extras = ["langchain"], version = ">=0.4.0"}
 pydantic-ai-skills = {extras=["git"], version = ">=0.5.1"}
 
 [dev-packages]
-setuptools=">=60.9.3"
+# setuptools > 81 has a breaking change that causes pipenv-setup to fail, so we need to pin it to a version < 80.9.0
+setuptools=">=60.9.3, <=80.9.0"
 packaging= ">=26.0"
 wheel = ">=0.43.0"
 twine=">=4.0.2"

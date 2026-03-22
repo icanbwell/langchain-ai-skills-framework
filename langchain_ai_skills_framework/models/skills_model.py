@@ -14,7 +14,7 @@ class SkillSummary:
     source_path: Path
     license: str | None = None
     compatibility: str | None = None
-    metadata: Mapping[str, str] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
     allowed_tools: tuple[str, ...] = ()
 
 

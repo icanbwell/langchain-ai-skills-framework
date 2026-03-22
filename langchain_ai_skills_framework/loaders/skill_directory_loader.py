@@ -364,18 +364,16 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         *,
         skill_name: str,
         value: object,
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         if value is None:
             return {}
         if not isinstance(value, Mapping):
-            raise SkillValidationError(
-                f"Skill {skill_name} metadata must be a mapping of string keys to string values"
-            )
-        metadata: dict[str, str] = {}
+            raise SkillValidationError(f"Skill {skill_name} metadata must be a mapping")
+        metadata: dict[str, object] = {}
         for key, item in value.items():
-            if not isinstance(key, str) or not isinstance(item, str):
+            if not isinstance(key, str):
                 raise SkillValidationError(
-                    f"Skill {skill_name} metadata values must be strings"
+                    f"Skill {skill_name} metadata keys must be strings"
                 )
             metadata[key] = item
         return metadata

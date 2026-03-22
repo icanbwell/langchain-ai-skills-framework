@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, cast
 
 import pytest
 from pydantic_ai_skills.types import Skill
@@ -113,6 +113,77 @@ def test_skill_loader_reads_metadata_and_content(
     details = loader.get_skill_details("alpha-skill")
     assert details.content.strip().startswith("# Body")
     assert details.source_path.name == "SKILL.md"
+
+
+def test_skill_loader_accepts_non_string_metadata_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(environment_variables=environment_variables)
+
+    class _FakeToolset:
+        def __init__(self) -> None:
+            self.skills: Mapping[str, Skill] = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Alpha content",
+                    uri=str(tmp_path / "alpha-skill"),
+                    metadata={
+                        "metadata": {
+                            "priority": 1,
+                            "enabled": True,
+                            "tags": ["intake", "triage"],
+                        }
+                    },
+                )
+            }
+
+    monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
+
+    details = loader.get_skill_details("alpha-skill")
+    assert details.summary.metadata == {
+        "priority": 1,
+        "enabled": True,
+        "tags": ["intake", "triage"],
+    }
+
+
+@pytest.mark.parametrize(
+    "raw_metadata",
+    [
+        cast(dict[str, object], {1: "owner"}),
+        cast(dict[str, object], {"owner": "team", 2: "bad"}),
+        cast(dict[str, object], {None: "bad"}),
+    ],
+)
+def test_skill_loader_rejects_non_string_metadata_keys(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    raw_metadata: dict[str, object],
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(environment_variables=environment_variables)
+
+    class _FakeToolset:
+        def __init__(self) -> None:
+            self.skills: Mapping[str, Skill] = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Alpha content",
+                    uri=str(tmp_path / "alpha-skill"),
+                    metadata={"metadata": raw_metadata},
+                )
+            }
+
+    monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
+
+    with pytest.raises(SkillValidationError, match="metadata keys must be strings"):
+        loader.list_skill_summaries()
 
 
 def test_skill_loader_reads_nested_skills(

@@ -28,6 +28,10 @@ requests = "*"
 aiohttp = ">=3.8.0"
 # simple-container is a Python library for working with containers
 simple-container = ">=1.0.2"
+# skillkit[langchain] is needed for working with langchain in skillkit
+skillkit = {extras = ["langchain"], version = ">=0.4.0"}
+# pydantic-ai-skills is needed for working with pydantic in skillkit
+pydantic-ai-skills = {extras=["git"], version = ">=0.5.1"}
 
 [dev-packages]
 setuptools=">=60.9.3"

@@ -77,7 +77,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         self._environment_variables = environment_variables
         logger.info(
-            f"SkillDirectoryLoader {self._identifier}initialized for {self._skills_directory}"
+            "SkillDirectoryLoader %s initialized for %s",
+            self._identifier,
+            self._skills_directory,
         )
 
     def list_skill_summaries(self) -> Sequence[SkillSummary]:
@@ -141,7 +143,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 return cached_snapshot
 
             logger.info(
-                f"SkillDirectoryLoader {self._identifier} cache miss; loading skills"
+                "SkillDirectoryLoader %s cache miss; loading skills",
+                self._identifier,
             )
             snapshot = self._build_snapshot()
             self._cache.set(snapshot)
@@ -150,7 +153,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     def _build_snapshot(self) -> SkillCacheSnapshot:
         logger.info(
-            f"SkillDirectoryLoader {self._identifier} scanning directory {self._skills_directory}"
+            "SkillDirectoryLoader %s scanning directory %s",
+            self._identifier,
+            self._skills_directory,
         )
         if not self._path_exists(self._skills_path):
             logger.warning(
@@ -193,7 +198,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             ordered_summaries=ordered_summaries,
         )
         logger.info(
-            f"Loaded {len(ordered_summaries)} Agent Skills from {self._skills_directory}"
+            "Loaded %d Agent Skills from %s",
+            len(ordered_summaries),
+            self._skills_directory,
         )
         return snapshot
 
@@ -225,13 +232,15 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError(
                 f"Skill {directory_name} missing YAML frontmatter header"
             )
-        closing_index = normalized.find("\n---", 4)
-        if closing_index == -1:
+        match = re.match(
+            r"^---\n(?P<frontmatter>.*?)\n---(?:\n|$)", normalized, re.DOTALL
+        )
+        if match is None:
             raise SkillValidationError(
                 f"Skill {directory_name} missing YAML frontmatter terminator"
             )
-        frontmatter_text = normalized[4:closing_index]
-        body = normalized[closing_index + len("\n---") :].lstrip("\n")
+        frontmatter_text = match.group("frontmatter")
+        body = normalized[match.end() :].lstrip("\n")
         data = self._load_frontmatter(frontmatter_text)
         skill_name: str | None = cast(str | None, data.get("name"))
         description: str | None = cast(str | None, data.get("description"))
@@ -255,6 +264,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         if not self._skill_name_pattern.fullmatch(normalized_name):
             raise SkillValidationError(
                 f"Skill skill_name '{skill_name}' contains invalid characters"
+            )
+        normalized_directory_name = self._normalize_skill_name(directory_name)
+        if normalized_name != normalized_directory_name:
+            raise SkillValidationError(
+                f"Skill name '{skill_name}' must match directory '{directory_name}'"
             )
         if not isinstance(description, str) or not description.strip():
             raise SkillValidationError(
@@ -287,11 +301,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                     f"Skill {skill_name} metadata must be a mapping of string keys to string values"
                 )
             for key, value in metadata_value.items():
-                if not isinstance(key, str):
+                if not isinstance(key, str) or not isinstance(value, str):
                     raise SkillValidationError(
                         f"Skill {skill_name} metadata entries must be strings: {type(key)}, {type(value)}"
                     )
-                metadata[key] = str(value)
+                metadata[key] = value
         allowed_tools: tuple[str, ...] = ()
         if isinstance(allowed_tools_value, str):
             allowed_tools = tuple(tool for tool in allowed_tools_value.split() if tool)

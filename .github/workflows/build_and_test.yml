@@ -28,6 +28,9 @@ jobs:
       - name: Pull docker images
         run: docker compose pull
 
+      - name: touch .env
+        run: touch .env
+
       - name: pre-commit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

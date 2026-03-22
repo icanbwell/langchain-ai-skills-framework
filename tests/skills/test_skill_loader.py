@@ -427,23 +427,18 @@ def test_skill_loader_raises_for_missing_skill(
         loader.get_skill_details("beta")
 
 
-def test_skill_loader_allows_directory_name_mismatch(
+def test_skill_loader_rejects_directory_name_mismatch(
     tmp_path: Path,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill-dir", name="alpha-skill")
 
-    cache = SkillCache()
     loader = SkillDirectoryLoader(
-        cache=cache,
+        cache=SkillCache(),
         environment_variables=_create_environment_variables(tmp_path),
     )
 
-    summaries = loader.list_skill_summaries()
-
-    assert [summary.name for summary in summaries] == ["alpha-skill"]
-
-    details = loader.get_skill_details("alpha-skill")
-    assert details.source_path.name == "SKILL.md"
+    with pytest.raises(SkillValidationError):
+        loader.list_skill_summaries()
 
 
 def test_skill_loader_reuses_shared_cache_until_refresh(
@@ -504,6 +499,7 @@ def test_skill_loader_rejects_non_directory_path(
     [
         ("name: alpha\n", "missing-header"),
         ("---\nname: alpha\n", "missing-terminator"),
+        ("---\nname: alpha\n---extra\nBody", "invalid-terminator-line"),
         ("---\n:bad\n---\nBody", "invalid-yaml"),
         ("---\n- item\n---\nBody", "non-mapping"),
     ],
@@ -569,6 +565,29 @@ def test_skill_loader_rejects_invalid_metadata_and_tools(
             "description: Valid description\n"
             "metadata: {1: value}\n"
             "allowed-tools: [tool-a]\n"
+        ),
+    )
+
+    loader = SkillDirectoryLoader(
+        cache=SkillCache(),
+        environment_variables=_create_environment_variables(tmp_path),
+    )
+
+    with pytest.raises(SkillValidationError):
+        loader.list_skill_summaries()
+
+
+def test_skill_loader_rejects_non_string_metadata_values(
+    tmp_path: Path,
+) -> None:
+    _write_skill_frontmatter(
+        tmp_path,
+        "alpha-skill",
+        frontmatter=(
+            "name: alpha-skill\n"
+            "description: Valid description\n"
+            "metadata:\n"
+            "  owner: 123\n"
         ),
     )
 

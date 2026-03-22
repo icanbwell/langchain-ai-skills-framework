@@ -23,9 +23,9 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillCache,
             lambda c: SkillCache(
-                ttl_seconds=c.resolve(
+                environment_variables=c.resolve(
                     LangchainAISkillsFrameworkEnvironmentVariables
-                ).skills_cache_timeout_seconds,
+                ),
             ),
         )
 

@@ -4,7 +4,7 @@ import logging
 import time
 from dataclasses import dataclass
 from threading import RLock
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Protocol
 from uuid import UUID, uuid4
 
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
@@ -22,12 +22,30 @@ class SkillCacheSnapshot:
     ordered_summaries: tuple[SkillSummary, ...]
 
 
+class SkillCacheEnvironmentVariables(Protocol):
+    @property
+    def skills_cache_timeout_seconds(self) -> int: ...
+
+
 class SkillCache:
     """Thread-safe cache for Agent Skill definitions with optional TTL."""
 
-    def __init__(self, *, ttl_seconds: Optional[float] = None) -> None:
+    def __init__(
+        self,
+        *,
+        ttl_seconds: Optional[float] = None,
+        environment_variables: Optional[SkillCacheEnvironmentVariables] = None,
+    ) -> None:
+        configured_ttl_seconds = ttl_seconds
+        if configured_ttl_seconds is None and environment_variables is not None:
+            configured_ttl_seconds = float(
+                environment_variables.skills_cache_timeout_seconds
+            )
+
         self._ttl: Optional[float] = (
-            ttl_seconds if ttl_seconds and ttl_seconds > 0 else None
+            configured_ttl_seconds
+            if configured_ttl_seconds and configured_ttl_seconds > 0
+            else None
         )
         self._lock = RLock()
         self._snapshot: Optional[SkillCacheSnapshot] = None

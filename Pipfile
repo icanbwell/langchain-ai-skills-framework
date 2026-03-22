@@ -35,6 +35,7 @@ pydantic-ai-skills = {extras=["git"], version = ">=0.5.1"}
 
 [dev-packages]
 setuptools=">=60.9.3"
+packaging= ">=26.0"
 wheel = ">=0.43.0"
 twine=">=4.0.2"
 pre-commit=">=3.6.1"

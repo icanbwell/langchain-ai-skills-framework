@@ -58,7 +58,7 @@ setup(
     install_requires=[
         "pyyaml>=6.0.3",
         "langchain-core>=1.0.0",
-        "pydantic<3.0.0,>=2.0",
+        "pydantic>=2.0,<3.0.0",
         "langchain>=1.0.0",
         "fsspec>=2026.2.0",
         "s3fs>=2026.2.0",

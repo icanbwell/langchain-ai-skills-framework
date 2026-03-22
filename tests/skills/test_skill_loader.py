@@ -445,7 +445,7 @@ def test_skill_loader_raises_for_missing_skill(
         loader.get_skill_details("beta")
 
 
-def test_skill_loader_rejects_directory_name_mismatch(
+def test_skill_loader_uses_frontmatter_name_when_directory_name_mismatches(
     tmp_path: Path,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill-dir", name="alpha-skill")
@@ -456,8 +456,25 @@ def test_skill_loader_rejects_directory_name_mismatch(
         environment_variables=environment_variables,
     )
 
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries()
+
+    assert [summary.name for summary in summaries] == ["alpha-skill"]
+
+
+def test_skill_loader_accepts_ordered_directory_prefix(
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "1-alpha-skill", name="alpha-skill")
+
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
+    )
+
+    summaries = loader.list_skill_summaries()
+
+    assert [summary.name for summary in summaries] == ["alpha-skill"]
 
 
 def test_skill_loader_reuses_shared_cache_until_refresh(
@@ -603,6 +620,58 @@ def test_skill_loader_rejects_invalid_metadata_and_tools(
         loader.list_skill_summaries()
 
 
+def test_skill_loader_parses_string_list_metadata_values(
+    tmp_path: Path,
+) -> None:
+    _write_skill_frontmatter(
+        tmp_path,
+        "alpha-skill",
+        frontmatter=(
+            "name: alpha-skill\n"
+            "description: Valid description\n"
+            "metadata:\n"
+            "  tags:\n"
+            "    - depression\n"
+            "    - screening\n"
+        ),
+    )
+
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
+    )
+
+    details = loader.get_skill_details("alpha-skill")
+
+    assert details.summary.metadata == {"tags": "depression, screening"}
+
+
+def test_skill_loader_parses_yaml_date_metadata_values(
+    tmp_path: Path,
+) -> None:
+    _write_skill_frontmatter(
+        tmp_path,
+        "alpha-skill",
+        frontmatter=(
+            "name: alpha-skill\n"
+            "description: Valid description\n"
+            "metadata:\n"
+            "  published-on: 2025-01-31\n"
+        ),
+    )
+
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
+    )
+
+    details = loader.get_skill_details("alpha-skill")
+
+    assert details.summary.metadata == {"published-on": "2025-01-31"}
+
+
 def test_skill_loader_rejects_non_string_metadata_values(
     tmp_path: Path,
 ) -> None:
@@ -614,6 +683,32 @@ def test_skill_loader_rejects_non_string_metadata_values(
             "description: Valid description\n"
             "metadata:\n"
             "  owner: 123\n"
+        ),
+    )
+
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(
+        cache=_create_cache(environment_variables),
+        environment_variables=environment_variables,
+    )
+
+    with pytest.raises(SkillValidationError):
+        loader.list_skill_summaries()
+
+
+def test_skill_loader_rejects_metadata_list_with_non_string_values(
+    tmp_path: Path,
+) -> None:
+    _write_skill_frontmatter(
+        tmp_path,
+        "alpha-skill",
+        frontmatter=(
+            "name: alpha-skill\n"
+            "description: Valid description\n"
+            "metadata:\n"
+            "  tags:\n"
+            "    - depression\n"
+            "    - 9\n"
         ),
     )
 

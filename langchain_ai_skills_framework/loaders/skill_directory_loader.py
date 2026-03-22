@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
@@ -38,6 +39,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     """Loads Agent Skills from a directory following the AgentSkills specification."""
 
     _skill_name_pattern = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    _ordered_skill_directory_pattern = re.compile(
+        r"^(?P<prefix>\d+)-(?P<skill_name>[a-z0-9]+(?:-[a-z0-9]+)*)$"
+    )
 
     def __init__(
         self,
@@ -266,9 +270,14 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 f"Skill skill_name '{skill_name}' contains invalid characters"
             )
         normalized_directory_name = self._normalize_skill_name(directory_name)
-        if normalized_name != normalized_directory_name:
-            raise SkillValidationError(
-                f"Skill name '{skill_name}' must match directory '{directory_name}'"
+        if not self._directory_matches_skill_name(
+            normalized_directory_name=normalized_directory_name,
+            normalized_skill_name=normalized_name,
+        ):
+            logger.warning(
+                "Skill name '%s' does not match directory '%s'; using frontmatter name",
+                skill_name,
+                directory_name,
             )
         if not isinstance(description, str) or not description.strip():
             raise SkillValidationError(
@@ -301,11 +310,28 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                     f"Skill {skill_name} metadata must be a mapping of string keys to string values"
                 )
             for key, value in metadata_value.items():
-                if not isinstance(key, str) or not isinstance(value, str):
+                if not isinstance(key, str):
                     raise SkillValidationError(
-                        f"Skill {skill_name} metadata entries must be strings: {type(key)}, {type(value)}"
+                        f"Skill {skill_name} metadata keys must be strings: {type(key)}"
                     )
-                metadata[key] = value
+                if isinstance(value, str):
+                    metadata[key] = value
+                    continue
+                if isinstance(value, datetime):
+                    metadata[key] = value.isoformat()
+                    continue
+                if isinstance(value, date):
+                    metadata[key] = value.isoformat()
+                    continue
+                if isinstance(value, list) and all(
+                    isinstance(item, str) for item in value
+                ):
+                    # Preserve list ordering from YAML while keeping SkillSummary.metadata string-typed.
+                    metadata[key] = ", ".join(value)
+                    continue
+                raise SkillValidationError(
+                    f"Skill {skill_name} metadata values must be strings or lists of strings: {type(value)}"
+                )
         allowed_tools: tuple[str, ...] = ()
         if isinstance(allowed_tools_value, str):
             allowed_tools = tuple(tool for tool in allowed_tools_value.split() if tool)
@@ -475,3 +501,16 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         normalized = value.strip().lower().replace("_", "-")
         normalized = re.sub(r"-+", "-", normalized)
         return normalized.strip("-")
+
+    @classmethod
+    def _directory_matches_skill_name(
+        cls, *, normalized_directory_name: str, normalized_skill_name: str
+    ) -> bool:
+        if normalized_directory_name == normalized_skill_name:
+            return True
+        ordered_match = cls._ordered_skill_directory_pattern.fullmatch(
+            normalized_directory_name
+        )
+        if ordered_match is None:
+            return False
+        return ordered_match.group("skill_name") == normalized_skill_name

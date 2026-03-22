@@ -337,7 +337,9 @@ def test_skill_loader_uses_fallback_username_for_github_uri_without_org(
         ),
     )
 
-    assert [summary.name for summary in loader.list_skill_summaries()] == ["alpha-skill"]
+    assert [summary.name for summary in loader.list_skill_summaries()] == [
+        "alpha-skill"
+    ]
 
 
 def test_skill_loader_skips_excluded_skills(

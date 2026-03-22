@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Mapping, MutableMapping, Sequence, cast
+from typing import Mapping, Sequence
 from uuid import UUID, uuid4
 
-import fsspec
+from pydantic_ai_skills import SkillsDirectory
+from pydantic_ai_skills.exceptions import (
+    SkillRegistryError as PydanticSkillRegistryError,
+    SkillValidationError as PydanticSkillValidationError,
+)
+from pydantic_ai_skills.registries import GitCloneOptions, GitSkillsRegistry
+from pydantic_ai_skills.types import Skill
 import yaml
 
 from langchain_ai_skills_framework.cache.skill_cache import (
@@ -35,12 +42,22 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
 
+@dataclass(frozen=True, slots=True)
+class _GitLocation:
+    repo_url: str
+    path: str
+    branch: str | None
+
+
 class SkillDirectoryLoader(SkillLoaderProtocol):
-    """Loads Agent Skills from a directory following the AgentSkills specification."""
+    """Loads Agent Skills from local directories or GitHub repositories."""
 
     _skill_name_pattern = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     _ordered_skill_directory_pattern = re.compile(
         r"^(?P<prefix>\d+)-(?P<skill_name>[a-z0-9]+(?:-[a-z0-9]+)*)$"
+    )
+    _github_uri_pattern = re.compile(
+        r"^github://(?P<repo_spec>[^/]+)(?:/(?P<skills_path>.*))?$"
     )
 
     def __init__(
@@ -65,14 +82,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         if not configured_directory.strip():
             raise SkillValidationError("skills_directory is not configured")
         self._skills_directory = self._normalize_skills_directory(configured_directory)
-        fsspec_options = self._build_fsspec_options(
-            skills_directory=self._skills_directory,
-            github_token=environment_variables.skills_github_token,
-        )
-        self._filesystem, self._skills_path = fsspec.core.url_to_fs(
-            self._skills_directory,
-            **fsspec_options,
-        )
+        self._skills_path = self._skills_directory
+        self._skills_root_path = self._resolve_skills_root_path(self._skills_directory)
         self._lock = RLock()
         self._cache = cache
         self._snapshot: SkillCacheSnapshot | None = None
@@ -161,30 +172,22 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._identifier,
             self._skills_directory,
         )
-        if not self._path_exists(self._skills_path):
-            logger.warning(
-                "Skills directory %s does not exist. No skills will be available.",
-                self._skills_directory,
-            )
-            return SkillCacheSnapshot(
-                details_by_name=MappingProxyType({}), ordered_summaries=()
-            )
-
-        if not self._is_dir(self._skills_path):
-            raise SkillValidationError(
-                f"Configured skills path '{self._skills_directory}' is not a directory"
-            )
-
         new_details: dict[str, SkillDetails] = {}
         new_summaries: list[SkillSummary] = []
         excluded_skills = self._get_excluded_skills()
         excluded_skill_groups = self._get_excluded_skill_groups()
-        for skill_dir, skill_file in self._iter_skill_files(self._skills_path):
-            skill_group = self._resolve_skill_group(skill_dir)
+        skills = self._load_skills_from_source()
+        if not skills and not self._skills_directory.startswith("github://"):
+            logger.warning(
+                "Skills directory %s does not exist or has no valid skills.",
+                self._skills_directory,
+            )
+        for skill in skills:
+            definition = self._map_skill(skill)
+            skill_group = self._resolve_skill_group(str(definition.source_path.parent))
             if skill_group and skill_group in excluded_skill_groups:
                 logger.info("Skipping excluded skill group '%s'", skill_group)
                 continue
-            definition = self._parse_skill(Path(skill_dir).name, skill_file)
             if definition.name in excluded_skills:
                 logger.info("Skipping excluded skill '%s'", definition.name)
                 continue
@@ -208,154 +211,211 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot
 
-    def _iter_skill_files(self, skills_directory: str) -> Sequence[tuple[str, str]]:
-        skill_files: list[tuple[str, str]] = []
-        for entry in self._list_directories(skills_directory):
-            skill_file = self._join_path(entry, "SKILL.md")
-            if self._is_file(skill_file):
-                skill_files.append((entry, skill_file))
-                continue
-            nested_skill_files: list[tuple[str, str]] = []
-            for nested_entry in self._list_directories(entry):
-                nested_skill_file = self._join_path(nested_entry, "SKILL.md")
-                if self._is_file(nested_skill_file):
-                    nested_skill_files.append((nested_entry, nested_skill_file))
-            if nested_skill_files:
-                skill_files.extend(nested_skill_files)
-                continue
-            logger.warning(
-                "Skipping skill directory %s because SKILL.md is missing",
-                entry,
+    def _load_skills_from_source(self) -> tuple[Skill, ...]:
+        try:
+            if self._skills_directory.startswith("github://"):
+                git_location = self._parse_github_uri(self._skills_directory)
+                registry = GitSkillsRegistry(
+                    repo_url=git_location.repo_url,
+                    path=git_location.path,
+                    token=self._environment_variables.skills_github_token,
+                    clone_options=GitCloneOptions(
+                        depth=1,
+                        branch=git_location.branch,
+                        single_branch=git_location.branch is not None,
+                    ),
+                )
+                self._skills_root_path = registry._skills_root()
+                self._skills_path = str(self._skills_root_path)
+                self._validate_skill_markdown_files(self._skills_root_path)
+                return tuple(registry.get_skills())
+            self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
+            self._skills_path = str(self._skills_root_path)
+            if not self._skills_root_path.exists():
+                return ()
+            if not self._skills_root_path.is_dir():
+                raise SkillValidationError(
+                    f"Configured skills path '{self._skills_directory}' is not a directory"
+                )
+            self._validate_skill_markdown_files(self._skills_root_path)
+            source = SkillsDirectory(
+                path=self._skills_directory, validate=True, max_depth=2
             )
-        return tuple(skill_files)
+            loaded = source.get_skills()
+            return tuple(loaded.values())
+        except (
+            PydanticSkillValidationError,
+            PydanticSkillRegistryError,
+            AttributeError,
+            OSError,
+            ValueError,
+            TypeError,
+        ) as exc:
+            raise SkillValidationError(str(exc)) from exc
 
-    def _parse_skill(self, directory_name: str, skill_file: str) -> SkillDetails:
-        raw_content = self._read_text(skill_file)
-        normalized = raw_content.replace("\r\n", "\n")
-        if not normalized.startswith("---\n"):
-            raise SkillValidationError(
-                f"Skill {directory_name} missing YAML frontmatter header"
+    @staticmethod
+    def _validate_skill_markdown_files(skills_root: Path) -> None:
+        for skill_file in skills_root.rglob("SKILL.md"):
+            raw_content = skill_file.read_text(encoding="utf-8")
+            normalized = raw_content.replace("\r\n", "\n")
+            if not normalized.startswith("---\n"):
+                raise SkillValidationError(
+                    f"Skill {skill_file.parent.name} missing YAML frontmatter header"
+                )
+            match = re.match(
+                r"^---\n(?P<frontmatter>.*?)\n---(?:\n|$)",
+                normalized,
+                re.DOTALL,
             )
-        match = re.match(
-            r"^---\n(?P<frontmatter>.*?)\n---(?:\n|$)", normalized, re.DOTALL
-        )
-        if match is None:
-            raise SkillValidationError(
-                f"Skill {directory_name} missing YAML frontmatter terminator"
-            )
-        frontmatter_text = match.group("frontmatter")
-        body = normalized[match.end() :].lstrip("\n")
-        data = self._load_frontmatter(frontmatter_text)
-        skill_name: str | None = cast(str | None, data.get("name"))
-        description: str | None = cast(str | None, data.get("description"))
-        license_value = data.get("license")
-        compatibility_value = data.get("compatibility")
-        metadata_value = data.get("metadata", {})
-        allowed_tools_value = data.get("allowed-tools")
-        if not isinstance(skill_name, str):
-            raise SkillValidationError(
-                f"Skill {directory_name} is missing the required 'name' field"
-            )
-        normalized_name = self._normalize_skill_name(skill_name)
-        if skill_name != normalized_name:
+            if match is None:
+                raise SkillValidationError(
+                    f"Skill {skill_file.parent.name} missing YAML frontmatter terminator"
+                )
+            frontmatter_text = match.group("frontmatter")
+            try:
+                loaded_frontmatter = yaml.safe_load(frontmatter_text) or {}
+            except yaml.YAMLError as exc:
+                raise SkillValidationError("Invalid YAML frontmatter") from exc
+            if not isinstance(loaded_frontmatter, Mapping):
+                raise SkillValidationError("Frontmatter must be a mapping")
+            skill_name = loaded_frontmatter.get("name")
+            if not isinstance(skill_name, str):
+                raise SkillValidationError(
+                    f"Skill {skill_file.parent.name} is missing the required 'name' field"
+                )
+
+    def _map_skill(self, skill: Skill) -> SkillDetails:
+        normalized_name = self._normalize_skill_name(skill.name)
+        if skill.name != normalized_name:
             raise SkillValidationError(
                 "Skill names must be lowercase and use hyphens only"
             )
-        if len(skill_name) > 64:
+        if len(normalized_name) > 64:
             raise SkillValidationError(
-                f"Skill skill_name '{skill_name}' exceeds 64 characters"
+                f"Skill skill_name '{normalized_name}' exceeds 64 characters"
             )
         if not self._skill_name_pattern.fullmatch(normalized_name):
             raise SkillValidationError(
-                f"Skill skill_name '{skill_name}' contains invalid characters"
+                f"Skill skill_name '{normalized_name}' contains invalid characters"
             )
-        normalized_directory_name = self._normalize_skill_name(directory_name)
+
+        source_dir = (
+            Path(skill.uri)
+            if isinstance(skill.uri, str)
+            else self._skills_root_path / normalized_name
+        )
+        normalized_directory_name = self._normalize_skill_name(source_dir.name)
         if not self._directory_matches_skill_name(
             normalized_directory_name=normalized_directory_name,
             normalized_skill_name=normalized_name,
         ):
             logger.warning(
                 "Skill name '%s' does not match directory '%s'; using frontmatter name",
-                skill_name,
-                directory_name,
+                skill.name,
+                source_dir.name,
             )
+
+        description = skill.description
         if not isinstance(description, str) or not description.strip():
             raise SkillValidationError(
-                f"Skill {skill_name} must include a non-empty description"
+                f"Skill {normalized_name} must include a non-empty description"
             )
         if len(description) > 1024:
             raise SkillValidationError(
-                f"Skill {skill_name} description exceeds 1024 characters"
+                f"Skill {normalized_name} description exceeds 1024 characters"
             )
-        if compatibility_value is not None:
-            if (
-                not isinstance(compatibility_value, str)
-                or not compatibility_value.strip()
-            ):
+
+        compatibility = skill.compatibility
+        if compatibility is not None:
+            if not isinstance(compatibility, str) or not compatibility.strip():
                 raise SkillValidationError(
-                    f"Skill {skill_name} compatibility must be a non-empty string when provided"
+                    f"Skill {normalized_name} compatibility must be a non-empty string when provided"
                 )
-            if len(compatibility_value) > 500:
+            if len(compatibility) > 500:
                 raise SkillValidationError(
-                    f"Skill {skill_name} compatibility exceeds 500 characters"
+                    f"Skill {normalized_name} compatibility exceeds 500 characters"
                 )
+
+        license_value = skill.license
         if license_value is not None and not isinstance(license_value, str):
             raise SkillValidationError(
-                f"Skill {skill_name} license must be a string when provided"
+                f"Skill {normalized_name} license must be a string when provided"
             )
-        metadata: MutableMapping[str, str] = {}
-        if metadata_value is not None:
-            if not isinstance(metadata_value, Mapping):
-                raise SkillValidationError(
-                    f"Skill {skill_name} metadata must be a mapping of string keys to string values"
-                )
-            for key, value in metadata_value.items():
-                if not isinstance(key, str):
-                    raise SkillValidationError(
-                        f"Skill {skill_name} metadata keys must be strings: {type(key)}"
-                    )
-                if isinstance(value, str):
-                    metadata[key] = value
-                    continue
-                if isinstance(value, datetime):
-                    metadata[key] = value.isoformat()
-                    continue
-                if isinstance(value, date):
-                    metadata[key] = value.isoformat()
-                    continue
-                if isinstance(value, list) and all(
-                    isinstance(item, str) for item in value
-                ):
-                    # Preserve list ordering from YAML while keeping SkillSummary.metadata string-typed.
-                    metadata[key] = ", ".join(value)
-                    continue
-                raise SkillValidationError(
-                    f"Skill {skill_name} metadata values must be strings or lists of strings: {type(value)}"
-                )
-        allowed_tools: tuple[str, ...] = ()
-        if isinstance(allowed_tools_value, str):
-            allowed_tools = tuple(tool for tool in allowed_tools_value.split() if tool)
-        elif allowed_tools_value is not None:
-            raise SkillValidationError(
-                f"Skill {skill_name} allowed-tools must be a space-delimited string"
-            )
-        source_path = Path(skill_file)
+
+        metadata_value = skill.metadata if isinstance(skill.metadata, Mapping) else {}
+        frontmatter_metadata = metadata_value.get("metadata")
+        metadata = self._normalize_metadata(
+            skill_name=normalized_name,
+            value=frontmatter_metadata,
+        )
+        allowed_tools_value = metadata_value.get("allowed-tools")
+        allowed_tools = self._normalize_allowed_tools(
+            skill_name=normalized_name,
+            value=allowed_tools_value,
+        )
+
+        source_path = source_dir / "SKILL.md"
         summary = SkillSummary(
             name=normalized_name,
             description=description.strip(),
             source_path=source_path,
             license=license_value.strip() if isinstance(license_value, str) else None,
-            compatibility=(
-                compatibility_value.strip()
-                if isinstance(compatibility_value, str)
-                else None
-            ),
-            metadata=dict(metadata),
+            compatibility=compatibility.strip()
+            if isinstance(compatibility, str)
+            else None,
+            metadata=metadata,
             allowed_tools=allowed_tools,
         )
-        if not body.strip():
+        content = skill.content if isinstance(skill.content, str) else ""
+        if not content.strip():
             logger.warning("Skill %s has empty body content", normalized_name)
-        return SkillDetails(summary=summary, content=body, source_path=source_path)
+        return SkillDetails(summary=summary, content=content, source_path=source_path)
+
+    @classmethod
+    def _normalize_metadata(
+        cls,
+        *,
+        skill_name: str,
+        value: object,
+    ) -> dict[str, str]:
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            raise SkillValidationError(
+                f"Skill {skill_name} metadata must be a mapping of string keys to string values"
+            )
+        metadata: dict[str, str] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise SkillValidationError(
+                    f"Skill {skill_name} metadata keys must be strings: {type(key)}"
+                )
+            if isinstance(item, str):
+                metadata[key] = item
+                continue
+            if isinstance(item, datetime):
+                metadata[key] = item.isoformat()
+                continue
+            if isinstance(item, date):
+                metadata[key] = item.isoformat()
+                continue
+            if isinstance(item, list) and all(isinstance(entry, str) for entry in item):
+                metadata[key] = ", ".join(item)
+                continue
+            raise SkillValidationError(
+                f"Skill {skill_name} metadata values must be strings or lists of strings: {type(item)}"
+            )
+        return metadata
+
+    @staticmethod
+    def _normalize_allowed_tools(*, skill_name: str, value: object) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if not isinstance(value, str):
+            raise SkillValidationError(
+                f"Skill {skill_name} allowed-tools must be a space-delimited string"
+            )
+        return tuple(tool for tool in value.split() if tool)
 
     def _get_excluded_skills(self) -> frozenset[str]:
         if self._environment_variables is None:
@@ -389,74 +449,43 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             return normalized
         return str(Path(normalized).expanduser())
 
-    @staticmethod
-    def _build_fsspec_options(
-        *, skills_directory: str, github_token: str | None
-    ) -> Mapping[str, object]:
-        if not skills_directory.startswith("github://"):
-            return {}
-        if github_token is None or not github_token.strip():
-            return {}
-        return {
-            "token": github_token.strip(),
-            "username": SkillDirectoryLoader._resolve_github_username(skills_directory),
-        }
-
-    @staticmethod
-    def _resolve_github_username(skills_directory: str) -> str:
-        remainder = skills_directory[len("github://") :]
-        repository_spec = remainder.split("/", 1)[0]
-        owner_and_repo = repository_spec.split("@", 1)[0]
-        if ":" in owner_and_repo:
-            owner, _ = owner_and_repo.split(":", 1)
-            if owner:
-                return owner
-        return "token"
-
     def _path_exists(self, path: str) -> bool:
-        return bool(self._filesystem.exists(path))
+        return Path(path).exists()
 
     def _is_dir(self, path: str) -> bool:
-        return bool(self._filesystem.isdir(path))
+        return Path(path).is_dir()
 
-    def _is_file(self, path: str) -> bool:
-        return bool(self._filesystem.isfile(path))
-
-    def _list_directories(self, path: str) -> tuple[str, ...]:
-        entries = self._filesystem.ls(path, detail=True)
-        items: Sequence[object]
-        if isinstance(entries, Mapping):
-            items = tuple(entries.values())
-        else:
-            items = tuple(entries)
-        directories: list[str] = []
-        for item in items:
-            if isinstance(item, Mapping):
-                name = item.get("name")
-                if not isinstance(name, str):
-                    continue
-                entry_type = item.get("type")
-                if entry_type in {"directory", "dir"} or self._is_dir(name):
-                    directories.append(name)
-                continue
-            if isinstance(item, str) and self._is_dir(item):
-                directories.append(item)
-        return tuple(sorted(directories))
+    @classmethod
+    def _parse_github_uri(cls, skills_directory: str) -> _GitLocation:
+        match = cls._github_uri_pattern.fullmatch(skills_directory)
+        if match is None:
+            raise SkillValidationError(
+                "GitHub skill directory must match github://<owner>:<repo>[@branch]/<path>"
+            )
+        repository_spec = match.group("repo_spec")
+        path_value = (match.group("skills_path") or "").strip("/")
+        repository_without_ref, separator, branch = repository_spec.partition("@")
+        if ":" not in repository_without_ref:
+            raise SkillValidationError(
+                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills@main/skills"
+            )
+        owner, repo = repository_without_ref.split(":", 1)
+        if not owner or not repo:
+            raise SkillValidationError(
+                "GitHub skill directory must include owner and repo, e.g. github://my-org:private-skills@main/skills"
+            )
+        normalized_branch = branch if separator and branch else None
+        return _GitLocation(
+            repo_url=f"https://github.com/{owner}/{repo}.git",
+            path=path_value,
+            branch=normalized_branch,
+        )
 
     @staticmethod
-    def _join_path(parent: str, child: str) -> str:
-        if not parent:
-            return child
-        return f"{parent.rstrip('/')}/{child}"
-
-    def _read_text(self, path: str) -> str:
-        with self._filesystem.open(path, mode="rb") as file_handle:
-            data = file_handle.read()
-        if isinstance(data, bytes):
-            return data.decode("utf-8")
-        if isinstance(data, str):
-            return data
-        raise SkillValidationError(f"Skill file '{path}' content is not text")
+    def _resolve_skills_root_path(skills_directory: str) -> Path:
+        if skills_directory.startswith("github://"):
+            return Path(skills_directory)
+        return Path(skills_directory).expanduser().resolve()
 
     @classmethod
     def _normalize_excluded_skill_groups(
@@ -485,16 +514,6 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             if isinstance(value, str) and value.strip()
         }
         return frozenset(item for item in normalized if item)
-
-    @staticmethod
-    def _load_frontmatter(frontmatter_text: str) -> MutableMapping[str, object]:
-        try:
-            loaded = yaml.safe_load(frontmatter_text) or {}
-        except yaml.YAMLError as exc:
-            raise SkillValidationError("Invalid YAML frontmatter") from exc
-        if not isinstance(loaded, MutableMapping):
-            raise SkillValidationError("Frontmatter must be a mapping")
-        return loaded
 
     @staticmethod
     def _normalize_skill_name(value: str) -> str:

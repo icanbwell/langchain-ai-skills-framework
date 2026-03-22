@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import BinaryIO, Callable, cast
+from typing import BinaryIO
 
-import fsspec
 import pytest
+from pydantic_ai_skills.types import Skill
 
 from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillDirectoryLoader,
@@ -219,44 +219,51 @@ def test_skill_loader_reads_nested_skills(
 
 def test_skill_loader_reads_skills_from_github_uri(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     github_uri = "github://icanbwell:skill-repo@main/skills"  # pragma: allowlist secret
-    github_root = "icanbwell/skill-repo/main/skills"
-    filesystem = _StubFsspecFileSystem(
-        {
-            f"{github_root}/group-one/alpha-skill/SKILL.md": (
-                "---\n"
-                "name: alpha-skill\n"
-                "description: Example description for alpha-skill.\n"
-                "---\n"
-                "# Body\n\n"
-                "Alpha content\n"
-            ),
-            f"{github_root}/beta-skill/SKILL.md": (
-                "---\n"
-                "name: beta-skill\n"
-                "description: Example description for beta-skill.\n"
-                "---\n"
-                "# Body\n\n"
-                "Beta content\n"
-            ),
-        }
+    skills_root = tmp_path / "repo" / "skills"
+    (skills_root / "group-one" / "alpha-skill").mkdir(parents=True)
+    (skills_root / "beta-skill").mkdir(parents=True)
+    (skills_root / "group-one" / "alpha-skill" / "SKILL.md").write_text(
+        "---\nname: alpha-skill\ndescription: Alpha\n---\nAlpha content\n",
+        encoding="utf-8",
+    )
+    (skills_root / "beta-skill" / "SKILL.md").write_text(
+        "---\nname: beta-skill\ndescription: Beta\n---\nBeta content\n",
+        encoding="utf-8",
     )
 
-    def _fake_url_to_fs(
-        uri: str, **kwargs: object
-    ) -> tuple[_StubFsspecFileSystem, str]:
-        if uri != github_uri:
-            raise AssertionError(f"Unexpected URI: {uri}")
-        if kwargs.get("token") != "token-123":
-            raise AssertionError(f"Unexpected kwargs: {kwargs}")
-        if kwargs.get("username") != "icanbwell":
-            raise AssertionError(f"Unexpected kwargs: {kwargs}")
-        return filesystem, github_root
+    class _FakeGitSkillsRegistry:
+        def __init__(
+            self, repo_url: str, *, path: str, token: str | None, **_: object
+        ) -> None:
+            assert repo_url == "https://github.com/icanbwell/skill-repo.git"
+            assert path == "skills"
+            assert token == "token-123"
+
+        def _skills_root(self) -> Path:
+            return skills_root
+
+        def get_skills(self) -> list[Skill]:
+            return [
+                Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Alpha content",
+                    uri=str(skills_root / "group-one" / "alpha-skill"),
+                ),
+                Skill(
+                    name="beta-skill",
+                    description="Beta",
+                    content="Beta content",
+                    uri=str(skills_root / "beta-skill"),
+                ),
+            ]
 
     monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.skill_directory_loader.fsspec.core.url_to_fs",
-        _fake_url_to_fs,
+        "langchain_ai_skills_framework.loaders.skill_directory_loader.GitSkillsRegistry",
+        _FakeGitSkillsRegistry,
     )
 
     environment_variables = FakeEnvironmentVariables(
@@ -276,25 +283,10 @@ def test_skill_loader_reads_skills_from_github_uri(
     )
 
 
-def test_skill_loader_does_not_send_github_token_for_local_path(
+def test_skill_loader_loads_local_skills_when_github_token_present(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
-    captured_kwargs: dict[str, object] = {}
-    real_url_to_fs = cast(
-        Callable[..., tuple[object, str]],
-        fsspec.core.url_to_fs,
-    )
-
-    def _capturing_url_to_fs(uri: str, **kwargs: object) -> tuple[object, str]:
-        captured_kwargs.update(kwargs)
-        return real_url_to_fs(uri, **kwargs)
-
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.skill_directory_loader.fsspec.core.url_to_fs",
-        _capturing_url_to_fs,
-    )
 
     environment_variables = FakeEnvironmentVariables(
         skills_directory=str(tmp_path),
@@ -308,42 +300,10 @@ def test_skill_loader_does_not_send_github_token_for_local_path(
     assert [summary.name for summary in loader.list_skill_summaries()] == [
         "alpha-skill"
     ]
-    assert captured_kwargs == {}
 
 
-def test_skill_loader_uses_fallback_username_for_github_uri_without_org(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_skill_loader_rejects_github_uri_without_owner() -> None:
     github_uri = "github://skill-repo@main/skills"  # pragma: allowlist secret
-    github_root = "skill-repo/main/skills"
-    filesystem = _StubFsspecFileSystem(
-        {
-            f"{github_root}/alpha-skill/SKILL.md": (
-                "---\n"
-                "name: alpha-skill\n"
-                "description: Example description for alpha-skill.\n"
-                "---\n"
-                "# Body\n\n"
-                "Alpha content\n"
-            ),
-        }
-    )
-
-    def _fake_url_to_fs(
-        uri: str, **kwargs: object
-    ) -> tuple[_StubFsspecFileSystem, str]:
-        if uri != github_uri:
-            raise AssertionError(f"Unexpected URI: {uri}")
-        if kwargs.get("token") != "token-123":
-            raise AssertionError(f"Unexpected kwargs: {kwargs}")
-        if kwargs.get("username") != "token":
-            raise AssertionError(f"Unexpected kwargs: {kwargs}")
-        return filesystem, github_root
-
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.skill_directory_loader.fsspec.core.url_to_fs",
-        _fake_url_to_fs,
-    )
 
     environment_variables = FakeEnvironmentVariables(
         skills_directory=github_uri,
@@ -354,9 +314,8 @@ def test_skill_loader_uses_fallback_username_for_github_uri_without_org(
         environment_variables=environment_variables,
     )
 
-    assert [summary.name for summary in loader.list_skill_summaries()] == [
-        "alpha-skill"
-    ]
+    with pytest.raises(SkillValidationError):
+        loader.list_skill_summaries()
 
 
 def test_skill_loader_skips_excluded_skills(

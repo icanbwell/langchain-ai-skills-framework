@@ -17,13 +17,13 @@ class SkillLoaderEnvironmentVariables(Protocol):
 
         Examples:
         - Local filesystem: "/opt/app/skills"
-        - GitHub via fsspec: "github://skill-repo@main/skills"
+        - GitHub via pydantic-ai-skills: "github://my-org:private-skills@main/skills"
         """
         ...
 
     @property
     def skills_github_token(self) -> str | None:
-        """Optional token used for authenticated github:// skill loading.
+        """Optional token used for authenticated GitSkillsRegistry loading.
 
         The value may be a fine-grained PAT or a short-lived GitHub App
         installation token.

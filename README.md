@@ -2,13 +2,14 @@
 
 ## Overview
 - langchain-ai-skills-framework loads Agent Skills from `SKILL.md` files and serves them via LangChain middleware and tools.
-- Skills are parsed and validated by `SkillDirectoryLoader`, cached with `SkillCache`, and surfaced through `SkillMiddleware` and `LoadSkillTool`.
+- `SkillDirectoryLoader` now uses `pydantic-ai-skills` registries for local filesystem and GitHub sources, cached with `SkillCache`, and surfaced through `SkillMiddleware` and `LoadSkillTool`.
 
 ## Skill authoring
 - See `docs/skill-authoring.md` for required frontmatter, naming rules, and examples.
 
 ## GitHub authentication for remote skills
 - When `SKILLS_DIRECTORY` uses `github://...`, provide a token via `SKILLS_GITHUB_TOKEN` (preferred) or `GITHUB_TOKEN` (fallback).
+- Expected GitHub directory format: `github://<owner>:<repo>[@branch]/<path>` (for example: `github://my-org:private-skills@main/skills`).
 - Supported token types: fine-grained Personal Access Token (PAT) and GitHub App installation token.
 - Recommended usage:
   - Local development: fine-grained PAT scoped to the required repositories.

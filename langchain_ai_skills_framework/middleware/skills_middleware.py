@@ -6,7 +6,7 @@ from langchain.agents.middleware import (
     ExtendedModelResponse,
 )
 from langchain.messages import SystemMessage
-from typing import Callable, Any, Awaitable
+from typing import Callable, Any, Awaitable, Sequence
 
 from langchain_core.messages import AIMessage, AnyMessage
 
@@ -18,6 +18,8 @@ from langchain_ai_skills_framework.models.skills_model import SkillSummary
 
 class SkillMiddleware(AgentMiddleware):
     """Middleware that injects skill descriptions into the system prompt."""
+
+    _SKILLS_BLOCK_MARKER = "<available_skills>"
 
     def __init__(self, skill_loader: SkillLoaderProtocol) -> None:
         """Initialize and generate the skills prompt from the configured directory."""
@@ -53,6 +55,10 @@ class SkillMiddleware(AgentMiddleware):
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any] | AIMessage | ExtendedModelResponse[Any]:
         """Async: Inject skill descriptions into system prompt."""
+        existing_messages: list[AnyMessage] = list(request.messages or ())
+        if self._request_has_skills_message(existing_messages):
+            return await handler(request)
+
         skills_addendum = (
             f"\n\n{self.skills_prompt}\n\n"
             "Use the load_skill tool when you need detailed information "
@@ -60,8 +66,6 @@ class SkillMiddleware(AgentMiddleware):
         )
         skills_block_text = skills_addendum
         skills_message = SystemMessage(content=skills_block_text)
-
-        existing_messages: list[AnyMessage] = list(request.messages or ())
 
         insertion_index = 0
         for idx, message in enumerate(existing_messages):
@@ -73,3 +77,15 @@ class SkillMiddleware(AgentMiddleware):
         existing_messages.insert(insertion_index, skills_message)
         modified_request = request.override(messages=list(existing_messages))
         return await handler(modified_request)
+
+    @classmethod
+    def _request_has_skills_message(cls, messages: Sequence[AnyMessage]) -> bool:
+        for message in messages:
+            if not isinstance(message, SystemMessage):
+                continue
+            if (
+                isinstance(message.content, str)
+                and cls._SKILLS_BLOCK_MARKER in message.content
+            ):
+                return True
+        return False

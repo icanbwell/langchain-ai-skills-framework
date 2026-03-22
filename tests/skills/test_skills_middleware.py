@@ -114,3 +114,40 @@ async def test_awrap_model_call_sets_system_message_when_missing() -> None:
     )
 
     assert isinstance(response, AIMessage)
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_does_not_duplicate_skills_message() -> None:
+    summaries = [
+        SkillSummary(
+            name="gamma",
+            description="tertiary",
+            source_path=Path("/skills/gamma/SKILL.md"),
+        )
+    ]
+    middleware = SkillMiddleware(skill_loader=_StubSkillLoader(summaries))
+    existing_skills_message = SystemMessage(
+        content="\n\n<available_skills> <skill><name> gamma </name></skill> </available_skills>\n\n"
+    )
+    request = _DummyModelRequest(
+        system_message=existing_skills_message,
+        messages=(existing_skills_message, AIMessage(content="continue")),
+    )
+
+    async def handler(model_request: ModelRequest[Any]) -> ModelResponse[Any]:
+        assert model_request.messages is not None
+        system_messages = [
+            message
+            for message in model_request.messages
+            if isinstance(message, SystemMessage)
+        ]
+        assert len(system_messages) == 1
+        assert system_messages[0] is existing_skills_message
+        return cast(ModelResponse[Any], AIMessage(content="ok"))
+
+    response = await middleware.awrap_model_call(
+        cast(ModelRequest[Any], request),
+        handler,
+    )
+
+    assert isinstance(response, AIMessage)

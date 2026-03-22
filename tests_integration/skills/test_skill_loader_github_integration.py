@@ -34,6 +34,11 @@ def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries() -> 
             environment_variables=environment_variables,
         )
 
+        if not loader._path_exists(loader._skills_path):
+            pytest.skip(f"Configured skills directory does not exist: {github_uri}")
+        if not loader._is_dir(loader._skills_path):
+            pytest.skip(f"Configured skills directory is not a directory: {github_uri}")
+
         summaries = loader.list_skill_summaries()
         assert len(summaries) > 0
 

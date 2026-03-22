@@ -34,7 +34,6 @@ class SkillCache:
     def __init__(
         self,
         *,
-        ttl_seconds: Optional[float] = None,
         environment_variables: SkillCacheEnvironmentVariables,
     ) -> None:
         if environment_variables is None:
@@ -43,11 +42,9 @@ class SkillCache:
             raise ValueError(
                 "environment_variables must be a SkillCacheEnvironmentVariables"
             )
-        configured_ttl_seconds = ttl_seconds
-        if configured_ttl_seconds is None:
-            configured_ttl_seconds = float(
-                environment_variables.skills_cache_timeout_seconds
-            )
+        configured_ttl_seconds = float(
+            environment_variables.skills_cache_timeout_seconds
+        )
 
         # Non-positive values keep the cache indefinitely (no TTL expiration).
         self._ttl: Optional[float] = None

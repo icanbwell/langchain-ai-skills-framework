@@ -44,43 +44,46 @@ class SkillCache:
                 "environment_variables must be a SkillCacheEnvironmentVariables"
             )
         configured_ttl_seconds = ttl_seconds
-        if configured_ttl_seconds is None and environment_variables is not None:
+        if configured_ttl_seconds is None:
             configured_ttl_seconds = float(
                 environment_variables.skills_cache_timeout_seconds
             )
 
-        self._ttl: Optional[float] = (
-            configured_ttl_seconds
-            if configured_ttl_seconds and configured_ttl_seconds > 0
-            else None
-        )
+        # Non-positive values keep the cache indefinitely (no TTL expiration).
+        self._ttl: Optional[float] = None
+        if configured_ttl_seconds is not None and configured_ttl_seconds > 0:
+            self._ttl = configured_ttl_seconds
         self._lock = RLock()
         self._snapshot: Optional[SkillCacheSnapshot] = None
         self._timestamp: Optional[float] = None
         self._identifier: UUID = uuid4()
 
+    def _is_valid_unlocked(self) -> bool:
+        if self._snapshot is None:
+            return False
+        if self._ttl is None:
+            return True
+        if self._timestamp is None:
+            return False
+        current_time = time.time()
+        is_valid = current_time - self._timestamp < self._ttl
+        logger.debug(
+            "SkillCache %s validity check: %s (now=%s, ts=%s, ttl=%s)",
+            self._identifier,
+            is_valid,
+            current_time,
+            self._timestamp,
+            self._ttl,
+        )
+        return is_valid
+
     def is_valid(self) -> bool:
         with self._lock:
-            if self._snapshot is None:
-                return False
-            if self._ttl is None:
-                return True
-            assert self._timestamp is not None
-            current_time = time.time()
-            is_valid = current_time - self._timestamp < self._ttl
-            logger.debug(
-                "SkillCache %s validity check: %s (now=%s, ts=%s, ttl=%s)",
-                self._identifier,
-                is_valid,
-                current_time,
-                self._timestamp,
-                self._ttl,
-            )
-            return is_valid
+            return self._is_valid_unlocked()
 
     def get(self) -> Optional[SkillCacheSnapshot]:
         with self._lock:
-            if self.is_valid():
+            if self._is_valid_unlocked():
                 logger.debug(
                     "SkillCache %s returning cached snapshot", self._identifier
                 )

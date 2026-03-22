@@ -357,7 +357,21 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             return {}
         if github_token is None or not github_token.strip():
             return {}
-        return {"token": github_token.strip()}
+        return {
+            "token": github_token.strip(),
+            "username": SkillDirectoryLoader._resolve_github_username(skills_directory),
+        }
+
+    @staticmethod
+    def _resolve_github_username(skills_directory: str) -> str:
+        remainder = skills_directory[len("github://") :]
+        repository_spec = remainder.split("/", 1)[0]
+        owner_and_repo = repository_spec.split("@", 1)[0]
+        if ":" in owner_and_repo:
+            owner, _ = owner_and_repo.split(":", 1)
+            if owner:
+                return owner
+        return "token"
 
     def _path_exists(self, path: str) -> bool:
         return bool(self._filesystem.exists(path))

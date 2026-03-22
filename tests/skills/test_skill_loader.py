@@ -236,6 +236,8 @@ def test_skill_loader_reads_skills_from_github_uri(
             raise AssertionError(f"Unexpected URI: {uri}")
         if kwargs.get("token") != "token-123":
             raise AssertionError(f"Unexpected kwargs: {kwargs}")
+        if kwargs.get("username") != "icanbwell":
+            raise AssertionError(f"Unexpected kwargs: {kwargs}")
         return filesystem, github_root
 
     monkeypatch.setattr(
@@ -291,6 +293,51 @@ def test_skill_loader_does_not_send_github_token_for_local_path(
         "alpha-skill"
     ]
     assert captured_kwargs == {}
+
+
+def test_skill_loader_uses_fallback_username_for_github_uri_without_org(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    github_uri = "github://skill-repo@main/skills"  # pragma: allowlist secret
+    github_root = "skill-repo/main/skills"
+    filesystem = _StubFsspecFileSystem(
+        {
+            f"{github_root}/alpha-skill/SKILL.md": (
+                "---\n"
+                "name: alpha-skill\n"
+                "description: Example description for alpha-skill.\n"
+                "---\n"
+                "# Body\n\n"
+                "Alpha content\n"
+            ),
+        }
+    )
+
+    def _fake_url_to_fs(
+        uri: str, **kwargs: object
+    ) -> tuple[_StubFsspecFileSystem, str]:
+        if uri != github_uri:
+            raise AssertionError(f"Unexpected URI: {uri}")
+        if kwargs.get("token") != "token-123":
+            raise AssertionError(f"Unexpected kwargs: {kwargs}")
+        if kwargs.get("username") != "token":
+            raise AssertionError(f"Unexpected kwargs: {kwargs}")
+        return filesystem, github_root
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.skill_directory_loader.fsspec.core.url_to_fs",
+        _fake_url_to_fs,
+    )
+
+    loader = SkillDirectoryLoader(
+        cache=SkillCache(),
+        environment_variables=FakeEnvironmentVariables(
+            skills_directory=github_uri,
+            github_token="token-123",
+        ),
+    )
+
+    assert [summary.name for summary in loader.list_skill_summaries()] == ["alpha-skill"]
 
 
 def test_skill_loader_skips_excluded_skills(

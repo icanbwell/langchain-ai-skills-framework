@@ -4,7 +4,7 @@ import logging
 import time
 from dataclasses import dataclass
 from threading import RLock
-from typing import Mapping, Optional, Protocol
+from typing import Mapping, Optional, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
@@ -22,6 +22,7 @@ class SkillCacheSnapshot:
     ordered_summaries: tuple[SkillSummary, ...]
 
 
+@runtime_checkable
 class SkillCacheEnvironmentVariables(Protocol):
     @property
     def skills_cache_timeout_seconds(self) -> int: ...
@@ -34,8 +35,14 @@ class SkillCache:
         self,
         *,
         ttl_seconds: Optional[float] = None,
-        environment_variables: Optional[SkillCacheEnvironmentVariables] = None,
+        environment_variables: SkillCacheEnvironmentVariables,
     ) -> None:
+        if environment_variables is None:
+            raise ValueError("environment_variables cannot be None")
+        if not isinstance(environment_variables, SkillCacheEnvironmentVariables):
+            raise ValueError(
+                "environment_variables must be a SkillCacheEnvironmentVariables"
+            )
         configured_ttl_seconds = ttl_seconds
         if configured_ttl_seconds is None and environment_variables is not None:
             configured_ttl_seconds = float(

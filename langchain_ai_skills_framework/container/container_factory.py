@@ -1,12 +1,10 @@
 from langchain_ai_skills_framework.cache.skill_cache import SkillCache
-from langchain_ai_skills_framework.environment.environment_variables import (
-    LangchainAISkillsFrameworkEnvironmentVariables,
-)
 from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillDirectoryLoader,
     SkillLoaderProtocol,
 )
 from simple_container.container.simple_container import SimpleContainer
+from simple_container.environment.environment_variables import EnvironmentVariables
 
 
 class LangchainAISkillsFrameworkContainerFactory:
@@ -16,16 +14,9 @@ class LangchainAISkillsFrameworkContainerFactory:
     ) -> SimpleContainer:
 
         container.singleton(
-            LangchainAISkillsFrameworkEnvironmentVariables,
-            lambda c: LangchainAISkillsFrameworkEnvironmentVariables(),
-        )
-
-        container.singleton(
             SkillCache,
             lambda c: SkillCache(
-                environment_variables=c.resolve(
-                    LangchainAISkillsFrameworkEnvironmentVariables
-                ),
+                environment_variables=c.resolve(EnvironmentVariables),
             ),
         )
 
@@ -33,9 +24,7 @@ class LangchainAISkillsFrameworkContainerFactory:
             SkillDirectoryLoader,
             lambda c: SkillDirectoryLoader(
                 cache=c.resolve(SkillCache),
-                environment_variables=c.resolve(
-                    LangchainAISkillsFrameworkEnvironmentVariables
-                ),
+                environment_variables=c.resolve(EnvironmentVariables),
             ),
         )
         container.singleton(

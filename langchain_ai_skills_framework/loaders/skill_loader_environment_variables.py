@@ -6,6 +6,9 @@ class SkillLoaderEnvironmentVariables(Protocol):
     """Environment contract for skill loading configuration."""
 
     @property
+    def skills_cache_timeout_seconds(self) -> int: ...
+
+    @property
     def excluded_skills(self) -> set[str]: ...
 
     @property

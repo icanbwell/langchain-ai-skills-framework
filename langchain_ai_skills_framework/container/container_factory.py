@@ -1,4 +1,3 @@
-from langchain_ai_skills_framework.cache.skill_cache import SkillCache
 from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillDirectoryLoader,
     SkillLoaderProtocol,
@@ -14,16 +13,8 @@ class LangchainAISkillsFrameworkContainerFactory:
     ) -> SimpleContainer:
 
         container.singleton(
-            SkillCache,
-            lambda c: SkillCache(
-                environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
-            ),
-        )
-
-        container.singleton(
             SkillDirectoryLoader,
             lambda c: SkillDirectoryLoader(
-                cache=c.resolve(SkillCache),
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
             ),
         )

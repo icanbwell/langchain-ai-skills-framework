@@ -2,7 +2,7 @@
 
 ## Overview
 - langchain-ai-skills-framework loads Agent Skills from `SKILL.md` files and serves them via LangChain middleware and tools.
-- `SkillDirectoryLoader` now uses `pydantic-ai-skills` registries for local filesystem and GitHub sources, cached with `SkillCache`, and surfaced through `SkillMiddleware` and `LoadSkillTool`.
+- `SkillDirectoryLoader` now uses `pydantic-ai-skills` registries for local filesystem and GitHub sources with TTL-based reload, and is surfaced through `SkillMiddleware` and `LoadSkillTool`.
 
 ## Skill authoring
 - See `docs/skill-authoring.md` for required frontmatter, naming rules, and examples.

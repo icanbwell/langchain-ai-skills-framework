@@ -19,7 +19,7 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
 ):
     @property
     def skills_cache_timeout_seconds(self) -> int:
-        """Return a validated TTL in seconds for SkillCache based on environment."""
+        """Return a validated TTL in seconds for skill reload behavior."""
 
         raw_value = os.getenv(_SKILLS_CACHE_TIMEOUT_ENV_VAR)
         if raw_value is None:

@@ -4,7 +4,6 @@ import os
 
 import pytest
 
-from langchain_ai_skills_framework.cache.skill_cache import SkillCache
 from langchain_ai_skills_framework.environment.environment_variables import (
     LangchainAISkillsFrameworkEnvironmentVariables,
 )
@@ -28,9 +27,6 @@ def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries() -> 
 
     environment_variables = LangchainAISkillsFrameworkEnvironmentVariables()
     loader = SkillDirectoryLoader(
-        cache=SkillCache(
-            environment_variables=environment_variables,
-        ),
         environment_variables=environment_variables,
     )
 

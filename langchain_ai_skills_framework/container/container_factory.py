@@ -42,7 +42,7 @@ class LangchainAISkillsFrameworkContainerFactory:
 
         container.singleton(
             SkillLoaderProtocol,
-            lambda c: c.resolve(SkillDirectoryLoader),
+            lambda c: c.resolve(SkillkitDirectoryLoader),
         )
 
         container.singleton(

@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from html import escape
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
@@ -129,21 +130,30 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             self._snapshot = self._build_snapshot()
             self._snapshot_loaded_at = time.monotonic()
 
+    def _build_skills_prompt(self, *, summaries: Sequence[SkillSummary]) -> str:
+        if not summaries:
+            return "No skills are currently configured."
+        skills_block = " ".join(
+            self._format_skill_entry(summary) for summary in summaries
+        )
+        return f"<available_skills> {skills_block} </available_skills>"
+
+    @staticmethod
+    def _format_skill_entry(summary: SkillSummary) -> str:
+        escaped_name = escape(summary.name, quote=True)
+        escaped_description = escape(summary.description.strip(), quote=True)
+        return (
+            "<skill>"
+            f"<name> {escaped_name} </name> "
+            f"<description> {escaped_description} </description> "
+            "</skill>"
+        )
+
     async def get_instructions(self) -> str:
         """Return `<available_skills>` block used by middleware system prompts."""
 
         snapshot = self._get_snapshot()
-        skills_lines = "".join(
-            (
-                "<skill><name> "
-                f"{summary.name}"
-                " </name><description> "
-                f"{summary.description}"
-                " </description></skill>"
-            )
-            for summary in snapshot.ordered_summaries
-        )
-        return f"\n\n<available_skills>{skills_lines}</available_skills>\n\n"
+        return self._build_skills_prompt(summaries=snapshot.ordered_summaries)
 
     def get_tools(self) -> list[StructuredTool]:
         return create_langchain_tools(

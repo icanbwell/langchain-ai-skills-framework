@@ -33,3 +33,11 @@ class SkillDetails:
     @property
     def description(self) -> str:
         return self.summary.description
+
+
+@dataclass(frozen=True, slots=True)
+class SkillSnapshot:
+    """Immutable, already-filtered view of skills used by public loader calls."""
+
+    details_by_name: Mapping[str, SkillDetails]
+    ordered_summaries: tuple[SkillSummary, ...]

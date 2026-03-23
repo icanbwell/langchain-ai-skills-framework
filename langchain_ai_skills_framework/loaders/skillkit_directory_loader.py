@@ -1,7 +1,6 @@
 import logging
 import re
 import time
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
@@ -23,7 +22,11 @@ from langchain_ai_skills_framework.loaders.skill_loader_environment_variables im
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
+from langchain_ai_skills_framework.models.skills_model import (
+    SkillDetails,
+    SkillSummary,
+    SkillSnapshot,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -32,14 +35,6 @@ logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 _FRONTMATTER_PATTERN = re.compile(
     r"^---[\r\n]+(.*?)[\r\n]+---", re.DOTALL | re.MULTILINE
 )
-
-
-@dataclass(frozen=True, slots=True)
-class _SkillSnapshot:
-    """Immutable, already-filtered view of skills used by public loader calls."""
-
-    details_by_name: Mapping[str, SkillDetails]
-    ordered_summaries: tuple[SkillSummary, ...]
 
 
 class SkillkitDirectoryLoader(SkillLoaderProtocol):
@@ -76,7 +71,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         self._skills_directory = self._normalize_skills_directory(configured_directory)
         self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
         self._lock = RLock()
-        self._snapshot: _SkillSnapshot | None = None
+        self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
         self._manager: SkillManager = self._create_manager()
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(
@@ -145,7 +140,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     # Snapshot lifecycle
 
-    def _get_snapshot(self) -> _SkillSnapshot:
+    def _get_snapshot(self) -> SkillSnapshot:
         # Fast path: use the in-memory snapshot while TTL is still valid.
         with self._lock:
             if self._is_snapshot_valid_unlocked():
@@ -169,7 +164,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             self._snapshot_loaded_at = time.monotonic()
             return self._snapshot
 
-    def _build_snapshot(self) -> _SkillSnapshot:
+    def _build_snapshot(self) -> SkillSnapshot:
         """Build a normalized, exclusion-aware snapshot from the loaded manager."""
 
         logger.info(
@@ -210,7 +205,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         ordered_summaries = tuple(
             sorted(new_summaries, key=lambda summary: summary.name)
         )
-        snapshot = _SkillSnapshot(
+        snapshot = SkillSnapshot(
             details_by_name=MappingProxyType(new_details),
             ordered_summaries=ordered_summaries,
         )

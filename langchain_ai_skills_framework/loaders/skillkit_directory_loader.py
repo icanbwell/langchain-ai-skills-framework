@@ -4,10 +4,9 @@ import time
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Sequence
 from uuid import UUID, uuid4
 
-import yaml
 from skillkit import SkillManager, SkillMetadata
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -31,10 +30,6 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
-
-_FRONTMATTER_PATTERN = re.compile(
-    r"^---[\r\n]+(.*?)[\r\n]+---", re.DOTALL | re.MULTILINE
-)
 
 
 class SkillkitDirectoryLoader(SkillLoaderProtocol):
@@ -309,85 +304,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         return SkillDetails(
             summary=summary, content=content, source_path=metadata.skill_path
         )
-
-    @staticmethod
-    def _extract_frontmatter_and_content(
-        *,
-        skill_name: str,
-        source_path: Path,
-        skill_content: str,
-    ) -> tuple[Mapping[str, object], str]:
-        if not isinstance(skill_content, str):
-            raise SkillValidationError(f"Skill {skill_name} content must be a string")
-
-        match = _FRONTMATTER_PATTERN.match(skill_content)
-        if match is None:
-            raise SkillValidationError(
-                f"Skill {skill_name} at {source_path} is missing YAML frontmatter delimiters"
-            )
-
-        try:
-            parsed_frontmatter = yaml.safe_load(match.group(1))
-        except yaml.YAMLError as exc:
-            raise SkillValidationError(
-                f"Skill {skill_name} at {source_path} has invalid YAML frontmatter"
-            ) from exc
-
-        if not isinstance(parsed_frontmatter, Mapping):
-            raise SkillValidationError(
-                f"Skill {skill_name} at {source_path} frontmatter must be a mapping"
-            )
-
-        content = skill_content[match.end() :].lstrip("\r\n")
-        normalized_frontmatter = {
-            str(key): value for key, value in parsed_frontmatter.items()
-        }
-        return normalized_frontmatter, content
-
-    @staticmethod
-    def _normalize_optional_string(
-        *,
-        skill_name: str,
-        field_name: str,
-        value: object,
-    ) -> str | None:
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            raise SkillValidationError(
-                f"Skill {skill_name} {field_name} must be a string when provided"
-            )
-        normalized = value.strip()
-        return normalized or None
-
-    @staticmethod
-    def _normalize_metadata(
-        *,
-        skill_name: str,
-        value: object,
-    ) -> dict[str, object]:
-        if value is None:
-            return {}
-        if not isinstance(value, Mapping):
-            raise SkillValidationError(f"Skill {skill_name} metadata must be a mapping")
-        metadata: dict[str, object] = {}
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise SkillValidationError(
-                    f"Skill {skill_name} metadata keys must be strings"
-                )
-            metadata[key] = item
-        return metadata
-
-    @staticmethod
-    def _normalize_allowed_tools(*, skill_name: str, value: object) -> tuple[str, ...]:
-        if value is None:
-            return ()
-        if not isinstance(value, str):
-            raise SkillValidationError(
-                f"Skill {skill_name} allowed-tools must be a space-delimited string"
-            )
-        return tuple(tool for tool in value.split() if tool)
 
     # Source path and name normalization
 

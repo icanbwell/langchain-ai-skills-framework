@@ -1,10 +1,12 @@
-from langchain_ai_skills_framework.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
-    SkillLoaderProtocol,
 )
 from simple_container.container.simple_container import SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
 
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )

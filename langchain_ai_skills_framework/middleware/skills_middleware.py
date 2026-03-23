@@ -9,7 +9,7 @@ from typing import Callable, Any, Awaitable, Sequence
 
 from langchain_core.messages import AIMessage, AnyMessage
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 

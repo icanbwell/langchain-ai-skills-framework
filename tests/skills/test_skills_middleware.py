@@ -7,6 +7,7 @@ import pytest
 from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain.messages import SystemMessage
 from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.tools import StructuredTool
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
@@ -19,13 +20,11 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, summaries: Sequence[SkillSummary]) -> None:
         self._summaries = tuple(summaries)
 
-    def list_skill_summaries(
-        self, *, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         del allowed_skills
         return self._summaries
 
-    def get_skill_details(self, *, skill_name: str) -> SkillDetails:  # pragma: no cover
+    def get_skill_details(self, skill_name: str) -> SkillDetails:  # pragma: no cover
         del skill_name
         raise NotImplementedError
 
@@ -38,6 +37,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
             for summary in self._summaries
         )
         return f"\n\n<available_skills>{skills_lines}</available_skills>\n\n"
+
+    def get_tools(self) -> list[StructuredTool]:
+        return []
 
 
 class _DummyModelRequest:

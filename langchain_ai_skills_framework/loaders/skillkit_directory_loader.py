@@ -7,7 +7,9 @@ from types import MappingProxyType
 from typing import Sequence
 from uuid import UUID, uuid4
 
+from langchain_core.tools import StructuredTool
 from skillkit import SkillManager, SkillMetadata
+from skillkit.integrations.langchain import create_langchain_tools
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -79,9 +81,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             self._skills_directory,
         )
 
-    def list_skill_summaries(
-        self, *, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return lightweight skill summaries from the current snapshot."""
 
         del allowed_skills
@@ -93,7 +93,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot.ordered_summaries
 
-    def get_skill_details(self, *, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, skill_name: str) -> SkillDetails:
         """Return full skill details for the normalized skill name."""
 
         normalized = self._normalize_skill_name(skill_name)
@@ -132,6 +132,11 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             for summary in snapshot.ordered_summaries
         )
         return f"\n\n<available_skills>{skills_lines}</available_skills>\n\n"
+
+    def get_tools(self) -> list[StructuredTool]:
+        return create_langchain_tools(
+            manager=self._manager,
+        )
 
     # Snapshot lifecycle
 

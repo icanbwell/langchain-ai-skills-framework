@@ -6,12 +6,14 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool
+from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
-    SkillLoaderProtocol,
+from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
 )
 
 
@@ -26,7 +28,7 @@ class LoadSkillInput(BaseModel):
     )
 
 
-class LoadSkillTool(BaseTool):
+class LoadSkillTool(StructuredTool):
     """LangChain tool that loads full skill definitions for the agent."""
 
     name: str = "load_skill"

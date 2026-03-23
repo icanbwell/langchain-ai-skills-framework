@@ -4,10 +4,9 @@ from pathlib import Path
 
 from simple_container.environment.environment_variables import EnvironmentVariables
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
-
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _SKILLS_CACHE_TIMEOUT_ENV_VAR: str = "SKILLS_CACHE_TIMEOUT_SECONDS"

@@ -8,7 +8,9 @@ import pytest
 from langchain_ai_skills_framework.environment.environment_variables import (
     LangchainAISkillsFrameworkEnvironmentVariables,
 )
-from langchain_ai_skills_framework.loaders.skill_loader import SkillDirectoryLoader
+from langchain_ai_skills_framework.loaders.skill_directory_loader import (
+    SkillDirectoryLoader,
+)
 
 
 def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries() -> None:

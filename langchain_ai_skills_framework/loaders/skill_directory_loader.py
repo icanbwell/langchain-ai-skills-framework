@@ -11,6 +11,7 @@ from typing import Mapping, Sequence, cast
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
+from langchain_core.tools import StructuredTool
 from pydantic_ai_skills import SkillsToolset
 from pydantic_ai_skills.exceptions import (
     SkillRegistryError as PydanticSkillRegistryError,
@@ -36,6 +37,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
+from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -99,9 +101,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._skills_directory,
         )
 
-    def list_skill_summaries(
-        self, *, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return lightweight skill summaries from the current snapshot."""
 
         snapshot = self._get_snapshot()
@@ -112,7 +112,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot.ordered_summaries
 
-    def get_skill_details(self, *, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, skill_name: str) -> SkillDetails:
         """Return full skill details for the normalized skill name."""
 
         normalized = self._normalize_skill_name(skill_name)
@@ -138,6 +138,13 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     async def get_instructions(self) -> str:
         return await self._skills_toolset.get_instructions(ctx=None)  # type: ignore[arg-type, return-value]
+
+    def get_tools(self) -> list[StructuredTool]:
+        return [
+            LoadSkillTool(
+                skill_loader=self,
+            ),
+        ]
 
     # Snapshot lifecycle
     def _get_snapshot(self) -> SkillSnapshot:

@@ -6,11 +6,17 @@ from typing import Mapping, cast
 import pytest
 from pydantic_ai_skills.types import Skill
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
-    SkillDirectoryLoader,
-    SkillLoaderEnvironmentVariables,
+from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error import (
     SkillValidationError,
+)
+from langchain_ai_skills_framework.loaders.skill_directory_loader import (
+    SkillDirectoryLoader,
+)
+from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
+    SkillLoaderEnvironmentVariables,
 )
 
 
@@ -154,15 +160,15 @@ def test_skill_loader_accepts_non_string_metadata_values(
 @pytest.mark.parametrize(
     "raw_metadata",
     [
-        cast(dict[str, object], {1: "owner"}),
-        cast(dict[str, object], {"owner": "team", 2: "bad"}),
-        cast(dict[str, object], {None: "bad"}),
+        cast(dict[str | int, object], {1: "owner"}),
+        cast(dict[str | int, object], {"owner": "team", 2: "bad"}),
+        cast(dict[str | int | None, object], {None: "bad"}),
     ],
 )
 def test_skill_loader_rejects_non_string_metadata_keys(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    raw_metadata: dict[str, object],
+    raw_metadata: dict[int | str | None, object],
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     environment_variables = _create_environment_variables(tmp_path)

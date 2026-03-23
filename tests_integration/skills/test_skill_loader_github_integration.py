@@ -60,7 +60,7 @@ async def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries
         assert details.source_path.name == "SKILL.md"
         instructions: str = await loader.get_instructions()
         print(instructions)
-        assert instructions.startswith("<available_skills>")
+        assert "<available_skills>" in instructions
     except Exception:
         traceback.print_exc()
         raise

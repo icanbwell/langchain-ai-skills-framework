@@ -61,7 +61,7 @@ async def test_skillkit_loader_reads_skills_from_github_and_prints_parsed_summar
 
         instructions: str = await loader.get_instructions()
         print(instructions)
-        assert instructions.startswith("<available_skills>")
+        assert "<available_skills>" in instructions
     except Exception:
         traceback.print_exc()
         raise

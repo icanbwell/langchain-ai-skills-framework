@@ -15,7 +15,6 @@ from pydantic_ai_skills.exceptions import (
     SkillRegistryError as PydanticSkillRegistryError,
     SkillValidationError as PydanticSkillValidationError,
 )
-from pydantic_ai_skills.registries import GitCloneOptions, GitSkillsRegistry
 from pydantic_ai_skills.types import Skill
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -57,6 +56,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self,
         *,
         environment_variables: SkillLoaderEnvironmentVariables,
+        github_skill_downloader: GithubSkillDownloader,
     ) -> None:
         self._identifier: UUID = uuid4()
         if environment_variables is None:
@@ -67,6 +67,14 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             )
         self._environment_variables = environment_variables
 
+        self._github_skill_downloader = github_skill_downloader
+        if github_skill_downloader is None:
+            raise SkillValidationError("github_skill_downloader is not configured")
+        if not isinstance(github_skill_downloader, GithubSkillDownloader):
+            raise TypeError(
+                "github_skill_downloader must be an instance of GithubSkillDownloader:"
+                f" {type(github_skill_downloader)} "
+            )
         skills_directory = environment_variables.skills_directory
         if isinstance(skills_directory, Path):
             configured_directory = str(skills_directory)
@@ -252,22 +260,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         """Create a SkillsToolset from filesystem or github:// source."""
 
         if self._skills_directory.startswith("github://"):
-            git_location = GithubSkillDownloader.parse_github_uri(
-                self._skills_directory
+            self._skills_root_path = self._github_skill_downloader.download(
+                cache_path=Path(".skills-git-cache"),
+                skills_directory=self._skills_directory,
+                github_token=self._environment_variables.skills_github_token,
             )
-            registry = GitSkillsRegistry(
-                repo_url=git_location.repo_url,
-                path=git_location.path,
-                target_dir=self._build_git_target_dir(git_location),
-                token=self._environment_variables.skills_github_token,
-                clone_options=GitCloneOptions(
-                    depth=1,
-                    branch=git_location.branch,
-                    single_branch=True,
-                ),
-            )
-            self._skills_root_path = registry._skills_root()
-            return SkillsToolset(registries=[registry])
 
         self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
         return SkillsToolset(directories=[str(self._skills_root_path)])

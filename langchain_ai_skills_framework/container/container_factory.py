@@ -22,14 +22,15 @@ class LangchainAISkillsFrameworkContainerFactory:
         *, container: SimpleContainer
     ) -> SimpleContainer:
 
+        container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
+
         container.singleton(
             SkillDirectoryLoader,
             lambda c: SkillDirectoryLoader(
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
+                github_skill_downloader=c.resolve(GithubSkillDownloader),
             ),
         )
-
-        container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
 
         container.singleton(
             SkillkitDirectoryLoader,

@@ -12,6 +12,9 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error import (
     SkillValidationError,
 )
+from langchain_ai_skills_framework.loaders.github_skill_downloader import (
+    GithubSkillDownloader,
+)
 from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
 )
@@ -111,6 +114,7 @@ def test_skill_loader_reads_metadata_and_content(
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -127,7 +131,10 @@ def test_skill_loader_accepts_non_string_metadata_values(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     environment_variables = _create_environment_variables(tmp_path)
-    loader = SkillDirectoryLoader(environment_variables=environment_variables)
+    loader = SkillDirectoryLoader(
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
+    )
 
     class _FakeToolset:
         def __init__(self) -> None:
@@ -172,7 +179,10 @@ def test_skill_loader_rejects_non_string_metadata_keys(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     environment_variables = _create_environment_variables(tmp_path)
-    loader = SkillDirectoryLoader(environment_variables=environment_variables)
+    loader = SkillDirectoryLoader(
+        github_skill_downloader=GithubSkillDownloader(),
+        environment_variables=environment_variables,
+    )
 
     class _FakeToolset:
         def __init__(self) -> None:
@@ -199,6 +209,7 @@ def test_skill_loader_reads_nested_skills(
     _write_skill(tmp_path, "beta-skill")
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
+        github_skill_downloader=GithubSkillDownloader(),
         environment_variables=environment_variables,
     )
 
@@ -277,6 +288,7 @@ def test_skill_loader_reads_skills_from_github_uri(
     )
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -304,6 +316,7 @@ def test_skill_loader_rejects_github_uri_without_owner() -> None:
     ):
         SkillDirectoryLoader(
             environment_variables=environment_variables,
+            github_skill_downloader=GithubSkillDownloader(),
         )
 
 
@@ -320,6 +333,7 @@ def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
     ):
         SkillDirectoryLoader(
             environment_variables=environment_variables,
+            github_skill_downloader=GithubSkillDownloader(),
         )
 
 
@@ -334,6 +348,7 @@ def test_skill_loader_skips_excluded_skills(
     )
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -351,6 +366,7 @@ def test_skill_loader_reads_exclusions_from_environment_variables(
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -372,6 +388,7 @@ def test_skill_loader_skips_excluded_skill_groups(
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -395,6 +412,7 @@ def test_skill_loader_raises_for_missing_skill(
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     with pytest.raises(SkillNotFoundError):
@@ -410,7 +428,10 @@ def test_skill_loader_reloads_toolset_after_ttl_expires(
         skills_directory=str(tmp_path),
         skills_cache_timeout_seconds=1,
     )
-    loader = SkillDirectoryLoader(environment_variables=environment_variables)
+    loader = SkillDirectoryLoader(
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
+    )
 
     class _FakeToolset:
         def __init__(self) -> None:
@@ -457,6 +478,7 @@ def test_skill_loader_returns_empty_when_directory_missing(
     environment_variables = _create_environment_variables(missing_path)
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())

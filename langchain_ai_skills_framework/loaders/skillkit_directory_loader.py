@@ -241,6 +241,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             ):
                 if self._skills_directory.startswith("github://"):
                     self._skills_root_path = self._github_skill_downloader.download(
+                        cache_path=Path(".skills-git-cache"),
                         skills_directory=self._skills_directory,
                         github_token=self._environment_variables.skills_github_token,
                     )
@@ -253,6 +254,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
         if self._skills_directory.startswith("github://"):
             self._skills_root_path = self._github_skill_downloader.download(
+                cache_path=Path(".skills-git-cache"),
                 skills_directory=self._skills_directory,
                 github_token=self._environment_variables.skills_github_token,
             )

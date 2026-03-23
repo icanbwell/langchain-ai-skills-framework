@@ -48,6 +48,7 @@ def test_download_uses_expected_storage_options_and_cache_directory(
 
     downloader = GithubSkillDownloader()
     downloaded_path = downloader.download(
+        cache_path=tmp_path / "cache",
         skills_directory="github://my-org/private-skills/skills?ref=main",
         github_token="token-value",
     )
@@ -87,6 +88,7 @@ def test_download_raises_validation_error_when_fsspec_fails(
         match="Unable to download github:// skills directory into ./.skillkit_cache",
     ):
         downloader.download(
+            cache_path=tmp_path / "cache",
             skills_directory="github://my-org/private-skills/skills",
             github_token=None,
         )
@@ -124,6 +126,7 @@ def test_download_omits_auth_fields_when_github_token_missing(
 
     downloader = GithubSkillDownloader()
     downloader.download(
+        cache_path=tmp_path / "cache",
         skills_directory="github://my-org/private-skills/skills?ref=main",
         github_token=None,
     )
@@ -155,7 +158,12 @@ def test_download_omits_auth_fields_when_github_token_missing(
 def test_download_validates_github_uri(
     skills_directory: str,
     message: str,
+    tmp_path: Path,
 ) -> None:
     downloader = GithubSkillDownloader()
     with pytest.raises(SkillValidationError, match=re.escape(message)):
-        downloader.download(skills_directory=skills_directory, github_token=None)
+        downloader.download(
+            cache_path=tmp_path / "cache",
+            skills_directory=skills_directory,
+            github_token=None,
+        )

@@ -26,12 +26,14 @@ class GithubSkillDownloader:
     _github_uri_example = "github://my-org/private-skills/skills?ref=main"
     _github_token_username = "x-access-token"
 
-    def download(self, *, skills_directory: str, github_token: str | None) -> Path:
+    def download(
+        self, *, skills_directory: str, github_token: str | None, cache_path: Path
+    ) -> Path:
         git_location = self.parse_github_uri(skills_directory)
         source_path = git_location.path.strip("/")
         ref = git_location.branch or "HEAD"
 
-        cache_root = Path(".skillkit_cache").expanduser().resolve()
+        cache_root = cache_path.expanduser().resolve()
         cache_root.mkdir(parents=True, exist_ok=True)
         key = f"{git_location.owner}/{git_location.repository}:{ref}:{source_path}"
         cache_dir_name = f"{git_location.owner}-{git_location.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"

@@ -287,9 +287,7 @@ def test_skill_loader_reads_skills_from_github_uri(
     assert captured["skills_directory"] == github_uri
     assert captured["github_token"] == "token-123"
     assert cast(Path, captured["cache_path"]) == Path(".skills-git-cache")
-    assert cast(list[str], captured["directories"])[0].endswith(
-        "github:/icanbwell/skill-repo/skills?ref=main"
-    )
+    assert cast(list[str], captured["directories"])[0] == str(skills_root)
     assert (
         loader.get_skill_details(skill_name="alpha-skill").source_path.parent.name
         == "alpha-skill"

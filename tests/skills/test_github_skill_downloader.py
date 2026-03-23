@@ -64,7 +64,7 @@ def test_download_uses_expected_storage_options_and_cache_directory(
     assert get_calls[0][0] == "skills"
     assert get_calls[0][2] is True
     assert downloaded_path.name.startswith("my-org-private-skills-")
-    assert downloaded_path.parent == (tmp_path / ".skillkit_cache").resolve()
+    assert downloaded_path.parent == (tmp_path / "cache").resolve()
 
 
 def test_download_raises_validation_error_when_fsspec_fails(

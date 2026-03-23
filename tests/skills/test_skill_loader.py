@@ -233,31 +233,23 @@ def test_skill_loader_reads_skills_from_github_uri(
 
     captured: dict[str, object] = {}
 
-    class _FakeGitSkillsRegistry:
-        def __init__(
-            self,
-            repo_url: str,
-            *,
-            path: str,
-            target_dir: Path,
-            token: str | None,
-            clone_options: object,
-            **_: object,
-        ) -> None:
-            captured["repo_url"] = repo_url
-            captured["path"] = path
-            captured["target_dir"] = target_dir
-            captured["token"] = token
-            captured["clone_options"] = clone_options
-
-        def _skills_root(self) -> Path:
-            return skills_root
+    def _fake_download(
+        *,
+        skills_directory: str,
+        github_token: str | None,
+        cache_path: Path,
+    ) -> Path:
+        captured["skills_directory"] = skills_directory
+        captured["github_token"] = github_token
+        captured["cache_path"] = cache_path
+        return skills_root
 
     class _FakeSkillsToolset:
         def __init__(
-            self, *, registries: list[object] | None = None, **_: object
+            self, *, directories: list[str] | None = None, **_: object
         ) -> None:
-            assert registries and len(registries) == 1
+            captured["directories"] = directories
+            assert directories and len(directories) == 1
             self.skills = {
                 "alpha-skill": Skill(
                     name="alpha-skill",
@@ -273,10 +265,8 @@ def test_skill_loader_reads_skills_from_github_uri(
                 ),
             }
 
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.skill_directory_loader.GitSkillsRegistry",
-        _FakeGitSkillsRegistry,
-    )
+    downloader = GithubSkillDownloader()
+    monkeypatch.setattr(downloader, "download", _fake_download)
     monkeypatch.setattr(
         "langchain_ai_skills_framework.loaders.skill_directory_loader.SkillsToolset",
         _FakeSkillsToolset,
@@ -288,15 +278,18 @@ def test_skill_loader_reads_skills_from_github_uri(
     )
     loader = SkillDirectoryLoader(
         environment_variables=environment_variables,
-        github_skill_downloader=GithubSkillDownloader(),
+        github_skill_downloader=downloader,
     )
 
     summaries = loader.list_skill_summaries(allowed_skills=set())
 
     assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
-    assert captured["repo_url"] == "https://github.com/icanbwell/skill-repo.git"
-    assert captured["path"] == "skills"
-    assert captured["token"] == "token-123"
+    assert captured["skills_directory"] == github_uri
+    assert captured["github_token"] == "token-123"
+    assert cast(Path, captured["cache_path"]) == Path(".skills-git-cache")
+    assert cast(list[str], captured["directories"])[0].endswith(
+        "github:/icanbwell/skill-repo/skills?ref=main"
+    )
     assert (
         loader.get_skill_details(skill_name="alpha-skill").source_path.parent.name
         == "alpha-skill"

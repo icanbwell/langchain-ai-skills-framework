@@ -1,3 +1,6 @@
+from langchain_ai_skills_framework.loaders.client_scoped_skill_loader import (
+    ClientScopedSkillLoader,
+)
 from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillDirectoryLoader,
     SkillLoaderProtocol,
@@ -18,9 +21,16 @@ class LangchainAISkillsFrameworkContainerFactory:
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
             ),
         )
+
+        container.singleton(
+            ClientScopedSkillLoader,
+            lambda c: ClientScopedSkillLoader(
+                base_loader=c.resolve(SkillDirectoryLoader),
+            ),
+        )
         container.singleton(
             SkillLoaderProtocol,
-            lambda c: c.resolve(SkillDirectoryLoader),
+            lambda c: c.resolve(ClientScopedSkillLoader),
         )
 
         return container

@@ -87,7 +87,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._lock = RLock()
         self._snapshot: _SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
-        self._skills_toolset: SkillsToolset | None = None
+        self._skills_toolset: SkillsToolset = self._create_toolset()
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(
             environment_variables
         )
@@ -99,7 +99,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._skills_directory,
         )
 
-    def list_skill_summaries(self) -> Sequence[SkillSummary]:
+    def list_skill_summaries(
+        self, *, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
         """Return lightweight skill summaries from the current snapshot."""
 
         snapshot = self._get_snapshot()
@@ -110,7 +112,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot.ordered_summaries
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:
+    def get_skill_details(
+        self, *, skill_name: str
+    ) -> SkillDetails:
         """Return full skill details for the normalized skill name."""
 
         normalized = self._normalize_skill_name(skill_name)
@@ -134,8 +138,12 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._snapshot = self._build_snapshot()
             self._snapshot_loaded_at = time.monotonic()
 
-    # Snapshot lifecycle
+    async def get_instructions(self) -> str:
+        return await self._skills_toolset.get_instructions(
+            ctx=None
+        )
 
+    # Snapshot lifecycle
     def _get_snapshot(self) -> _SkillSnapshot:
         # Fast path: use the in-memory snapshot while TTL is still valid.
         with self._lock:

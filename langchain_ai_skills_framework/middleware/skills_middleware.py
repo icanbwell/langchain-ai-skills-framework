@@ -1,4 +1,3 @@
-from html import escape
 from langchain.agents.middleware import (
     ModelRequest,
     ModelResponse,
@@ -13,7 +12,6 @@ from langchain_core.messages import AIMessage, AnyMessage
 from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.models.skills_model import SkillSummary
 
 
 class SkillMiddleware(AgentMiddleware):
@@ -25,29 +23,12 @@ class SkillMiddleware(AgentMiddleware):
         """Initialize and generate the skills prompt from the configured directory."""
 
         self._skill_loader = skill_loader
-        self.skills_prompt = self._build_skills_prompt()
-
-    def _build_skills_prompt(self) -> str:
-        if self._skill_loader is None:
-            return "No skills are currently available."
-        summaries = self._skill_loader.list_skill_summaries()
-        if not summaries:
-            return "No skills are currently configured."
-        skills_block = " ".join(
-            self._format_skill_entry(summary) for summary in summaries
-        )
-        return f"<available_skills> {skills_block} </available_skills>"
-
-    @staticmethod
-    def _format_skill_entry(summary: SkillSummary) -> str:
-        escaped_name = escape(summary.name, quote=True)
-        escaped_description = escape(summary.description.strip(), quote=True)
-        return (
-            "<skill>"
-            f"<name> {escaped_name} </name> "
-            f"<description> {escaped_description} </description> "
-            "</skill>"
-        )
+        if skill_loader is None:
+            raise ValueError("skill_loader must not be None")
+        if not isinstance(skill_loader, SkillLoaderProtocol):
+            raise TypeError(
+                f"skill_loader must be SkillLoaderProtocol, got {type(skill_loader)}"
+            )
 
     async def awrap_model_call(
         self,
@@ -59,18 +40,14 @@ class SkillMiddleware(AgentMiddleware):
         if self._request_has_skills_message(existing_messages):
             return await handler(request)
 
-        skills_addendum = (
-            f"\n\n{self.skills_prompt}\n\n"
-            "Use the load_skill tool when you need detailed information "
-            "about handling a specific type of request."
-        )
-        skills_block_text = skills_addendum
+        skills_block_text = self._skill_loader.get_instructions()
         skills_message = SystemMessage(content=skills_block_text)
 
         insertion_index = 0
         for idx, message in enumerate(existing_messages):
             if isinstance(message, SystemMessage):
-                # insert after the first system message to ensure the skills information is included in the initial instructions but doesn't override any existing system-level context
+                # insert after the first system message to ensure the skills information is included in the
+                # initial instructions but doesn't override any existing system-level context
                 insertion_index = idx + 1
                 break
 

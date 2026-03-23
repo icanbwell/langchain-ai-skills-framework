@@ -57,7 +57,9 @@ class LoadSkillTool(BaseTool):
             return self._format_availability_message(self.skill_loader, normalized_name)
 
         try:
-            skill = self.skill_loader.get_skill_details(normalized_name)
+            skill = self.skill_loader.get_skill_details(
+                skill_name=normalized_name
+            )
         except SkillNotFoundError:
             return self._format_availability_message(self.skill_loader, normalized_name)
 

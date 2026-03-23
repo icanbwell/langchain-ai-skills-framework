@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Protocol, Sequence, runtime_checkable
 
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
@@ -7,8 +5,14 @@ from langchain_ai_skills_framework.models.skills_model import SkillDetails, Skil
 
 @runtime_checkable
 class SkillLoaderProtocol(Protocol):
-    def list_skill_summaries(self) -> Sequence[SkillSummary]: ...
+    def list_skill_summaries(
+        self, *, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]: ...
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails: ...
+    def get_skill_details(
+        self, *, skill_name: str
+    ) -> SkillDetails: ...
 
     def refresh(self) -> None: ...
+
+    async def get_instructions(self) -> str: ...

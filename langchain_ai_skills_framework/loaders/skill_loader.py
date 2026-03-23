@@ -1,6 +1,9 @@
 from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
 )
+from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
+    SkillkitDirectoryLoader,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
@@ -19,6 +22,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error imp
 
 __all__ = [
     "SkillDirectoryLoader",
+    "SkillkitDirectoryLoader",
     "SkillLoaderEnvironmentVariables",
     "SkillLoaderError",
     "SkillLoaderProtocol",

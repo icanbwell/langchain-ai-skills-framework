@@ -17,6 +17,9 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error import (
     SkillValidationError,
 )
+from langchain_ai_skills_framework.loaders.github_skill_downloader import (
+    GithubSkillDownloader,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
@@ -66,7 +69,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError("skills_directory is not configured")
 
         self._skills_directory = self._normalize_skills_directory(configured_directory)
-        self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
+        self._skills_root_path = self._initial_skills_root_path(self._skills_directory)
+        self._github_skill_downloader = GithubSkillDownloader()
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
@@ -227,17 +231,22 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                 or self._snapshot is None
                 or not self._is_snapshot_valid_unlocked()
             ):
+                if self._skills_directory.startswith("github://"):
+                    self._skills_root_path = self._github_skill_downloader.download(
+                        skills_directory=self._skills_directory,
+                        github_token=self._environment_variables.skills_github_token,
+                    )
                 self._manager.discover()
         except Exception as exc:
             raise SkillValidationError(str(exc)) from exc
 
     def _create_manager(self) -> SkillManager:
-        """Create a skillkit SkillManager from a local directory."""
+        """Create a skillkit SkillManager from local or cached github:// skills."""
 
         if self._skills_directory.startswith("github://"):
-            raise SkillValidationError(
-                "SkillkitDirectoryLoader does not support github:// skill directories; "
-                "use a local path"
+            self._skills_root_path = self._github_skill_downloader.download(
+                skills_directory=self._skills_directory,
+                github_token=self._environment_variables.skills_github_token,
             )
 
         manager = SkillManager(
@@ -325,7 +334,16 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     @staticmethod
     def _normalize_skills_directory(value: str) -> str:
-        return str(Path(value.strip()).expanduser())
+        normalized = value.strip()
+        if normalized.startswith("github://"):
+            return normalized
+        return str(Path(normalized).expanduser())
+
+    @staticmethod
+    def _initial_skills_root_path(skills_directory: str) -> Path:
+        if skills_directory.startswith("github://"):
+            return Path(skills_directory)
+        return Path(skills_directory).expanduser().resolve()
 
     @classmethod
     def _normalize_excluded_skill_groups(

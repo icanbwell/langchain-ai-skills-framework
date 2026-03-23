@@ -16,7 +16,9 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
 )
 
 
-def test_skillkit_loader_reads_skills_from_github_and_prints_parsed_summaries() -> None:
+async def test_skillkit_loader_reads_skills_from_github_and_prints_parsed_summaries() -> (
+    None
+):
     skills_directory = os.environ.get("SKILLS_DIRECTORY", "").strip()
     github_token = (
         os.environ.get("SKILLS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
@@ -56,6 +58,10 @@ def test_skillkit_loader_reads_skills_from_github_and_prints_parsed_summaries() 
         details = loader.get_skill_details(skill_name=summaries[0].name)
         assert details.name == summaries[0].name
         assert details.source_path.name == "SKILL.md"
+
+        instructions: str = await loader.get_instructions()
+        print(instructions)
+        assert instructions.startswith("<available_skills>")
     except Exception:
         traceback.print_exc()
         raise

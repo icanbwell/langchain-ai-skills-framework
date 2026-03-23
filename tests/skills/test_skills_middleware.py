@@ -8,11 +8,14 @@ from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain.messages import SystemMessage
 from langchain_core.messages import AIMessage, BaseMessage
 
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.middleware.skills_middleware import SkillMiddleware
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 
 
-class _StubSkillLoader:
+class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, summaries: Sequence[SkillSummary]) -> None:
         self._summaries = tuple(summaries)
 

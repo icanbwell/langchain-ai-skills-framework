@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 /.idea/
 /.skills-git-cache/
+/.skillkit_cache/

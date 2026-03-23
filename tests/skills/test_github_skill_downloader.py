@@ -56,6 +56,7 @@ def test_download_uses_expected_storage_options_and_cache_directory(
         "org": "my-org",
         "repo": "private-skills",
         "sha": "main",
+        "username": "x-access-token",
         "token": "token-value",
     }
     assert len(get_calls) == 1
@@ -89,6 +90,49 @@ def test_download_raises_validation_error_when_fsspec_fails(
             skills_directory="github://my-org/private-skills/skills",
             github_token=None,
         )
+
+
+def test_download_omits_auth_fields_when_github_token_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    captured_storage_options: dict[str, object] = {}
+
+    class _FakeGithubFilesystem:
+        def get(
+            self, remote_path: str, local_path: str, recursive: bool = False
+        ) -> None:
+            del remote_path, local_path, recursive
+
+        def ls(self, path: str, detail: bool = False) -> Sequence[str]:
+            del path, detail
+            return ()
+
+    def _fake_filesystem(
+        protocol: str, **storage_options: object
+    ) -> _FakeGithubFilesystem:
+        assert protocol == "github"
+        captured_storage_options.update(storage_options)
+        return _FakeGithubFilesystem()
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.github_skill_downloader.fsspec",
+        SimpleNamespace(filesystem=_fake_filesystem),
+    )
+
+    downloader = GithubSkillDownloader()
+    downloader.download(
+        skills_directory="github://my-org/private-skills/skills?ref=main",
+        github_token=None,
+    )
+
+    assert captured_storage_options == {
+        "org": "my-org",
+        "repo": "private-skills",
+        "sha": "main",
+    }
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,7 @@ class GithubSkillDownloader:
     """Downloads github:// skill directories into a local skillkit cache path."""
 
     _github_uri_example = "github://my-org/private-skills/skills?ref=main"
+    _github_token_username = "x-access-token"
 
     def download(self, *, skills_directory: str, github_token: str | None) -> Path:
         git_location = self.parse_github_uri(skills_directory)
@@ -48,6 +49,8 @@ class GithubSkillDownloader:
             if git_location.branch:
                 storage_options["sha"] = git_location.branch
             if github_token:
+                # fsspec's GitHub backend requires both fields when auth is used.
+                storage_options["username"] = self._github_token_username
                 storage_options["token"] = github_token
 
             filesystem = fsspec.filesystem("github", **storage_options)

@@ -10,7 +10,6 @@ from uuid import UUID, uuid4
 
 from langchain_core.tools import StructuredTool
 from skillkit import SkillManager, SkillMetadata
-from skillkit.integrations.langchain import create_langchain_tools
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -32,6 +31,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
+from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -203,9 +203,11 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         return _INSTRUCTION_SKILLS_HEADER.format(skills_list=skills_list)
 
     def get_tools(self) -> list[StructuredTool]:
-        return create_langchain_tools(
-            manager=self._manager,
-        )
+        return [
+            LoadSkillTool(
+                skill_loader=self,
+            ),
+        ]
 
     # Snapshot lifecycle
 

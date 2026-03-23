@@ -12,11 +12,12 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error imp
 
 
 @dataclass(frozen=True, slots=True)
-class _GitLocation:
+class GitLocation:
+    repo_url: str
     owner: str
     repository: str
     path: str
-    ref: str | None
+    branch: str | None
 
 
 class GithubSkillDownloader:
@@ -25,9 +26,9 @@ class GithubSkillDownloader:
     _github_uri_example = "github://my-org/private-skills/skills?ref=main"
 
     def download(self, *, skills_directory: str, github_token: str | None) -> Path:
-        git_location = self._parse_github_uri(skills_directory)
+        git_location = self.parse_github_uri(skills_directory)
         source_path = git_location.path.strip("/")
-        ref = git_location.ref or "HEAD"
+        ref = git_location.branch or "HEAD"
 
         cache_root = Path(".skillkit_cache").expanduser().resolve()
         cache_root.mkdir(parents=True, exist_ok=True)
@@ -44,8 +45,8 @@ class GithubSkillDownloader:
                 "org": git_location.owner,
                 "repo": git_location.repository,
             }
-            if git_location.ref:
-                storage_options["sha"] = git_location.ref
+            if git_location.branch:
+                storage_options["sha"] = git_location.branch
             if github_token:
                 storage_options["token"] = github_token
 
@@ -67,7 +68,7 @@ class GithubSkillDownloader:
         return target_dir.resolve()
 
     @classmethod
-    def _parse_github_uri(cls, skills_directory: str) -> _GitLocation:
+    def parse_github_uri(cls, skills_directory: str) -> GitLocation:
         parsed = urlsplit(skills_directory)
         if parsed.scheme != "github":
             raise SkillValidationError(
@@ -76,13 +77,6 @@ class GithubSkillDownloader:
         if parsed.fragment:
             raise SkillValidationError(
                 "GitHub skill directory must not include a fragment"
-            )
-
-        owner = parsed.netloc.strip()
-        path_parts = [part for part in parsed.path.split("/") if part]
-        if not owner or not path_parts:
-            raise SkillValidationError(
-                f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
             )
 
         query_values = parse_qs(parsed.query, keep_blank_values=True)
@@ -102,10 +96,57 @@ class GithubSkillDownloader:
             raise SkillValidationError(
                 "GitHub skill directory '?ref=' value must not be empty"
             )
+        branch_from_query = ref_values[0].strip() if ref_values else None
 
-        return _GitLocation(
+        owner = parsed.netloc.strip()
+        path_parts = [part for part in parsed.path.split("/") if part]
+
+        # Backward compatibility for the legacy owner:repo style while callers migrate.
+        if ":" in owner:
+            repository_without_ref, separator, branch = owner.partition("@")
+            if ":" not in repository_without_ref:
+                raise SkillValidationError(
+                    f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+                )
+            legacy_owner, repo = repository_without_ref.split(":", 1)
+            if not legacy_owner or not repo:
+                raise SkillValidationError(
+                    f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+                )
+            if (
+                branch_from_query is not None
+                and separator
+                and branch
+                and branch_from_query != branch
+            ):
+                raise SkillValidationError(
+                    "GitHub skill directory ref mismatch between legacy '@branch' and '?ref='"
+                )
+            owner = legacy_owner
+            path_value = "/".join(path_parts)
+            normalized_branch = (
+                branch_from_query
+                if branch_from_query is not None
+                else (branch if separator and branch else None)
+            )
+        else:
+            if not owner or not path_parts:
+                raise SkillValidationError(
+                    f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+                )
+            repo = path_parts[0]
+            path_value = "/".join(path_parts[1:])
+            normalized_branch = branch_from_query
+
+        if not owner or not repo:
+            raise SkillValidationError(
+                f"GitHub skill directory must include owner and repo, e.g. {cls._github_uri_example}"
+            )
+
+        return GitLocation(
+            repo_url=f"https://github.com/{owner}/{repo}.git",
             owner=owner,
-            repository=path_parts[0],
-            path="/".join(path_parts[1:]),
-            ref=ref_values[0].strip() if ref_values else None,
+            repository=repo,
+            path=path_value,
+            branch=normalized_branch,
         )

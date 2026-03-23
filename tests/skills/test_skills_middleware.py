@@ -16,7 +16,9 @@ class _StubSkillLoader:
     def __init__(self, summaries: Sequence[SkillSummary]) -> None:
         self._summaries = tuple(summaries)
 
-    def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    def list_skill_summaries(
+        self, *, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
         del allowed_skills
         return self._summaries
 

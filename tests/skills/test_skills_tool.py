@@ -12,7 +12,9 @@ class _StubSkillLoader:
     def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
         self._details = dict(details_by_name)
 
-    def list_skill_summaries(self, *, allowed_skills: set[str]) -> tuple[SkillSummary, ...]:
+    def list_skill_summaries(
+        self, *, allowed_skills: set[str]
+    ) -> tuple[SkillSummary, ...]:
         del allowed_skills
         return tuple(detail.summary for detail in self._details.values())
 

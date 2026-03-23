@@ -140,3 +140,47 @@ def test_client_scoped_skill_loader_normalizes_group_allowlist() -> None:
     summaries = loader.list_skill_summaries()
 
     assert [summary.name for summary in summaries] == ["alpha-skill"]
+
+
+def test_client_scoped_skill_loader_allows_all_when_wildcard_configured() -> None:
+    details_alpha = _make_grouped_skill("group_a", "alpha-skill")
+    details_beta = _make_grouped_skill("group_b", "beta-skill")
+    loader = ClientScopedSkillLoader(
+        base_loader=_StubSkillLoader(
+            {
+                details_alpha.summary.name: details_alpha,
+                details_beta.summary.name: details_beta,
+            }
+        ),
+        allowed_skills={"*"},
+    )
+
+    summaries = loader.list_skill_summaries()
+
+    assert sorted(summary.name for summary in summaries) == [
+        "alpha-skill",
+        "beta-skill",
+    ]
+    assert loader.get_skill_details("alpha-skill").content
+    assert loader.get_skill_details("beta-skill").content
+
+
+def test_client_scoped_skill_loader_wildcard_overrides_specific_allowlist() -> None:
+    details_alpha = _make_grouped_skill("group_a", "alpha-skill")
+    details_beta = _make_grouped_skill("group_b", "beta-skill")
+    loader = ClientScopedSkillLoader(
+        base_loader=_StubSkillLoader(
+            {
+                details_alpha.summary.name: details_alpha,
+                details_beta.summary.name: details_beta,
+            }
+        ),
+        allowed_skills={"*", "group_a"},
+    )
+
+    summaries = loader.list_skill_summaries()
+
+    assert sorted(summary.name for summary in summaries) == [
+        "alpha-skill",
+        "beta-skill",
+    ]

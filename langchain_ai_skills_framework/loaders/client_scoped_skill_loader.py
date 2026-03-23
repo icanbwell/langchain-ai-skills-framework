@@ -10,7 +10,10 @@ from langchain_ai_skills_framework.models.skills_model import SkillSummary, Skil
 
 
 class ClientScopedSkillLoader(SkillLoaderProtocol):
-    """Skill loader wrapper that enforces client-specific allowlists."""
+    """Skill loader wrapper that enforces client-specific allowlists.
+
+    A wildcard token ("*") in ``allowed_skills`` allows access to all skills.
+    """
 
     def __init__(
         self, *, base_loader: SkillLoaderProtocol, allowed_skills: set[str]
@@ -27,10 +30,11 @@ class ClientScopedSkillLoader(SkillLoaderProtocol):
             for skill in allowed_skills
             if isinstance(skill, str) and skill.strip()
         )
+        self._allow_all_skills = "*" in self._allowed_skills
 
     def list_skill_summaries(self) -> Sequence[SkillSummary]:
         summaries = self._base_loader.list_skill_summaries()
-        if not self._allowed_skills:
+        if not self._allowed_skills or self._allow_all_skills:
             return summaries
         allowed_skill_names = self._resolve_allowed_skill_names(summaries)
         return tuple(
@@ -41,7 +45,7 @@ class ClientScopedSkillLoader(SkillLoaderProtocol):
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         normalized = self._normalize_skill_token(skill_name)
-        if self._allowed_skills:
+        if self._allowed_skills and not self._allow_all_skills:
             allowed_skill_names = self._resolve_allowed_skill_names(
                 self._base_loader.list_skill_summaries()
             )

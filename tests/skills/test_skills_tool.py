@@ -12,10 +12,11 @@ class _StubSkillLoader:
     def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
         self._details = dict(details_by_name)
 
-    def list_skill_summaries(self) -> tuple[SkillSummary, ...]:
+    def list_skill_summaries(self, *, allowed_skills: set[str]) -> tuple[SkillSummary, ...]:
+        del allowed_skills
         return tuple(detail.summary for detail in self._details.values())
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, *, skill_name: str) -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
@@ -23,6 +24,9 @@ class _StubSkillLoader:
 
     def refresh(self) -> None:
         return None
+
+    async def get_instructions(self) -> str:  # pragma: no cover
+        return ""
 
 
 def _make_skill(name: str, *, content: str = "Skill content") -> SkillDetails:

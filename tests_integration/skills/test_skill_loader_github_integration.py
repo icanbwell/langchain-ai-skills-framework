@@ -47,7 +47,7 @@ def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries() -> 
                 )
             )
 
-        details = loader.get_skill_details(summaries[0].name)
+        details = loader.get_skill_details(skill_name=summaries[0].name)
         assert details.name == summaries[0].name
         assert details.source_path.name == "SKILL.md"
     except Exception:

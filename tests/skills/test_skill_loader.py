@@ -107,10 +107,10 @@ def test_skill_loader_reads_metadata_and_content(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill"]
 
-    details = loader.get_skill_details("alpha-skill")
+    details = loader.get_skill_details(skill_name="alpha-skill")
     assert details.content.strip().startswith("# Body")
     assert details.source_path.name == "SKILL.md"
 
@@ -143,7 +143,7 @@ def test_skill_loader_accepts_non_string_metadata_values(
 
     monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
 
-    details = loader.get_skill_details("alpha-skill")
+    details = loader.get_skill_details(skill_name="alpha-skill")
     assert details.summary.metadata == {
         "priority": 1,
         "enabled": True,
@@ -183,7 +183,7 @@ def test_skill_loader_rejects_non_string_metadata_keys(
     monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
 
     with pytest.raises(SkillValidationError, match="metadata keys must be strings"):
-        loader.list_skill_summaries()
+        loader.list_skill_summaries(allowed_skills=set())
 
 
 def test_skill_loader_reads_nested_skills(
@@ -196,10 +196,10 @@ def test_skill_loader_reads_nested_skills(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
 
-    details = loader.get_skill_details("alpha-skill")
+    details = loader.get_skill_details(skill_name="alpha-skill")
     assert details.source_path.parent.name == "alpha-skill"
 
 
@@ -273,14 +273,15 @@ def test_skill_loader_reads_skills_from_github_uri(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
 
     assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
     assert captured["repo_url"] == "https://github.com/icanbwell/skill-repo.git"
     assert captured["path"] == "skills"
     assert captured["token"] == "token-123"
     assert (
-        loader.get_skill_details("alpha-skill").source_path.parent.name == "alpha-skill"
+        loader.get_skill_details(skill_name="alpha-skill").source_path.parent.name
+        == "alpha-skill"
     )
 
 
@@ -296,7 +297,7 @@ def test_skill_loader_rejects_github_uri_without_owner() -> None:
     )
 
     with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
+        loader.list_skill_summaries(allowed_skills=set())
 
 
 def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
@@ -311,7 +312,7 @@ def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
     )
 
     with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
+        loader.list_skill_summaries(allowed_skills=set())
 
 
 def test_skill_loader_skips_excluded_skills(
@@ -327,11 +328,11 @@ def test_skill_loader_skips_excluded_skills(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill"]
 
     with pytest.raises(SkillNotFoundError):
-        loader.get_skill_details("beta-skill")
+        loader.get_skill_details(skill_name="beta-skill")
 
 
 def test_skill_loader_reads_exclusions_from_environment_variables(
@@ -344,13 +345,13 @@ def test_skill_loader_reads_exclusions_from_environment_variables(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
 
     environment_variables.set_exclusions({"beta-skill"})
     loader.refresh()
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill"]
 
 
@@ -365,7 +366,7 @@ def test_skill_loader_skips_excluded_skill_groups(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == [
         "alpha-skill",
         "beta-skill",
@@ -375,7 +376,7 @@ def test_skill_loader_skips_excluded_skill_groups(
     environment_variables.set_group_exclusions({"group-one"})
     loader.refresh()
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["beta-skill", "gamma-skill"]
 
 
@@ -389,7 +390,7 @@ def test_skill_loader_raises_for_missing_skill(
     )
 
     with pytest.raises(SkillNotFoundError):
-        loader.get_skill_details("beta")
+        loader.get_skill_details(skill_name="beta")
 
 
 def test_skill_loader_reloads_toolset_after_ttl_expires(
@@ -429,7 +430,7 @@ def test_skill_loader_reloads_toolset_after_ttl_expires(
     fake_toolset = _FakeToolset()
     monkeypatch.setattr(loader, "_create_toolset", lambda: fake_toolset)
 
-    assert "Version 1" in loader.get_skill_details("alpha-skill").content
+    assert "Version 1" in loader.get_skill_details(skill_name="alpha-skill").content
 
     loader._snapshot_loaded_at = 0.0
     monkeypatch.setattr(
@@ -437,7 +438,7 @@ def test_skill_loader_reloads_toolset_after_ttl_expires(
         lambda: 5.0,
     )
 
-    assert "Version 2" in loader.get_skill_details("alpha-skill").content
+    assert "Version 2" in loader.get_skill_details(skill_name="alpha-skill").content
     assert fake_toolset.reload_calls == [True]
 
 
@@ -450,6 +451,6 @@ def test_skill_loader_returns_empty_when_directory_missing(
         environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
 
     assert summaries == ()

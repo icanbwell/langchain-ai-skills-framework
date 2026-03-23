@@ -16,14 +16,23 @@ class _StubSkillLoader:
     def __init__(self, summaries: Sequence[SkillSummary]) -> None:
         self._summaries = tuple(summaries)
 
-    def list_skill_summaries(self) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+        del allowed_skills
         return self._summaries
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:  # pragma: no cover
+    def get_skill_details(self, *, skill_name: str) -> SkillDetails:  # pragma: no cover
+        del skill_name
         raise NotImplementedError
 
     def refresh(self) -> None:  # pragma: no cover
         return None
+
+    async def get_instructions(self) -> str:
+        skills_lines = "\n".join(
+            f"<skill><name> {summary.name} </name><description> {summary.description} </description></skill>"
+            for summary in self._summaries
+        )
+        return f"\n\n<available_skills>{skills_lines}</available_skills>\n\n"
 
 
 class _DummyModelRequest:

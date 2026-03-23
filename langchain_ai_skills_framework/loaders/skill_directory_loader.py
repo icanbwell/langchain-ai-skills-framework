@@ -141,7 +141,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._snapshot_loaded_at = time.monotonic()
 
     async def get_instructions(self) -> str:
-        return await self._skills_toolset.get_instructions(ctx=None)
+        return await self._skills_toolset.get_instructions(ctx=None)  # type: ignore[arg-type, return-value]
 
     # Snapshot lifecycle
     def _get_snapshot(self) -> _SkillSnapshot:

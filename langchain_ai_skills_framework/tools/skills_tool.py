@@ -68,7 +68,8 @@ class LoadSkillTool(BaseTool):
         loader: SkillLoaderProtocol, normalized_name: str
     ) -> str:
         available_names = sorted(
-            summary.name for summary in loader.list_skill_summaries()
+            summary.name
+            for summary in loader.list_skill_summaries(allowed_skills=set())
         )
         available = ", ".join(available_names)
         availability_message = (

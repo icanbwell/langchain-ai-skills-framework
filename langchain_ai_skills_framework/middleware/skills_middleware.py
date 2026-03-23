@@ -40,7 +40,7 @@ class SkillMiddleware(AgentMiddleware):
         if self._request_has_skills_message(existing_messages):
             return await handler(request)
 
-        skills_block_text = self._skill_loader.get_instructions()
+        skills_block_text: str = await self._skill_loader.get_instructions()
         skills_message = SystemMessage(content=skills_block_text)
 
         insertion_index = 0

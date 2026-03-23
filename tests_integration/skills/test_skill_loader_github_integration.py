@@ -32,9 +32,7 @@ def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries() -> 
     )
 
     try:
-        summaries = loader.list_skill_summaries(
-            allowed_skills=set()
-        )
+        summaries = loader.list_skill_summaries(allowed_skills=set())
         assert len(summaries) > 0
 
         print("Parsed skills from GitHub:")

@@ -265,8 +265,8 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 skills_directory=self._skills_directory,
                 github_token=self._environment_variables.skills_github_token,
             )
-
-        self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
+        else:
+            self._skills_root_path = Path(self._skills_directory).expanduser().resolve()
         return SkillsToolset(directories=[str(self._skills_root_path)])
 
     # TTL helpers

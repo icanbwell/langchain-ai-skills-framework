@@ -235,13 +235,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 or self._snapshot is None
                 or not self._is_snapshot_valid_unlocked()
             ):
-                reload_method = getattr(self._skills_toolset, "reload", None)
-                if callable(reload_method):
-                    # Keep remote registries fresh on TTL refresh.
-                    reload_method(include_registries=True)
-                else:
-                    # Backward-compatible fallback for older pydantic-ai-skills builds.
-                    self._skills_toolset = self._create_toolset()
+                self._skills_toolset = self._create_toolset()
         except (
             PydanticSkillValidationError,
             PydanticSkillRegistryError,

@@ -38,6 +38,43 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
 
+# Default instruction template for skills system prompt
+_INSTRUCTION_SKILLS_HEADER = """\
+You have access to a collection of skills containing domain-specific knowledge and capabilities.
+Each skill provides specialized instructions, resources, and scripts for specific tasks.
+
+<available_skills>
+{skills_list}
+</available_skills>
+
+When a task falls within a skill's domain:
+1. Use `load_skill` to read the complete skill instructions
+2. Follow the skill's guidance to complete the task
+3. Use any additional skill resources and scripts as needed
+
+Use progressive disclosure: load only what you need, when you need it."""
+
+# Template used by load_skill
+LOAD_SKILL_TEMPLATE = """<skill>
+<name>{skill_name}</name>
+<description>{description}</description>
+<uri>{uri}</uri>
+
+<resources>
+{resources_list}
+</resources>
+
+<scripts>
+{scripts_list}
+</scripts>
+
+<instructions>
+{content}
+</instructions>
+</skill>
+"""
+
+
 class SkillkitDirectoryLoader(SkillLoaderProtocol):
     """Loads Agent Skills from local directories using skillkit."""
 
@@ -152,8 +189,18 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:
         """Return `<available_skills>` block used by middleware system prompts."""
 
-        snapshot = self._get_snapshot()
-        return self._build_skills_prompt(summaries=snapshot.ordered_summaries)
+        # Build skills list in XML format
+        skills_list_lines: list[str] = []
+        skill: SkillSummary
+        for skill in self.list_skill_summaries(allowed_skills=set()):
+            skills_list_lines.append("<skill>")
+            skills_list_lines.append(f"<name>{skill.name}</name>")
+            skills_list_lines.append(f"<description>{skill.description}</description>")
+            skills_list_lines.append("</skill>")
+        skills_list = "\n".join(skills_list_lines)
+
+        # Use custom template if provided, otherwise use default
+        return _INSTRUCTION_SKILLS_HEADER.format(skills_list=skills_list)
 
     def get_tools(self) -> list[StructuredTool]:
         return create_langchain_tools(

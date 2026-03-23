@@ -70,6 +70,11 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._identifier: UUID = uuid4()
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
+        if not isinstance(environment_variables, SkillLoaderEnvironmentVariables):
+            raise TypeError(
+                f"environment_variables must be an instance of SkillLoaderEnvironmentVariables: {type(environment_variables)}"
+            )
+        self._environment_variables = environment_variables
 
         skills_directory = environment_variables.skills_directory
         if isinstance(skills_directory, Path):
@@ -91,7 +96,6 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(
             environment_variables
         )
-        self._environment_variables = environment_variables
 
         logger.info(
             "SkillDirectoryLoader %s initialized for %s",
@@ -112,9 +116,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot.ordered_summaries
 
-    def get_skill_details(
-        self, *, skill_name: str
-    ) -> SkillDetails:
+    def get_skill_details(self, *, skill_name: str) -> SkillDetails:
         """Return full skill details for the normalized skill name."""
 
         normalized = self._normalize_skill_name(skill_name)
@@ -139,9 +141,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             self._snapshot_loaded_at = time.monotonic()
 
     async def get_instructions(self) -> str:
-        return await self._skills_toolset.get_instructions(
-            ctx=None
-        )
+        return await self._skills_toolset.get_instructions(ctx=None)
 
     # Snapshot lifecycle
     def _get_snapshot(self) -> _SkillSnapshot:

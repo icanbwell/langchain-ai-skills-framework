@@ -4,7 +4,6 @@ from typing import Sequence
 
 from langchain_ai_skills_framework.loaders.skill_loader import (
     SkillLoaderProtocol,
-    SkillNotFoundError,
 )
 from langchain_ai_skills_framework.models.skills_model import SkillSummary, SkillDetails
 
@@ -40,9 +39,7 @@ class ClientScopedSkillLoader(SkillLoaderProtocol):
             if self._normalize_skill_token(summary.name) in allowed_skill_names
         )
 
-    def get_skill_details(
-            self, *, skill_name: str
-    ) -> SkillDetails:
+    def get_skill_details(self, *, skill_name: str) -> SkillDetails:
         result: SkillDetails = self._base_loader.get_skill_details(
             skill_name=skill_name,
         )

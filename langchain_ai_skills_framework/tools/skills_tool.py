@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Type
+from typing import Any, Type
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,17 +42,28 @@ class LoadSkillTool(StructuredTool):
 
     def _run(
         self,
-        skill_name: str,
+        *args: Any,
+        config: RunnableConfig,
         run_manager: CallbackManagerForToolRun | None = None,
+        **kwargs: Any,
     ) -> str:
+        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         return self._load_skill(skill_name)
 
     async def _arun(
         self,
-        skill_name: str,
+        *args: Any,
+        config: RunnableConfig,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
+        **kwargs: Any,
     ) -> str:
+        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         return self._load_skill(skill_name)
+
+    @staticmethod
+    def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+        raw_skill_name = kwargs.get("skill_name", args[0] if args else "")
+        return raw_skill_name if isinstance(raw_skill_name, str) else ""
 
     def _load_skill(self, skill_name: str) -> str:
         normalized_name = skill_name.strip()

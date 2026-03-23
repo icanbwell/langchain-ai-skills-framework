@@ -1,17 +1,15 @@
-from __future__ import annotations
-
 import logging
 import re
 import time
 from dataclasses import dataclass
-from importlib import import_module
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Callable, Mapping, Protocol, Sequence, cast
+from typing import Mapping, Sequence
 from uuid import UUID, uuid4
 
 import yaml
+from skillkit import SkillManager, SkillMetadata
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -34,27 +32,6 @@ logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 _FRONTMATTER_PATTERN = re.compile(
     r"^---[\r\n]+(.*?)[\r\n]+---", re.DOTALL | re.MULTILINE
 )
-
-
-class _SkillkitSkillMetadata(Protocol):
-    name: str
-    description: str
-    skill_path: Path
-
-
-class _SkillkitSkill(Protocol):
-    metadata: _SkillkitSkillMetadata
-    content: str
-
-
-class _SkillkitManager(Protocol):
-    def discover(self) -> None: ...
-
-    def list_skills(
-        self, include_qualified: bool = False
-    ) -> Sequence[_SkillkitSkillMetadata]: ...
-
-    def load_skill(self, name: str) -> _SkillkitSkill: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +78,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         self._lock = RLock()
         self._snapshot: _SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
-        self._manager: _SkillkitManager = self._create_manager()
+        self._manager: SkillManager = self._create_manager()
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(
             environment_variables
         )
@@ -210,21 +187,25 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             self._environment_variables.excluded_skill_groups
         )
 
+        metadata: SkillMetadata | str
         for metadata in self._manager.list_skills():
-            definition = self._map_skill(metadata)
-            skill_group = self._resolve_skill_group(str(definition.source_path.parent))
-            if skill_group and skill_group in excluded_skill_groups:
-                logger.info("Skipping excluded skill group '%s'", skill_group)
-                continue
-            if definition.name in excluded_skills:
-                logger.info("Skipping excluded skill '%s'", definition.name)
-                continue
-            if definition.name in new_details:
-                raise SkillValidationError(
-                    f"Duplicate skill name '{definition.name}' detected"
+            if isinstance(metadata, SkillMetadata):
+                definition = self._map_skill(metadata=metadata, content="")
+                skill_group = self._resolve_skill_group(
+                    str(definition.source_path.parent)
                 )
-            new_details[definition.name] = definition
-            new_summaries.append(definition.summary)
+                if skill_group and skill_group in excluded_skill_groups:
+                    logger.info("Skipping excluded skill group '%s'", skill_group)
+                    continue
+                if definition.name in excluded_skills:
+                    logger.info("Skipping excluded skill '%s'", definition.name)
+                    continue
+                if definition.name in new_details:
+                    raise SkillValidationError(
+                        f"Duplicate skill name '{definition.name}' detected"
+                    )
+                new_details[definition.name] = definition
+                new_summaries.append(definition.summary)
 
         ordered_summaries = tuple(
             sorted(new_summaries, key=lambda summary: summary.name)
@@ -255,7 +236,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         except Exception as exc:
             raise SkillValidationError(str(exc)) from exc
 
-    def _create_manager(self) -> _SkillkitManager:
+    def _create_manager(self) -> SkillManager:
         """Create a skillkit SkillManager from a local directory."""
 
         if self._skills_directory.startswith("github://"):
@@ -264,22 +245,13 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                 "use a local path"
             )
 
-        try:
-            skillkit_module = import_module("skillkit")
-            manager_class = getattr(skillkit_module, "SkillManager")
-        except (ModuleNotFoundError, AttributeError) as exc:
-            raise SkillValidationError(
-                "skillkit backend is unavailable. Ensure skillkit and its runtime dependencies are installed."
-            ) from exc
-
-        manager_factory = cast(Callable[..., object], manager_class)
-        manager = manager_factory(
+        manager = SkillManager(
             project_skill_dir=self._skills_root_path,
             anthropic_config_dir="",
             plugin_dirs=[],
             additional_search_paths=[],
         )
-        return cast(_SkillkitManager, manager)
+        return manager
 
     # TTL helpers
 
@@ -314,9 +286,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     # Skill mapping and validation
 
-    def _map_skill(self, metadata: _SkillkitSkillMetadata) -> SkillDetails:
+    def _map_skill(self, metadata: SkillMetadata, content: str) -> SkillDetails:
         """Map a skillkit skill into framework SkillDetails."""
-
         normalized_name = self._normalize_skill_name(metadata.name)
         if not normalized_name:
             raise SkillValidationError("Skill name must not be empty")
@@ -331,48 +302,18 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                 f"Skill {normalized_name} must include a non-empty description"
             )
 
-        skill = self._manager.load_skill(metadata.name)
-        source_path = (
-            metadata.skill_path
-            if isinstance(metadata.skill_path, Path)
-            else Path(str(metadata.skill_path))
-        )
-        frontmatter, content = self._extract_frontmatter_and_content(
-            skill_name=normalized_name,
-            source_path=source_path,
-            skill_content=skill.content,
-        )
-
-        compatibility = self._normalize_optional_string(
-            skill_name=normalized_name,
-            field_name="compatibility",
-            value=frontmatter.get("compatibility"),
-        )
-        license_value = self._normalize_optional_string(
-            skill_name=normalized_name,
-            field_name="license",
-            value=frontmatter.get("license"),
-        )
-
-        metadata_values = self._normalize_metadata(
-            skill_name=normalized_name,
-            value=frontmatter.get("metadata"),
-        )
-        allowed_tools = self._normalize_allowed_tools(
-            skill_name=normalized_name,
-            value=frontmatter.get("allowed-tools"),
-        )
-
         summary = SkillSummary(
             name=normalized_name,
             description=description,
-            source_path=source_path,
-            license=license_value,
-            compatibility=compatibility,
-            metadata=metadata_values,
-            allowed_tools=allowed_tools,
+            source_path=metadata.skill_path,
+            license=None,
+            compatibility=None,
+            metadata=metadata.__dict__,
+            allowed_tools=metadata.allowed_tools,
         )
-        return SkillDetails(summary=summary, content=content, source_path=source_path)
+        return SkillDetails(
+            summary=summary, content=content, source_path=metadata.skill_path
+        )
 
     @staticmethod
     def _extract_frontmatter_and_content(

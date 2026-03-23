@@ -8,6 +8,7 @@ from simple_container.environment.environment_variables import EnvironmentVariab
 from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )
+from langchain_ai_skills_framework.tools.skills_tool_manager import SkillsToolManager
 
 
 class LangchainAISkillsFrameworkContainerFactory:
@@ -33,6 +34,13 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillLoaderProtocol,
             lambda c: c.resolve(SkillDirectoryLoader),
+        )
+
+        container.singleton(
+            SkillsToolManager,
+            lambda c: SkillsToolManager(
+                skill_loader=c.resolve(SkillLoaderProtocol),
+            ),
         )
 
         return container

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -42,9 +41,8 @@ def test_download_uses_expected_storage_options_and_cache_directory(
         captured_storage_options.update(storage_options)
         return _FakeGithubFilesystem()
 
-    monkeypatch.setitem(
-        sys.modules,
-        "fsspec",
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.github_skill_downloader.fsspec",
         SimpleNamespace(filesystem=_fake_filesystem),
     )
 
@@ -77,9 +75,8 @@ def test_download_raises_validation_error_when_fsspec_fails(
         del protocol, storage_options
         raise RuntimeError("network error")
 
-    monkeypatch.setitem(
-        sys.modules,
-        "fsspec",
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.github_skill_downloader.fsspec",
         SimpleNamespace(filesystem=_raise_filesystem),
     )
 

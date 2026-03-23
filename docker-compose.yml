@@ -10,4 +10,4 @@ services:
     working_dir: /usr/src/langchain_ai_skills_framework
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - SKILLS_DIRECTORY=github://icanbwell/language-model-gateway-configuration/bailey/skills?ref=add-skills
+      - SKILLS_DIRECTORY=github://icanbwell/language-model-gateway-configuration/bailey/skills?ref=main

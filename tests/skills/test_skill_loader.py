@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping, cast
 
 import pytest
+from pydantic_ai_skills.types import Skill
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
-    SkillDirectoryLoader,
-    SkillLoaderEnvironmentVariables,
+from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error import (
     SkillValidationError,
 )
-from langchain_ai_skills_framework.cache.skill_cache import SkillCache
+from langchain_ai_skills_framework.loaders.github_skill_downloader import (
+    GithubSkillDownloader,
+)
+from langchain_ai_skills_framework.loaders.skill_directory_loader import (
+    SkillDirectoryLoader,
+)
+from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
+    SkillLoaderEnvironmentVariables,
+)
 
 
 def _write_skill(
@@ -38,23 +48,6 @@ license: Apache-2.0
     )
 
 
-def _write_skill_raw(root: Path, directory: str, *, content: str) -> None:
-    skill_dir = root / directory
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
-
-
-def _write_skill_frontmatter(
-    root: Path,
-    directory: str,
-    *,
-    frontmatter: str,
-    body: str = "# Body\n\nDetails.",
-) -> None:
-    content = f"---\n{frontmatter}\n---\n{body}\n"
-    _write_skill_raw(root, directory, content=content)
-
-
 class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
     def __init__(
         self,
@@ -62,10 +55,14 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
         skills_directory: str,
         excluded_skills: set[str] | None = None,
         excluded_skill_groups: set[str] | None = None,
+        github_token: str | None = None,
+        skills_cache_timeout_seconds: int = 3600,
     ) -> None:
         self._skills_directory = skills_directory
         self._excluded_skills = set(excluded_skills or set())
         self._excluded_skill_groups = set(excluded_skill_groups or set())
+        self._github_token = github_token
+        self._skills_cache_timeout_seconds = skills_cache_timeout_seconds
 
     @property
     def skills_directory(self) -> str:
@@ -97,6 +94,14 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
     def set_group_exclusions(self, values: set[str]) -> None:
         self.excluded_skill_groups = values
 
+    @property
+    def skills_github_token(self) -> str | None:
+        return self._github_token
+
+    @property
+    def skills_cache_timeout_seconds(self) -> int:
+        return self._skills_cache_timeout_seconds
+
 
 def _create_environment_variables(skills_directory: Path) -> FakeEnvironmentVariables:
     return FakeEnvironmentVariables(skills_directory=str(skills_directory))
@@ -106,18 +111,95 @@ def test_skill_loader_reads_metadata_and_content(
     tmp_path: Path,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
-    cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill"]
 
-    details = loader.get_skill_details("alpha-skill")
+    details = loader.get_skill_details(skill_name="alpha-skill")
     assert details.content.strip().startswith("# Body")
     assert details.source_path.name == "SKILL.md"
+
+
+def test_skill_loader_accepts_non_string_metadata_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
+    )
+
+    class _FakeToolset:
+        def __init__(self) -> None:
+            self.skills: Mapping[str, Skill] = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Alpha content",
+                    uri=str(tmp_path / "alpha-skill"),
+                    metadata={
+                        "metadata": {
+                            "priority": 1,
+                            "enabled": True,
+                            "tags": ["intake", "triage"],
+                        }
+                    },
+                )
+            }
+
+    monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
+
+    details = loader.get_skill_details(skill_name="alpha-skill")
+    assert details.summary.metadata == {
+        "priority": 1,
+        "enabled": True,
+        "tags": ["intake", "triage"],
+    }
+
+
+@pytest.mark.parametrize(
+    "raw_metadata",
+    [
+        cast(dict[str | int, object], {1: "owner"}),
+        cast(dict[str | int, object], {"owner": "team", 2: "bad"}),
+        cast(dict[str | int | None, object], {None: "bad"}),
+    ],
+)
+def test_skill_loader_rejects_non_string_metadata_keys(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    raw_metadata: dict[int | str | None, object],
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    environment_variables = _create_environment_variables(tmp_path)
+    loader = SkillDirectoryLoader(
+        github_skill_downloader=GithubSkillDownloader(),
+        environment_variables=environment_variables,
+    )
+
+    class _FakeToolset:
+        def __init__(self) -> None:
+            self.skills: Mapping[str, Skill] = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Alpha content",
+                    uri=str(tmp_path / "alpha-skill"),
+                    metadata={"metadata": raw_metadata},
+                )
+            }
+
+    monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
+
+    with pytest.raises(SkillValidationError, match="metadata keys must be strings"):
+        loader.list_skill_summaries(allowed_skills=set())
 
 
 def test_skill_loader_reads_nested_skills(
@@ -125,17 +207,125 @@ def test_skill_loader_reads_nested_skills(
 ) -> None:
     _write_skill(tmp_path, "category/alpha-skill", name="alpha-skill")
     _write_skill(tmp_path, "beta-skill")
-    cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        github_skill_downloader=GithubSkillDownloader(),
+        environment_variables=environment_variables,
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
 
-    details = loader.get_skill_details("alpha-skill")
+    details = loader.get_skill_details(skill_name="alpha-skill")
     assert details.source_path.parent.name == "alpha-skill"
+
+
+def test_skill_loader_reads_skills_from_github_uri(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    github_uri = "github://icanbwell/skill-repo/skills?ref=main"
+    skills_root = tmp_path / "repo" / "skills"
+    alpha_dir = skills_root / "group-one" / "alpha-skill"
+    beta_dir = skills_root / "beta-skill"
+    alpha_dir.mkdir(parents=True)
+    beta_dir.mkdir(parents=True)
+
+    captured: dict[str, object] = {}
+
+    def _fake_download(
+        *,
+        skills_directory: str,
+        github_token: str | None,
+        cache_path: Path,
+    ) -> Path:
+        captured["skills_directory"] = skills_directory
+        captured["github_token"] = github_token
+        captured["cache_path"] = cache_path
+        return skills_root
+
+    class _FakeSkillsToolset:
+        def __init__(
+            self, *, directories: list[str] | None = None, **_: object
+        ) -> None:
+            captured["directories"] = directories
+            assert directories and len(directories) == 1
+            self.skills = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Alpha content",
+                    uri=str(alpha_dir),
+                ),
+                "beta-skill": Skill(
+                    name="beta-skill",
+                    description="Beta",
+                    content="Beta content",
+                    uri=str(beta_dir),
+                ),
+            }
+
+    downloader = GithubSkillDownloader()
+    monkeypatch.setattr(downloader, "download", _fake_download)
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.skill_directory_loader.SkillsToolset",
+        _FakeSkillsToolset,
+    )
+
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=github_uri,
+        github_token="token-123",
+    )
+    loader = SkillDirectoryLoader(
+        environment_variables=environment_variables,
+        github_skill_downloader=downloader,
+    )
+
+    summaries = loader.list_skill_summaries(allowed_skills=set())
+
+    assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
+    assert captured["skills_directory"] == github_uri
+    assert captured["github_token"] == "token-123"
+    assert cast(Path, captured["cache_path"]) == Path(".skills-git-cache")
+    assert cast(list[str], captured["directories"])[0] == str(skills_root)
+    assert (
+        loader.get_skill_details(skill_name="alpha-skill").source_path.parent.name
+        == "alpha-skill"
+    )
+
+
+def test_skill_loader_rejects_github_uri_without_owner() -> None:
+    github_uri = "github:///skill-repo/skills?ref=main"
+
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=github_uri,
+        github_token="token-123",
+    )
+    with pytest.raises(
+        SkillValidationError,
+        match="must include owner and repo",
+    ):
+        SkillDirectoryLoader(
+            environment_variables=environment_variables,
+            github_skill_downloader=GithubSkillDownloader(),
+        )
+
+
+def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
+    github_uri = "github://icanbwell/skill-repo/skills?branch=main"
+
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=github_uri,
+        github_token="token-123",
+    )
+    with pytest.raises(
+        SkillValidationError,
+        match="supports only '\\?ref=' query parameter; got: branch",
+    ):
+        SkillDirectoryLoader(
+            environment_variables=environment_variables,
+            github_skill_downloader=GithubSkillDownloader(),
+        )
 
 
 def test_skill_loader_skips_excluded_skills(
@@ -143,21 +333,20 @@ def test_skill_loader_skips_excluded_skills(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     _write_skill(tmp_path, "beta-skill")
-    cache = SkillCache()
     environment_variables = FakeEnvironmentVariables(
         skills_directory=str(tmp_path),
         excluded_skills={"beta_skill"},
     )
     loader = SkillDirectoryLoader(
-        cache=cache,
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill"]
 
     with pytest.raises(SkillNotFoundError):
-        loader.get_skill_details("beta-skill")
+        loader.get_skill_details(skill_name="beta-skill")
 
 
 def test_skill_loader_reads_exclusions_from_environment_variables(
@@ -165,20 +354,19 @@ def test_skill_loader_reads_exclusions_from_environment_variables(
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
     _write_skill(tmp_path, "beta-skill")
-    cache = SkillCache()
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=cache,
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill", "beta-skill"]
 
     environment_variables.set_exclusions({"beta-skill"})
     loader.refresh()
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["alpha-skill"]
 
 
@@ -188,14 +376,13 @@ def test_skill_loader_skips_excluded_skill_groups(
     _write_skill(tmp_path, "group_one/alpha-skill", name="alpha-skill")
     _write_skill(tmp_path, "group-two/beta-skill", name="beta-skill")
     _write_skill(tmp_path, "gamma-skill")
-    cache = SkillCache()
     environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=cache,
         environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == [
         "alpha-skill",
         "beta-skill",
@@ -205,7 +392,7 @@ def test_skill_loader_skips_excluded_skill_groups(
     environment_variables.set_group_exclusions({"group-one"})
     loader.refresh()
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
     assert [summary.name for summary in summaries] == ["beta-skill", "gamma-skill"]
 
 
@@ -213,257 +400,78 @@ def test_skill_loader_raises_for_missing_skill(
     tmp_path: Path,
 ) -> None:
     _write_skill(tmp_path, "alpha-skill")
-    cache = SkillCache()
+    environment_variables = _create_environment_variables(tmp_path)
     loader = SkillDirectoryLoader(
-        cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
     with pytest.raises(SkillNotFoundError):
-        loader.get_skill_details("beta")
+        loader.get_skill_details(skill_name="beta")
 
 
-def test_skill_loader_allows_directory_name_mismatch(
+def test_skill_loader_reloads_toolset_after_ttl_expires(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _write_skill(tmp_path, "alpha-skill-dir", name="alpha-skill")
-
-    cache = SkillCache()
-    loader = SkillDirectoryLoader(
-        cache=cache,
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    summaries = loader.list_skill_summaries()
-
-    assert [summary.name for summary in summaries] == ["alpha-skill"]
-
-    details = loader.get_skill_details("alpha-skill")
-    assert details.source_path.name == "SKILL.md"
-
-
-def test_skill_loader_reuses_shared_cache_until_refresh(
-    tmp_path: Path,
-) -> None:
-    shared_cache = SkillCache()
     _write_skill(tmp_path, "alpha-skill", body="Version 1 content")
-
-    loader_a = SkillDirectoryLoader(
-        cache=shared_cache,
-        environment_variables=_create_environment_variables(tmp_path),
+    environment_variables = FakeEnvironmentVariables(
+        skills_directory=str(tmp_path),
+        skills_cache_timeout_seconds=1,
     )
-    assert "Version 1" in loader_a.get_skill_details("alpha-skill").content
-
-    _write_skill(tmp_path, "alpha-skill", body="Version 2 content")
-    loader_b = SkillDirectoryLoader(
-        cache=shared_cache,
-        environment_variables=_create_environment_variables(tmp_path),
+    loader = SkillDirectoryLoader(
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
-    # Snapshot should still reflect the cached data
-    assert "Version 1" in loader_b.get_skill_details("alpha-skill").content
 
-    loader_b.refresh()
-    assert "Version 2" in loader_b.get_skill_details("alpha-skill").content
+    class _FakeToolset:
+        def __init__(self) -> None:
+            self.reload_calls: list[bool] = []
+            self.skills: Mapping[str, Skill] = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Version 1 content",
+                    uri=str(tmp_path / "alpha-skill"),
+                )
+            }
+
+        def reload(self, *, include_registries: bool = False) -> None:
+            self.reload_calls.append(include_registries)
+            self.skills = {
+                "alpha-skill": Skill(
+                    name="alpha-skill",
+                    description="Alpha",
+                    content="Version 2 content",
+                    uri=str(tmp_path / "alpha-skill"),
+                )
+            }
+
+    fake_toolset = _FakeToolset()
+    monkeypatch.setattr(loader, "_create_toolset", lambda: fake_toolset)
+
+    assert "Version 1" in loader.get_skill_details(skill_name="alpha-skill").content
+
+    loader._snapshot_loaded_at = 0.0
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.skill_directory_loader.time.monotonic",
+        lambda: 5.0,
+    )
+
+    assert "Version 2" in loader.get_skill_details(skill_name="alpha-skill").content
+    assert fake_toolset.reload_calls == [True]
 
 
 def test_skill_loader_returns_empty_when_directory_missing(
     tmp_path: Path,
 ) -> None:
     missing_path = tmp_path / "missing"
+    environment_variables = _create_environment_variables(missing_path)
     loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(missing_path),
+        environment_variables=environment_variables,
+        github_skill_downloader=GithubSkillDownloader(),
     )
 
-    summaries = loader.list_skill_summaries()
+    summaries = loader.list_skill_summaries(allowed_skills=set())
 
     assert summaries == ()
-
-
-def test_skill_loader_rejects_non_directory_path(
-    tmp_path: Path,
-) -> None:
-    file_path = tmp_path / "skills.txt"
-    file_path.write_text("not a directory", encoding="utf-8")
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(file_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-@pytest.mark.parametrize(
-    ("content", "case"),
-    [
-        ("name: alpha\n", "missing-header"),
-        ("---\nname: alpha\n", "missing-terminator"),
-        ("---\n:bad\n---\nBody", "invalid-yaml"),
-        ("---\n- item\n---\nBody", "non-mapping"),
-    ],
-)
-def test_skill_loader_rejects_invalid_frontmatter(
-    tmp_path: Path, content: str, case: str
-) -> None:
-    _write_skill_raw(tmp_path, f"skill-{case}", content=content)
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-def test_skill_loader_validates_required_fields(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter="description: Missing name",
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-def test_skill_loader_rejects_empty_description(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter="name: alpha-skill\ndescription: ''",
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-def test_skill_loader_rejects_invalid_metadata_and_tools(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter=(
-            "name: alpha-skill\n"
-            "description: Valid description\n"
-            "metadata: {1: value}\n"
-            "allowed-tools: [tool-a]\n"
-        ),
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-def test_skill_loader_rejects_invalid_license_and_compatibility(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter=(
-            "name: alpha-skill\n"
-            "description: Valid description\n"
-            "license: [bad]\n"
-            "compatibility: [bad]\n"
-        ),
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-def test_skill_loader_parses_allowed_tools(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter=(
-            "name: alpha-skill\n"
-            "description: Valid description\n"
-            "allowed-tools: tool-a tool-b\n"
-        ),
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    details = loader.get_skill_details("alpha-skill")
-
-    assert details.summary.allowed_tools == ("tool-a", "tool-b")
-
-
-def test_skill_loader_rejects_duplicate_normalized_names(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter="name: alpha-skill\ndescription: Primary\n",
-    )
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha_skill",
-        frontmatter="name: alpha-skill\ndescription: Duplicate\n",
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()
-
-
-def test_skill_loader_rejects_duplicate_across_nested_and_root(
-    tmp_path: Path,
-) -> None:
-    _write_skill_frontmatter(
-        tmp_path,
-        "alpha-skill",
-        frontmatter="name: alpha-skill\ndescription: Root\n",
-    )
-    _write_skill_frontmatter(
-        tmp_path,
-        "category/alpha-skill",
-        frontmatter="name: alpha-skill\ndescription: Nested\n",
-    )
-
-    loader = SkillDirectoryLoader(
-        cache=SkillCache(),
-        environment_variables=_create_environment_variables(tmp_path),
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries()

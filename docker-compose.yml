@@ -7,7 +7,7 @@ services:
       context: .
     volumes:
       - ./:/usr/src/langchain_ai_skills_framework
-    container_name: langchain_ai_skills_framework_dev
     working_dir: /usr/src/langchain_ai_skills_framework
-    env_file:
-      - docker.env
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SKILLS_DIRECTORY=github://icanbwell/language-model-gateway-configuration/bailey/skills?ref=main

@@ -1,46 +1,19 @@
-import os
-import logging
-
-from langchain_ai_skills_framework.cache.skill_cache import SkillCache
-from langchain_ai_skills_framework.environment.environment_variables import (
-    LangchainAISkillsFrameworkEnvironmentVariables,
+from langchain_ai_skills_framework.loaders.github_skill_downloader import (
+    GithubSkillDownloader,
 )
-from langchain_ai_skills_framework.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
-    SkillLoaderProtocol,
 )
 from simple_container.container.simple_container import SimpleContainer
+from simple_container.environment.environment_variables import EnvironmentVariables
 
-
-_LOGGER: logging.Logger = logging.getLogger(__name__)
-_SKILLS_CACHE_TIMEOUT_ENV_VAR: str = "SKILLS_CACHE_TIMEOUT_SECONDS"
-_DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS: int = 60 * 60
-
-
-def _get_skills_cache_timeout_seconds() -> int:
-    """Return a validated TTL in seconds for SkillCache based on environment."""
-    raw_value = os.getenv(_SKILLS_CACHE_TIMEOUT_ENV_VAR)
-    if raw_value is None:
-        return _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS
-    try:
-        ttl_seconds = int(raw_value)
-    except ValueError:
-        _LOGGER.warning(
-            "Invalid %s value %r; using default %d seconds",
-            _SKILLS_CACHE_TIMEOUT_ENV_VAR,
-            raw_value,
-            _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS,
-        )
-        return _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS
-    if ttl_seconds <= 0:
-        _LOGGER.warning(
-            "%s must be a positive integer; got %d. Using default %d seconds",
-            _SKILLS_CACHE_TIMEOUT_ENV_VAR,
-            ttl_seconds,
-            _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS,
-        )
-        return _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS
-    return ttl_seconds
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
+from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
+    SkillkitDirectoryLoader,
+)
+from langchain_ai_skills_framework.tools.skills_tool_manager import SkillsToolManager
 
 
 class LangchainAISkillsFrameworkContainerFactory:
@@ -49,30 +22,34 @@ class LangchainAISkillsFrameworkContainerFactory:
         *, container: SimpleContainer
     ) -> SimpleContainer:
 
-        container.singleton(
-            SkillCache,
-            lambda c: SkillCache(
-                ttl_seconds=_get_skills_cache_timeout_seconds(),
-            ),
-        )
-
-        container.singleton(
-            LangchainAISkillsFrameworkEnvironmentVariables,
-            lambda c: LangchainAISkillsFrameworkEnvironmentVariables(),
-        )
+        container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
 
         container.singleton(
             SkillDirectoryLoader,
             lambda c: SkillDirectoryLoader(
-                cache=c.resolve(SkillCache),
-                environment_variables=c.resolve(
-                    LangchainAISkillsFrameworkEnvironmentVariables
-                ),
+                environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
+                github_skill_downloader=c.resolve(GithubSkillDownloader),
             ),
         )
+
+        container.singleton(
+            SkillkitDirectoryLoader,
+            lambda c: SkillkitDirectoryLoader(
+                environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
+                github_skill_downloader=c.resolve(GithubSkillDownloader),
+            ),
+        )
+
         container.singleton(
             SkillLoaderProtocol,
-            lambda c: c.resolve(SkillDirectoryLoader),
+            lambda c: c.resolve(SkillkitDirectoryLoader),
+        )
+
+        container.singleton(
+            SkillsToolManager,
+            lambda c: SkillsToolManager(
+                skill_loader=c.resolve(SkillLoaderProtocol),
+            ),
         )
 
         return container

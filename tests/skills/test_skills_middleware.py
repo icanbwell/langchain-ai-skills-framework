@@ -7,23 +7,39 @@ import pytest
 from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain.messages import SystemMessage
 from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.tools import StructuredTool
 
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.middleware.skills_middleware import SkillMiddleware
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 
 
-class _StubSkillLoader:
+class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, summaries: Sequence[SkillSummary]) -> None:
         self._summaries = tuple(summaries)
 
-    def list_skill_summaries(self) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+        del allowed_skills
         return self._summaries
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:  # pragma: no cover
+        del skill_name
         raise NotImplementedError
 
     def refresh(self) -> None:  # pragma: no cover
         return None
+
+    async def get_instructions(self) -> str:
+        skills_lines = "\n".join(
+            f"<skill><name> {summary.name} </name><description> {summary.description} </description></skill>"
+            for summary in self._summaries
+        )
+        return f"\n\n<available_skills>{skills_lines}</available_skills>\n\n"
+
+    def get_tools(self) -> list[StructuredTool]:
+        return []
 
 
 class _DummyModelRequest:
@@ -106,6 +122,87 @@ async def test_awrap_model_call_sets_system_message_when_missing() -> None:
         assert isinstance(model_request.messages[0], SystemMessage)
         assert "<available_skills>" in model_request.messages[0].content
         assert "beta" in model_request.messages[0].content
+        return cast(ModelResponse[Any], AIMessage(content="ok"))
+
+    response = await middleware.awrap_model_call(
+        cast(ModelRequest[Any], request),
+        handler,
+    )
+
+    assert isinstance(response, AIMessage)
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_does_not_duplicate_skills_message() -> None:
+    summaries = [
+        SkillSummary(
+            name="gamma",
+            description="tertiary",
+            source_path=Path("/skills/gamma/SKILL.md"),
+        )
+    ]
+    middleware = SkillMiddleware(skill_loader=_StubSkillLoader(summaries))
+    existing_skills_message = SystemMessage(
+        content="\n\n<available_skills> <skill><name> gamma </name></skill> </available_skills>\n\n"
+    )
+    request = _DummyModelRequest(
+        system_message=existing_skills_message,
+        messages=(existing_skills_message, AIMessage(content="continue")),
+    )
+
+    async def handler(model_request: ModelRequest[Any]) -> ModelResponse[Any]:
+        assert model_request.messages is not None
+        system_messages = [
+            message
+            for message in model_request.messages
+            if isinstance(message, SystemMessage)
+        ]
+        assert len(system_messages) == 1
+        assert system_messages[0] is existing_skills_message
+        return cast(ModelResponse[Any], AIMessage(content="ok"))
+
+    response = await middleware.awrap_model_call(
+        cast(ModelRequest[Any], request),
+        handler,
+    )
+
+    assert isinstance(response, AIMessage)
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_does_not_duplicate_for_structured_system_content() -> (
+    None
+):
+    summaries = [
+        SkillSummary(
+            name="delta",
+            description="quaternary",
+            source_path=Path("/skills/delta/SKILL.md"),
+        )
+    ]
+    middleware = SkillMiddleware(skill_loader=_StubSkillLoader(summaries))
+    existing_skills_message = SystemMessage(
+        content=[
+            {
+                "type": "text",
+                "text": "Context\n<available_skills> ... </available_skills>",
+            }
+        ]
+    )
+    request = _DummyModelRequest(
+        system_message=existing_skills_message,
+        messages=(existing_skills_message, AIMessage(content="continue")),
+    )
+
+    async def handler(model_request: ModelRequest[Any]) -> ModelResponse[Any]:
+        assert model_request.messages is not None
+        system_messages = [
+            message
+            for message in model_request.messages
+            if isinstance(message, SystemMessage)
+        ]
+        assert len(system_messages) == 1
+        assert system_messages[0] is existing_skills_message
         return cast(ModelResponse[Any], AIMessage(content="ok"))
 
     response = await middleware.awrap_model_call(

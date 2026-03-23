@@ -44,6 +44,10 @@ update: down Pipfile.lock setup-pre-commit  ## Updates all the packages using Pi
 tests: up
 	docker compose run --rm --name langchain_ai_skills_framework dev pytest tests langchain_ai_skills_framework
 
+.PHONY:tests-integration
+tests-integration: up
+	docker compose run --rm --name langchain_ai_skills_framework dev pytest tests_integration langchain_ai_skills_framework
+
 .PHONY:shell
 shell:devdocker ## Brings up the bash shell in dev docker
 	docker compose run --rm --name langchain_ai_skills_framework dev sh

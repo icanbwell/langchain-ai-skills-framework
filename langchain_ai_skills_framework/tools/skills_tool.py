@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from typing import Type
+from typing import Any, Type
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
-    SkillLoaderProtocol,
+from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
 )
 
 
@@ -26,7 +29,7 @@ class LoadSkillInput(BaseModel):
     )
 
 
-class LoadSkillTool(BaseTool):
+class LoadSkillTool(StructuredTool):
     """LangChain tool that loads full skill definitions for the agent."""
 
     name: str = "load_skill"
@@ -39,17 +42,28 @@ class LoadSkillTool(BaseTool):
 
     def _run(
         self,
-        skill_name: str,
+        *args: Any,
+        config: RunnableConfig,
         run_manager: CallbackManagerForToolRun | None = None,
+        **kwargs: Any,
     ) -> str:
+        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         return self._load_skill(skill_name)
 
     async def _arun(
         self,
-        skill_name: str,
+        *args: Any,
+        config: RunnableConfig,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
+        **kwargs: Any,
     ) -> str:
+        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         return self._load_skill(skill_name)
+
+    @staticmethod
+    def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+        raw_skill_name = kwargs.get("skill_name", args[0] if args else "")
+        return raw_skill_name if isinstance(raw_skill_name, str) else ""
 
     def _load_skill(self, skill_name: str) -> str:
         normalized_name = skill_name.strip()
@@ -57,7 +71,7 @@ class LoadSkillTool(BaseTool):
             return self._format_availability_message(self.skill_loader, normalized_name)
 
         try:
-            skill = self.skill_loader.get_skill_details(normalized_name)
+            skill = self.skill_loader.get_skill_details(skill_name=normalized_name)
         except SkillNotFoundError:
             return self._format_availability_message(self.skill_loader, normalized_name)
 
@@ -67,7 +81,11 @@ class LoadSkillTool(BaseTool):
     def _format_availability_message(
         loader: SkillLoaderProtocol, normalized_name: str
     ) -> str:
-        available = ", ".join(summary.name for summary in loader.list_skill_summaries())
+        available_names = sorted(
+            summary.name
+            for summary in loader.list_skill_summaries(allowed_skills=set())
+        )
+        available = ", ".join(available_names)
         availability_message = (
             f"Skill '{normalized_name}' not found."
             if normalized_name

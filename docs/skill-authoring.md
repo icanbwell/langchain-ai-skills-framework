@@ -5,7 +5,7 @@ This guide describes how to author a valid `SKILL.md` for the langchain_ai_skill
 ## Location and layout
 - Each skill lives in its own directory under the configured skills root.
 - The skill file must be named `SKILL.md` and live directly in that directory.
-- The directory name must match the normalized skill name.
+- Prefer matching the directory name to the normalized skill name.
 
 Example layout:
 ```
@@ -26,15 +26,17 @@ description: Handle customer support requests and escalation steps.
 ```
 Rules enforced by the loader:
 - Frontmatter must start with `---` and include a terminating `---`.
-- `name` is required, lower-case, hyphenated, and must match the directory name.
+- `name` is required, lower-case, hyphenated, and is used as the canonical skill identifier.
 - `description` is required and must be a non-empty string.
 
 ## Optional frontmatter
 You may include these optional fields:
 - `license`: string
 - `compatibility`: non-empty string (max 500 chars)
-- `metadata`: mapping of string keys to string values
+- `metadata`: mapping of string keys to either string values or lists of strings
 - `allowed-tools`: space-delimited string of tool names
+
+Note: YAML date/datetime scalar values in `metadata` are normalized to ISO-8601 strings.
 
 ## Name normalization rules
 The loader normalizes names by:
@@ -57,6 +59,9 @@ license: Apache-2.0
 compatibility: Works with v1 support policies.
 metadata:
   owner: support-team
+  tags:
+    - intake
+    - triage
   severity: standard
 allowed-tools: load_skill
 ---

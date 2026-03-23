@@ -1,4 +1,3 @@
-from html import escape
 from langchain.agents.middleware import (
     ModelRequest,
     ModelResponse,
@@ -6,46 +5,30 @@ from langchain.agents.middleware import (
     ExtendedModelResponse,
 )
 from langchain.messages import SystemMessage
-from typing import Callable, Any, Awaitable
+from typing import Callable, Any, Awaitable, Sequence
 
 from langchain_core.messages import AIMessage, AnyMessage
 
-from langchain_ai_skills_framework.loaders.skill_loader import (
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.models.skills_model import SkillSummary
 
 
 class SkillMiddleware(AgentMiddleware):
     """Middleware that injects skill descriptions into the system prompt."""
 
+    _SKILLS_BLOCK_MARKER = "<available_skills>"
+
     def __init__(self, skill_loader: SkillLoaderProtocol) -> None:
         """Initialize and generate the skills prompt from the configured directory."""
 
         self._skill_loader = skill_loader
-        self.skills_prompt = self._build_skills_prompt()
-
-    def _build_skills_prompt(self) -> str:
-        if self._skill_loader is None:
-            return "No skills are currently available."
-        summaries = self._skill_loader.list_skill_summaries()
-        if not summaries:
-            return "No skills are currently configured."
-        skills_block = " ".join(
-            self._format_skill_entry(summary) for summary in summaries
-        )
-        return f"<available_skills> {skills_block} </available_skills>"
-
-    @staticmethod
-    def _format_skill_entry(summary: SkillSummary) -> str:
-        escaped_name = escape(summary.name, quote=True)
-        escaped_description = escape(summary.description.strip(), quote=True)
-        return (
-            "<skill>"
-            f"<name> {escaped_name} </name> "
-            f"<description> {escaped_description} </description> "
-            "</skill>"
-        )
+        if skill_loader is None:
+            raise ValueError("skill_loader must not be None")
+        if not isinstance(skill_loader, SkillLoaderProtocol):
+            raise TypeError(
+                f"skill_loader must be SkillLoaderProtocol, got {type(skill_loader)}"
+            )
 
     async def awrap_model_call(
         self,
@@ -53,23 +36,42 @@ class SkillMiddleware(AgentMiddleware):
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any] | AIMessage | ExtendedModelResponse[Any]:
         """Async: Inject skill descriptions into system prompt."""
-        skills_addendum = (
-            f"\n\n{self.skills_prompt}\n\n"
-            "Use the load_skill tool when you need detailed information "
-            "about handling a specific type of request."
-        )
-        skills_block_text = skills_addendum
-        skills_message = SystemMessage(content=skills_block_text)
-
         existing_messages: list[AnyMessage] = list(request.messages or ())
+        if self._request_has_skills_message(existing_messages):
+            return await handler(request)
+
+        skills_block_text: str = await self._skill_loader.get_instructions()
+        skills_message = SystemMessage(content=skills_block_text)
 
         insertion_index = 0
         for idx, message in enumerate(existing_messages):
             if isinstance(message, SystemMessage):
-                # insert after the first system message to ensure the skills information is included in the initial instructions but doesn't override any existing system-level context
+                # insert after the first system message to ensure the skills information is included in the
+                # initial instructions but doesn't override any existing system-level context
                 insertion_index = idx + 1
                 break
 
         existing_messages.insert(insertion_index, skills_message)
         modified_request = request.override(messages=list(existing_messages))
         return await handler(modified_request)
+
+    @classmethod
+    def _request_has_skills_message(cls, messages: Sequence[AnyMessage]) -> bool:
+        for message in messages:
+            if not isinstance(message, SystemMessage):
+                continue
+            if cls._content_contains_skills_marker(message.content):
+                return True
+        return False
+
+    @classmethod
+    def _content_contains_skills_marker(cls, content: object) -> bool:
+        if isinstance(content, str):
+            return cls._SKILLS_BLOCK_MARKER in content
+        if isinstance(content, (list, tuple)):
+            return any(cls._content_contains_skills_marker(item) for item in content)
+        if isinstance(content, dict):
+            return any(
+                cls._content_contains_skills_marker(item) for item in content.values()
+            )
+        return False

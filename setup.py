@@ -58,13 +58,16 @@ setup(
     install_requires=[
         "pyyaml>=6.0.3",
         "langchain-core>=1.0.0",
-        "pydantic>=2.0,<3.0.0",
+        "pydantic<3.0.0,>=2.0",
         "langchain>=1.0.0",
         "fsspec>=2026.2.0",
         "s3fs>=2026.2.0",
         "requests",
         "aiohttp>=3.8.0",
         "simple-container>=1.0.2",
+        "skillkit[langchain]>=0.4.0",
+        "pydantic-ai-skills[git]>=0.5.1",
+        "aiofiles>=25.1.0",
     ],
     classifiers=[
         "Development Status :: 4 - Beta",

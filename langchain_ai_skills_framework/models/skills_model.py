@@ -14,7 +14,7 @@ class SkillSummary:
     source_path: Path
     license: str | None = None
     compatibility: str | None = None
-    metadata: Mapping[str, str] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
     allowed_tools: tuple[str, ...] = ()
 
 
@@ -33,3 +33,11 @@ class SkillDetails:
     @property
     def description(self) -> str:
         return self.summary.description
+
+
+@dataclass(frozen=True, slots=True)
+class SkillSnapshot:
+    """Immutable, already-filtered view of skills used by public loader calls."""
+
+    details_by_name: Mapping[str, SkillDetails]
+    ordered_summaries: tuple[SkillSummary, ...]

@@ -28,9 +28,17 @@ requests = "*"
 aiohttp = ">=3.8.0"
 # simple-container is a Python library for working with containers
 simple-container = ">=1.0.2"
+# skillkit[langchain] is needed for working with langchain in skillkit
+skillkit = {extras = ["langchain"], version = ">=0.4.0"}
+# pydantic-ai-skills is needed for working with pydantic in skillkit
+pydantic-ai-skills = {extras=["git"], version = ">=0.5.1"}
+# aiofiles is needed for working with files asynchronously
+aiofiles = ">=25.1.0"
 
 [dev-packages]
-setuptools=">=60.9.3"
+# setuptools > 81 has a breaking change that causes pipenv-setup to fail, so we need to pin it to a version < 80.9.0
+setuptools=">=60.9.3, <=80.9.0"
+packaging= ">=26.0"
 wheel = ">=0.43.0"
 twine=">=4.0.2"
 pre-commit=">=3.6.1"

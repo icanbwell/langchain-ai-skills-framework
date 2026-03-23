@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
-from langchain_ai_skills_framework.loaders.skill_loader import SkillNotFoundError
+from langchain_core.tools import StructuredTool
+
+from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
+    SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
 
 
-class _StubSkillLoader:
+class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
         self._details = dict(details_by_name)
 
-    def list_skill_summaries(self) -> tuple[SkillSummary, ...]:
-        return tuple(detail.summary for detail in self._details.values())
+    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+        del allowed_skills
+        return [detail.summary for detail in self._details.values()]
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         try:
@@ -23,6 +31,12 @@ class _StubSkillLoader:
 
     def refresh(self) -> None:
         return None
+
+    async def get_instructions(self) -> str:  # pragma: no cover
+        return ""
+
+    def get_tools(self) -> list[StructuredTool]:
+        return []
 
 
 def _make_skill(name: str, *, content: str = "Skill content") -> SkillDetails:
@@ -42,19 +56,26 @@ def test_load_skill_tool_returns_availability_for_empty_name() -> None:
 
     message = tool._load_skill("")
 
-    assert "No skill name provided." in message
-    assert "alpha" in message
+    assert message == "No skill name provided. Available skills: alpha"
 
 
 def test_load_skill_tool_returns_availability_when_missing() -> None:
-    details = _make_skill("alpha")
-    loader = _StubSkillLoader({"alpha": details})
+    details_alpha = _make_skill("alpha")
+    details_beta = _make_skill("beta")
+    loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message = tool._load_skill("beta")
+    message = tool._load_skill("gamma")
 
-    assert "Skill 'beta' not found." in message
-    assert "alpha" in message
+    assert message == "Skill 'gamma' not found. Available skills: alpha, beta"
+
+
+def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
+    tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
+
+    message = tool._load_skill("alpha")
+
+    assert message == "Skill 'alpha' not found. Available skills: None configured"
 
 
 def test_load_skill_tool_returns_skill_content() -> None:

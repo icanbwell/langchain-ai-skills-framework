@@ -292,12 +292,13 @@ def test_skill_loader_rejects_github_uri_without_owner() -> None:
         skills_directory=github_uri,
         github_token="token-123",
     )
-    loader = SkillDirectoryLoader(
-        environment_variables=environment_variables,
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries(allowed_skills=set())
+    with pytest.raises(
+        SkillValidationError,
+        match="must include owner and repo",
+    ):
+        SkillDirectoryLoader(
+            environment_variables=environment_variables,
+        )
 
 
 def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
@@ -307,12 +308,13 @@ def test_skill_loader_rejects_unsupported_github_uri_query_parameter() -> None:
         skills_directory=github_uri,
         github_token="token-123",
     )
-    loader = SkillDirectoryLoader(
-        environment_variables=environment_variables,
-    )
-
-    with pytest.raises(SkillValidationError):
-        loader.list_skill_summaries(allowed_skills=set())
+    with pytest.raises(
+        SkillValidationError,
+        match="supports only '\\?ref=' query parameter; got: branch",
+    ):
+        SkillDirectoryLoader(
+            environment_variables=environment_variables,
+        )
 
 
 def test_skill_loader_skips_excluded_skills(

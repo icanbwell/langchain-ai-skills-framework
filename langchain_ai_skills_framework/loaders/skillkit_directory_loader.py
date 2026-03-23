@@ -46,6 +46,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         self,
         *,
         environment_variables: SkillLoaderEnvironmentVariables,
+        github_skill_downloader: GithubSkillDownloader,
     ) -> None:
         self._identifier: UUID = uuid4()
         if environment_variables is None:
@@ -70,7 +71,14 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
         self._skills_directory = self._normalize_skills_directory(configured_directory)
         self._skills_root_path = self._initial_skills_root_path(self._skills_directory)
-        self._github_skill_downloader = GithubSkillDownloader()
+        self._github_skill_downloader = github_skill_downloader
+        if github_skill_downloader is None:
+            raise SkillValidationError("github_skill_downloader is not configured")
+        if not isinstance(github_skill_downloader, GithubSkillDownloader):
+            raise TypeError(
+                "github_skill_downloader must be an instance of GithubSkillDownloader:"
+                f" {type(github_skill_downloader)} "
+            )
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None

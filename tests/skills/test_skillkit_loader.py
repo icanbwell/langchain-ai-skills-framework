@@ -10,6 +10,9 @@ import yaml
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
+from langchain_ai_skills_framework.loaders.github_skill_downloader import (
+    GithubSkillDownloader,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
@@ -174,7 +177,8 @@ def _build_loader(
             skills_directory=str(skills_root),
             excluded_skills=excluded_skills,
             excluded_skill_groups=excluded_skill_groups,
-        )
+        ),
+        github_skill_downloader=GithubSkillDownloader(),
     )
     return loader, manager
 

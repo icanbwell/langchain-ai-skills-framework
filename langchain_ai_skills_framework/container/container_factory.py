@@ -1,3 +1,6 @@
+from langchain_ai_skills_framework.loaders.github_skill_downloader import (
+    GithubSkillDownloader,
+)
 from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
 )
@@ -26,10 +29,13 @@ class LangchainAISkillsFrameworkContainerFactory:
             ),
         )
 
+        container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
+
         container.singleton(
             SkillkitDirectoryLoader,
             lambda c: SkillkitDirectoryLoader(
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
+                github_skill_downloader=c.resolve(GithubSkillDownloader),
             ),
         )
 

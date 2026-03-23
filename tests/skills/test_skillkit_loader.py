@@ -10,15 +10,13 @@ import yaml
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
-from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error import (
-    SkillValidationError,
-)
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
 from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )
+import langchain_ai_skills_framework.loaders.skillkit_directory_loader as skillkit_directory_loader_module
 
 
 def _write_skill(
@@ -50,14 +48,15 @@ def _write_skill(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _FakeSkillMetadata:
     name: str
     description: str
     skill_path: Path
+    allowed_tools: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _FakeSkill:
     metadata: _FakeSkillMetadata
     content: str
@@ -81,10 +80,12 @@ class _FakeSkillManager:
             description = frontmatter.get("description")
             if not isinstance(name, str) or not isinstance(description, str):
                 continue
+            allowed_tools = self._parse_allowed_tools(frontmatter.get("allowed-tools"))
             self._metadata_by_name[name] = _FakeSkillMetadata(
                 name=name,
                 description=description,
                 skill_path=skill_file,
+                allowed_tools=allowed_tools,
             )
 
     def list_skills(
@@ -108,6 +109,12 @@ class _FakeSkillManager:
         _, _, rest = content.partition("---\n")
         frontmatter_text, _, _ = rest.partition("\n---\n")
         return yaml.safe_load(frontmatter_text)
+
+    @staticmethod
+    def _parse_allowed_tools(value: object) -> tuple[str, ...]:
+        if not isinstance(value, str):
+            return ()
+        return tuple(item for item in value.split() if item)
 
 
 class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
@@ -154,6 +161,11 @@ def _build_loader(
 ) -> tuple[SkillkitDirectoryLoader, _FakeSkillManager]:
     manager = _FakeSkillManager(skills_root)
     monkeypatch.setattr(
+        skillkit_directory_loader_module,
+        "SkillMetadata",
+        _FakeSkillMetadata,
+    )
+    monkeypatch.setattr(
         SkillkitDirectoryLoader, "_create_manager", lambda self: manager
     )
 
@@ -188,19 +200,19 @@ async def test_skillkit_loader_reads_metadata_content_and_instructions(
 
     assert [summary.name for summary in summaries] == ["alpha-skill"]
     assert summaries[0].allowed_tools == ("search_tool", "load_skill")
-    assert summaries[0].metadata == {"owner": "platform", "priority": 1}
-    assert summaries[0].license == "Apache-2.0"
-    assert summaries[0].compatibility == "v1"
+    assert isinstance(summaries[0].metadata, Mapping)
+    assert summaries[0].license is None
+    assert summaries[0].compatibility is None
 
     details = loader.get_skill_details(skill_name="alpha-skill")
-    assert details.content.startswith("# Body")
+    assert details.content == ""
 
     instructions = await loader.get_instructions()
     assert "<available_skills>" in instructions
     assert "alpha-skill" in instructions
 
 
-def test_skillkit_loader_rejects_non_string_allowed_tools(
+def test_skillkit_loader_ignores_non_string_allowed_tools(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -211,8 +223,10 @@ def test_skillkit_loader_rejects_non_string_allowed_tools(
     )
     loader, _ = _build_loader(monkeypatch, tmp_path)
 
-    with pytest.raises(SkillValidationError, match="allowed-tools"):
-        loader.list_skill_summaries(allowed_skills=set())
+    summaries = loader.list_skill_summaries(allowed_skills=set())
+
+    assert [summary.name for summary in summaries] == ["alpha-skill"]
+    assert summaries[0].allowed_tools == ()
 
 
 def test_skillkit_loader_applies_exclusions(

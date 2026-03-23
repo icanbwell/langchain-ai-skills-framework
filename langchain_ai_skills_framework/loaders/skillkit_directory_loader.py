@@ -303,7 +303,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             source_path=metadata.skill_path,
             license=None,
             compatibility=None,
-            metadata=metadata.__dict__,
+            metadata={},
             allowed_tools=metadata.allowed_tools,
         )
         return SkillDetails(

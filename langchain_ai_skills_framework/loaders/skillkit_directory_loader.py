@@ -9,8 +9,12 @@ from typing import Sequence, Any
 from uuid import UUID, uuid4
 
 from langchain_core.tools import StructuredTool
-from skillkit import SkillManager, SkillMetadata, ScriptExecutionResult
+from skillkit import SkillManager, SkillMetadata, ScriptNotFoundError
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -31,11 +35,11 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
     ReadSkillResourceTool,
 )
 from langchain_ai_skills_framework.tools.run_skill_script_tool import RunSkillScriptTool
-from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -237,15 +241,15 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                 f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"
             ) from exc
 
-    def run_skill_script(
+    async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str:
+    ) -> str | None:
         """Run a specific script from a skill and return its output."""
 
         # remove ".py" extension since th Skillkit wants just the name
         cleaned_script_name: str = script_name.replace(".py", "")
 
-        result: ScriptExecutionResult = self._manager.execute_skill_script(
+        result: MyScriptExecutionResult = await self.execute_skill_script(
             skill_name=skill_name,
             script_name=cleaned_script_name,
             arguments=arguments or {},
@@ -254,6 +258,48 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             return result.stdout  # Script output
         else:
             return f"Error: {result.stderr} Exit code: {result.exit_code}"
+
+    # Implement our own so we can run via uv
+    async def execute_skill_script(
+        self,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any],
+        timeout: int | None = None,
+    ) -> MyScriptExecutionResult:
+        # Look up skill
+        skill = self._manager.load_skill(skill_name)
+        # Find script in skill's detected scripts (triggers lazy detection)
+        script_metadata = None
+        for script in skill.scripts:
+            if script.name == script_name:
+                script_metadata = script
+                break
+
+        if script_metadata is None:
+            raise ScriptNotFoundError(
+                f"Script '{script_name}' not found in skill '{skill_name}'. "
+                f"Available scripts: {', '.join(s.name for s in skill.scripts) or 'none'}"
+            )
+
+        effective_timeout = timeout if timeout is not None else 30
+
+        # Normalize argument keys to lowercase for case-insensitive matching
+        # This ensures scripts receive predictable parameter names regardless
+        # of how framework integrations or LLMs capitalize them
+        normalized_arguments = {k.lower(): v for k, v in arguments.items()}
+
+        # Create executor and execute script
+        executor = MyScriptExecutor()
+
+        return await executor.execute(
+            script_name=script_name,
+            script_path=script_metadata.path,
+            arguments=normalized_arguments,
+            skill_base_dir=skill.base_directory,
+            skill_metadata=skill.metadata,
+            timeout=effective_timeout,
+        )
 
     # Snapshot lifecycle
 

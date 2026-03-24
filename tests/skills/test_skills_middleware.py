@@ -44,9 +44,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         raise NotImplementedError()
 
-    def run_skill_script(
+    async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str:
+    ) -> str | None:
         raise NotImplementedError()
 
 

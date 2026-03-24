@@ -77,13 +77,8 @@ class RunSkillScriptTool(StructuredTool):
         config: RunnableConfig,
         run_manager: CallbackManagerForToolRun | None = None,
         **kwargs: Any,
-    ) -> str:
-        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
-        script_name = self._resolve_script_name(args=args, kwargs=kwargs)
-        arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        return self._run_skill_script(
-            skill_name=skill_name, script_name=script_name, arguments=arguments
-        )
+    ) -> str | None:
+        raise NotImplementedError("Use the async version")
 
     async def _arun(
         self,
@@ -91,11 +86,11 @@ class RunSkillScriptTool(StructuredTool):
         config: RunnableConfig,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> str | None:
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        return self._run_skill_script(
+        return await self._run_skill_script(
             skill_name=skill_name, script_name=script_name, arguments=arguments
         )
 
@@ -116,15 +111,15 @@ class RunSkillScriptTool(StructuredTool):
         arguments = kwargs.get("arguments", args[0] if args else None)
         return arguments
 
-    def _run_skill_script(
+    async def _run_skill_script(
         self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str:
+    ) -> str | None:
         normalized_name = skill_name.strip()
         if not normalized_name:
             return self._format_availability_message(self.skill_loader, normalized_name)
 
         try:
-            script_result = self.skill_loader.run_skill_script(
+            script_result: str | None = await self.skill_loader.run_skill_script(
                 skill_name=normalized_name, script_name=script_name, arguments=arguments
             )
             return script_result

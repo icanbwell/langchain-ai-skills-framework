@@ -46,7 +46,7 @@ class MyScriptExecutor:
         # Start timing
         start_time = time.perf_counter()
 
-        cmd = []
+        cmd: list[str] = [script_path.as_posix()]
 
         if arguments:
             for key, value in arguments.items():
@@ -62,7 +62,7 @@ class MyScriptExecutor:
                     cmd.append(str(value))
 
         stdin_data: bytes | None = None
-        cwd = str(script_path.parent)
+        cwd = str(skill_base_dir.absolute())
 
         try:
             result = None

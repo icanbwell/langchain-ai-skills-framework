@@ -51,7 +51,7 @@ class RunSkillScriptInput(BaseModel):
 class RunSkillScriptTool(StructuredTool):
     """LangChain tool that loads full skill definitions for the agent."""
 
-    name: str = "read_skill_resource"
+    name: str = "run_skill_script"
     description: str = """Execute a skill script that performs actions or computations.
 
             Scripts are executable programs provided by skills that can perform actions

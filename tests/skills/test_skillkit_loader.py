@@ -214,6 +214,11 @@ async def test_skillkit_loader_reads_metadata_content_and_instructions(
     instructions = await loader.get_instructions()
     assert "<available_skills>" in instructions
     assert "alpha-skill" in instructions
+    assert (
+        "Use `read_skill_resource` to read files referenced by the skill"
+        in instructions
+    )
+    assert "Use `run_skill_script` to run scripts provided by the skill" in instructions
 
 
 def test_skillkit_loader_ignores_non_string_allowed_tools(

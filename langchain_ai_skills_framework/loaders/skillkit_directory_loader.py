@@ -58,7 +58,8 @@ Each skill provides specialized instructions, resources, and scripts for specifi
 When a task falls within a skill's domain:
 1. Use `load_skill` to read the complete skill instructions
 2. Follow the skill's guidance to complete the task
-3. Use any additional skill resources and scripts as needed
+3. Use `read_skill_resource` to read files referenced by the skill
+4. Use `run_skill_script` to run scripts provided by the skill
 
 Use progressive disclosure: load only what you need, when you need it."""
 

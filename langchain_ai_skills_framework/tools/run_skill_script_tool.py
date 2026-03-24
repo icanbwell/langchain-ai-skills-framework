@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Type
 
 import anyio
@@ -75,6 +77,18 @@ class RunSkillScriptTool(StructuredTool):
     args_schema: Type[BaseModel] = RunSkillScriptInput
     skill_loader: SkillLoaderProtocol
 
+    @staticmethod
+    def _run_coroutine_from_sync_context(
+        coroutine_factory: Callable[[], Awaitable[str | None]],
+    ) -> str | None:
+        try:
+            return anyio.run(coroutine_factory)
+        except RuntimeError as exc:
+            if "Already running" not in str(exc):
+                raise
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(lambda: anyio.run(coroutine_factory)).result()
+
     def _run(
         self,
         *args: Any,
@@ -85,7 +99,7 @@ class RunSkillScriptTool(StructuredTool):
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        return anyio.run(
+        return self._run_coroutine_from_sync_context(
             lambda: self._run_skill_script(
                 skill_name=skill_name, script_name=script_name, arguments=arguments
             )

@@ -13,3 +13,5 @@ metadata:
 See [the reference guide](references/REFERENCE.md) for details.
 
 Run the extraction script: extract.py
+
+Run the word counting script: count_the.py

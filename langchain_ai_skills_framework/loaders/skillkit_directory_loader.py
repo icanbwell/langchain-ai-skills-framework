@@ -136,7 +136,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return lightweight skill summaries from the current snapshot."""
 
-        del allowed_skills
         snapshot = self._get_snapshot()
         logger.debug(
             "SkillkitDirectoryLoader %s returning %d summaries",
@@ -258,6 +257,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         metadata: SkillMetadata | str
         for metadata in self._manager.list_skills():
             if isinstance(metadata, SkillMetadata):
+                # skill: Skill = self._manager.load_skill(name=metadata.name)
                 definition = self._map_skill(metadata=metadata, content="")
                 skill_group = self._resolve_skill_group(
                     str(definition.source_path.parent)

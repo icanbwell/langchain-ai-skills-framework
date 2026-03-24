@@ -1,3 +1,5 @@
+import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -9,8 +11,136 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
 
+logger = logging.getLogger(__name__)
+
+
+class PathSecurityError(Exception):
+    """Raised when path validation fails"""
+
+    pass
+
+
+class ScriptPermissionError(Exception):
+    """Raised when script has dangerous permissions"""
+
+    pass
+
 
 class MyScriptExecutor:
+    def __init__(
+        self,
+        allowed_base_dirs: list[Path] | None = None,
+        max_timeout: int = 300,  # 5 minutes max
+        max_output_size: int = 10 * 1024 * 1024,  # 10MB max output
+    ):
+        """
+        Initialize executor with security constraints.
+
+        Args:
+            allowed_base_dirs: List of directories where scripts are allowed to run
+            max_timeout: Maximum allowed timeout in seconds
+            max_output_size: Maximum allowed output size in bytes
+        """
+        self.allowed_base_dirs = allowed_base_dirs or []
+        self.max_timeout = max_timeout
+        self.max_output_size = max_output_size
+
+    def _validate_path(self, script_path: Path, skill_base_dir: Path) -> None:
+        """
+        Validate that the script path is safe.
+
+        Raises:
+            PathSecurityError: If path validation fails
+        """
+        # Resolve to absolute path to prevent directory traversal
+        try:
+            resolved_path = script_path.resolve(strict=True)
+        except (OSError, RuntimeError) as e:
+            raise PathSecurityError(f"Cannot resolve script path: {e}")
+
+        # Check if script exists
+        if not resolved_path.exists():
+            raise PathSecurityError(f"Script does not exist: {resolved_path}")
+
+        # Check if it's a file (not a directory or symlink to something dangerous)
+        if not resolved_path.is_file():
+            raise PathSecurityError(f"Script path is not a file: {resolved_path}")
+
+        # Prevent directory traversal - ensure script is within skill_base_dir
+        try:
+            resolved_path.relative_to(skill_base_dir.resolve())
+        except ValueError:
+            raise PathSecurityError(
+                f"Script path {resolved_path} is outside skill directory {skill_base_dir}"
+            )
+
+        # Check if allowed_base_dirs is set and validate
+        if self.allowed_base_dirs:
+            is_in_allowed_dir = any(
+                str(resolved_path).startswith(str(base_dir.resolve()))
+                for base_dir in self.allowed_base_dirs
+            )
+            if not is_in_allowed_dir:
+                raise PathSecurityError(
+                    f"Script path {resolved_path} is not in allowed directories"
+                )
+
+        # Check file permissions (Unix-like systems)
+        try:
+            stat_info = resolved_path.stat()
+            # Check if file is world-writable (dangerous)
+            if stat_info.st_mode & 0o002:
+                raise ScriptPermissionError(
+                    f"Script {resolved_path} is world-writable (insecure)"
+                )
+        except OSError:
+            pass  # Permission check not available on this system
+
+    def _validate_arguments(self, arguments: dict[str, Any]) -> None:
+        """
+        Validate arguments for security issues.
+
+        Raises:
+            ValueError: If arguments contain dangerous values
+        """
+        if not arguments:
+            return
+
+        # Check argument size to prevent DoS
+        import sys
+
+        arg_size = sys.getsizeof(str(arguments))
+        MAX_ARG_SIZE = 1024 * 1024  # 1MB
+        if arg_size > MAX_ARG_SIZE:
+            raise ValueError(
+                f"Arguments too large: {arg_size} bytes (max {MAX_ARG_SIZE})"
+            )
+
+        # Check for command injection attempts in string values
+        dangerous_chars = [";", "|", "&", "$", "`", "\n", "\r"]
+        for key, value in arguments.items():
+            if isinstance(value, str):
+                if any(char in value for char in dangerous_chars):
+                    raise ValueError(
+                        f"Argument '{key}' contains potentially dangerous characters"
+                    )
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str) and any(
+                        char in item for char in dangerous_chars
+                    ):
+                        raise ValueError(
+                            f"Argument '{key}' list contains potentially dangerous characters"
+                        )
+
+    def _check_output_size(self, output: bytes) -> None:
+        """Prevent memory exhaustion from large outputs"""
+        if len(output) > self.max_output_size:
+            raise Exception(
+                f"Script output too large: {len(output)} bytes "
+                f"(max {self.max_output_size})"
+            )
+
     # noinspection PyMethodMayBeStatic
     async def execute(
         self,
@@ -28,11 +158,11 @@ class MyScriptExecutor:
         Args:
             script_name (str): Name of the script
             script_path: Path to the script (relative or absolute)
-            arguments: Arguments to pass as JSON via stdin
+            arguments: Arguments to pass as command-line args
             skill_base_dir: Base directory of the skill
             skill_metadata: SkillMetadata instance
             timeout: Timeout in seconds
-            use_uv: Use UV
+            use_uv: Use UV for isolated execution
 
         Returns:
             ScriptExecutionResult with execution details
@@ -40,24 +170,52 @@ class MyScriptExecutor:
         Raises:
             PathSecurityError: If path validation fails
             ScriptPermissionError: If script has dangerous permissions
-            InterpreterNotFoundError: If interpreter not found
-            ArgumentSerializationError: If arguments cannot be serialized
-            ArgumentSizeError: If arguments too large
+            ValueError: If arguments are invalid
+            Exception: If script execution fails
 
         """
+        # Security validations
+        self._validate_path(script_path, skill_base_dir)
+        self._validate_arguments(arguments)
+
+        # Enforce maximum timeout
+        timeout = min(timeout, self.max_timeout)
+
+        # Log execution attempt
+        logger.info(
+            f"Script execution requested: "
+            f"script={script_name}, "
+            f"path={script_path}, "
+            f"timeout={timeout}s"
+        )
+
         # Start timing
         start_time = time.perf_counter()
 
         cmd: list[str]
 
-        # Build command
+        # Build command - use absolute path
+        script_abs_path = script_path.resolve()
+
         if use_uv:
-            cmd = ["uv", "run", "-v", script_path.as_posix()]
+            # Add isolation flags for maximum security
+            cmd = [
+                "uv",
+                "run",
+                "--isolated",  # Don't discover project config
+                "--no-project",  # Don't use project environment
+                "-v",  # Verbose to see dependency installation
+                str(script_abs_path),
+            ]
         else:
-            cmd = [script_path.as_posix()]
+            cmd = [str(script_abs_path)]
 
         if arguments:
             for key, value in arguments.items():
+                # Sanitize key names
+                if not key.replace("_", "").replace("-", "").isalnum():
+                    raise ValueError(f"Invalid argument key: {key}")
+
                 if isinstance(value, bool):
                     if value:
                         cmd.append(f"--{key}")
@@ -70,7 +228,26 @@ class MyScriptExecutor:
                     cmd.append(str(value))
 
         stdin_data: bytes | None = None
-        cwd = str(skill_base_dir.absolute())
+        cwd = str(skill_base_dir.resolve())
+
+        # Create maximally restricted environment
+        env = {
+            # Minimal required environment
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "USER": os.environ.get("USER", ""),
+            "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+            # UV isolation settings
+            "UV_SYSTEM_PYTHON": "0",  # Don't use system packages
+            "UV_NO_SYNC": "1",  # Don't sync with project
+            "UV_PROJECT_ENVIRONMENT": "",  # No project environment
+            # Python isolation settings
+            "PYTHONNOUSERSITE": "1",  # Ignore user site-packages
+            "PYTHONPATH": "",  # Clear PYTHONPATH
+            # Skill-specific safe env vars
+            "SKILL_NAME": script_name,
+            "SKILL_BASE_DIR": cwd,
+        }
 
         try:
             result = None
@@ -80,29 +257,72 @@ class MyScriptExecutor:
                     check=False,
                     cwd=cwd,
                     input=stdin_data,
+                    env=env,  # Use restricted environment
                 )
 
             if scope.cancelled_caught or result is None:
+                logger.error(
+                    f"Script '{script_name}' timed out after {timeout} seconds"
+                )
                 raise Exception(
                     f"Script '{script_name}' timed out after {timeout} seconds"
                 )
+
+            # Check output size before decoding
+            self._check_output_size(result.stdout)
+            if result.stderr:
+                self._check_output_size(result.stderr)
 
             output: str = result.stdout.decode("utf-8", errors="replace")
             stderr = None
             if result.stderr:
                 stderr = result.stderr.decode("utf-8", errors="replace")
-                # output += f'\n\nStderr:\n{stderr}'
+
+                # Log dependency installation info if present
+                if use_uv and stderr:
+                    # uv outputs dependency info to stderr
+                    if (
+                        "Resolved" in stderr
+                        or "Installed" in stderr
+                        or "dependencies" in stderr.lower()
+                    ):
+                        logger.info(
+                            f"[UV] Dependency installation info for {script_name}:"
+                        )
+                        logger.debug(stderr)
 
             if result.returncode != 0:
                 output += f"\n\nScript exited with code {result.returncode}"
 
             stdout = output.strip()
 
+        except PermissionError as e:
+            logger.error(
+                f"Permission denied executing script '{script_name}' at {script_path}: {e}"
+            )
+            raise Exception(
+                f"Permission denied executing script '{script_name}' at {script_path}. "
+                f"Ensure the script and uv binary have execute permissions: {e}"
+            ) from e
+        except FileNotFoundError as e:
+            logger.error(f"Command not found for script '{script_name}': {e}")
+            raise Exception(
+                f"Command not found. Ensure 'uv' is installed and in PATH: {e}"
+            ) from e
         except OSError as e:
+            logger.error(f"Failed to execute script '{script_name}': {e}")
             raise Exception(f"Failed to execute script '{script_name}': {e}") from e
 
         # Calculate execution time
         execution_time_ms = (time.perf_counter() - start_time) * 1000
+
+        # Log execution completion
+        logger.info(
+            f"Script execution completed: "
+            f"script={script_name}, "
+            f"exit_code={result.returncode}, "
+            f"duration_ms={execution_time_ms:.2f}"
+        )
 
         # Return result
         return MyScriptExecutionResult(

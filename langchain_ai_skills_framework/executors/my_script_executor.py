@@ -52,7 +52,7 @@ class MyScriptExecutor:
 
         # Build command
         if use_uv:
-            cmd = ["uv", "run", script_path.as_posix()]
+            cmd = ["uv", "run", "-v", script_path.as_posix()]
         else:
             cmd = [script_path.as_posix()]
 

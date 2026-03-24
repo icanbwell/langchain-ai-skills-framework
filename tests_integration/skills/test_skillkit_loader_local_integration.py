@@ -68,6 +68,20 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
             print(tool)
         assert len(tools) > 0
 
+        # test reference
+        resource: str = loader.read_skill_resource(
+            skill_name="skill-with-references", resource_name="REFERENCE.md"
+        )
+        print(f"{resource}")
+        assert "This is a reference" in resource
+
+        # test scripts
+        script_result: str = loader.read_skill_resource(
+            skill_name="skill-with-references", resource_name="extract.py"
+        )
+        print(f"{script_result}")
+        assert "<available_skills>" in script_result
+
     except Exception:
         traceback.print_exc()
         raise

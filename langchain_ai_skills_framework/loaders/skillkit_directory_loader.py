@@ -232,7 +232,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             resource_name
         )
         if not resource_path.is_file():
-            raise SkillNotFoundError(
+            raise SkillValidationError(
                 f"Resource '{resource_name}' not found for skill '{skill_name}'"
             )
         try:

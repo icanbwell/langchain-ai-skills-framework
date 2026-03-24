@@ -97,6 +97,23 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         assert script_result.stdout is not None
         assert "Hello dependency-check" in script_result.stdout
 
+        # test scripts
+        script_result = await loader.run_skill_script(
+            skill_name="skill-with-references",
+            script_name="count_the.py",
+            arguments=None,
+        )
+        print("========= Script count_the.py STDOUT ===========")
+        print(f"{script_result.stdout}")
+        print("========= Script count_the.py STDERR ===========")
+        print(f"{script_result.stderr}")
+        print("===========================================")
+        assert script_result.stdout is not None
+        assert (
+            '{"the_count": 2, "text": "The quick brown fox jumps over the lazy dog."}'
+            in script_result.stdout
+        )
+
     except Exception:
         traceback.print_exc()
         raise

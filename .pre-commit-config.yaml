@@ -1,4 +1,4 @@
-exclude: (^.idea/|^docsrc|^docs)
+exclude: (^.idea/|^docsrc|^docs|^tests_integration/skills/skills/.*\.py$)
 
 repos:
   # Pre-commit hooks for basic checks
@@ -62,7 +62,6 @@ repos:
           --python-version=3.12,
           --show-error-codes
         ]
-        exclude: ^tests_integration/skills/skills/.*\.py$
 
       # Bandit for security scanning
       - id: bandit

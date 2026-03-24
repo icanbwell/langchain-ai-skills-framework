@@ -102,7 +102,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         elif isinstance(skills_directory, str):
             configured_directory = skills_directory
         else:
-            raise SkillValidationError("skills_directory must be a string or Path")
+            raise SkillValidationError(
+                f"skills_directory must be a string or Path: {type(skills_directory)}"
+            )
 
         if not configured_directory.strip():
             raise SkillValidationError("skills_directory is not configured")

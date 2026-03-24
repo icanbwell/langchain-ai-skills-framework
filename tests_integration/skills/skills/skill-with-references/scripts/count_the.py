@@ -8,7 +8,6 @@ import sys
 from collections.abc import Sequence
 from typing import Any
 
-DEFAULT_TEXT = "The quick brown fox jumps over the lazy dog."
 HELP_TEXT = """Usage: count_the.py [OPTIONS]
 
 Count instances of the word \"the\" in input text and print a JSON result.
@@ -63,7 +62,11 @@ def main() -> int:
             return 0
 
         args = _read_args()
-        text = str(args.get("text", DEFAULT_TEXT))
+        text = str(args.get("text", ""))
+
+        if not text:
+            # return error that no text was sent
+            raise ValueError("No text was sent to count_the.py")
 
         result = {
             "the_count": _count_the_instances(text),

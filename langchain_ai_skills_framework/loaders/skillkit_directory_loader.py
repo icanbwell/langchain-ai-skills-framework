@@ -223,7 +223,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         """Read a specific resource from a skill, such as a file or script."""
         details = self.get_skill_details(skill_name=skill_name)
-        resource_path = details.source_path.parent.joinpath(resource_name)
+        resource_path = details.source_path.parent.joinpath("references").joinpath(
+            resource_name
+        )
         if not resource_path.is_file():
             raise SkillNotFoundError(
                 f"Resource '{resource_name}' not found for skill '{skill_name}'"

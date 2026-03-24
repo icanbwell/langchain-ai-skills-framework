@@ -76,8 +76,8 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         assert "This is a reference" in resource
 
         # test scripts
-        script_result: str = loader.read_skill_resource(
-            skill_name="skill-with-references", resource_name="extract.py"
+        script_result: str = loader.run_skill_script(
+            skill_name="skill-with-references", script_name="extract.py", arguments=None
         )
         print(f"{script_result}")
         assert "<available_skills>" in script_result

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Type
 
+import anyio
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
@@ -81,7 +82,14 @@ class RunSkillScriptTool(StructuredTool):
         run_manager: CallbackManagerForToolRun | None = None,
         **kwargs: Any,
     ) -> str | None:
-        raise NotImplementedError("Use the async version")
+        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
+        script_name = self._resolve_script_name(args=args, kwargs=kwargs)
+        arguments = self._resolve_arguments(args=args, kwargs=kwargs)
+        return anyio.run(
+            lambda: self._run_skill_script(
+                skill_name=skill_name, script_name=script_name, arguments=arguments
+            )
+        )
 
     async def _arun(
         self,

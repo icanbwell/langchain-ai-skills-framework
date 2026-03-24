@@ -5,6 +5,9 @@ from typing import Mapping, Sequence, Any
 
 from langchain_core.tools import StructuredTool
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -43,7 +46,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str | None:
+    ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
 

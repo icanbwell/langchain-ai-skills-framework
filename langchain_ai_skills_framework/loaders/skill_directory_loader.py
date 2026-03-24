@@ -17,6 +17,9 @@ from pydantic_ai_skills.exceptions import (
 )
 from pydantic_ai_skills.types import Skill
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -152,7 +155,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str:
+    ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
     # Snapshot lifecycle

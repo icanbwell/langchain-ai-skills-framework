@@ -2,6 +2,9 @@ from typing import Protocol, Sequence, runtime_checkable, Any
 
 from langchain_core.tools import StructuredTool
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 
 
@@ -23,4 +26,4 @@ class SkillLoaderProtocol(Protocol):
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str | None: ...
+    ) -> MyScriptExecutionResult: ...

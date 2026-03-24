@@ -243,7 +243,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str | None:
+    ) -> MyScriptExecutionResult:
         """Run a specific script from a skill and return its output."""
 
         # remove ".py" extension since th Skillkit wants just the name
@@ -254,10 +254,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             script_name=cleaned_script_name,
             arguments=arguments or {},
         )
-        if result.success:
-            return result.stdout  # Script output
-        else:
-            return f"Error: {result.stderr} Exit code: {result.exit_code}"
+        return result
 
     # Implement our own so we can run via uv
     async def execute_skill_script(

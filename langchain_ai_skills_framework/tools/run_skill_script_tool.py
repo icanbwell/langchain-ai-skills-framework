@@ -10,6 +10,9 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -119,10 +122,13 @@ class RunSkillScriptTool(StructuredTool):
             return self._format_availability_message(self.skill_loader, normalized_name)
 
         try:
-            script_result: str | None = await self.skill_loader.run_skill_script(
+            result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
                 skill_name=normalized_name, script_name=script_name, arguments=arguments
             )
-            return script_result
+            if result.success:
+                return result.stdout  # Script output
+            else:
+                return f"Error: {result.stderr} Exit code: {result.exit_code}"
         except SkillNotFoundError:
             return self._format_availability_message(self.skill_loader, normalized_name)
 

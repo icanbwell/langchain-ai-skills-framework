@@ -9,6 +9,9 @@ from langchain_core.tools import StructuredTool
 from langchain_ai_skills_framework.environment.environment_variables import (
     LangchainAISkillsFrameworkEnvironmentVariables,
 )
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.loaders.github_skill_downloader import (
     GithubSkillDownloader,
 )
@@ -83,14 +86,16 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         assert "This is a reference" in resource
 
         # test scripts
-        script_result: str | None = await loader.run_skill_script(
+        script_result: MyScriptExecutionResult = await loader.run_skill_script(
             skill_name="skill-with-references", script_name="extract.py", arguments=None
         )
-        print("========= Script EXTRACT.md ===========")
-        print(f"{script_result}")
+        print("========= Script EXTRACT.md STDOUT ===========")
+        print(f"{script_result.stdout}")
+        print("========= Script EXTRACT.md STDERR ===========")
+        print(f"{script_result.stderr}")
         print("===========================================")
-        assert script_result is not None
-        assert "Hello" in script_result
+        assert script_result.stdout is not None
+        assert "Hello" in script_result.stdout
 
     except Exception:
         traceback.print_exc()

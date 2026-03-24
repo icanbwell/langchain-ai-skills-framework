@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -137,6 +138,8 @@ class MyScriptExecutor:
         # Check for command injection attempts in string values
         dangerous_chars = [";", "|", "&", "$", "`", "\n", "\r"]
         for key, value in arguments.items():
+            if not key.replace("_", "").replace("-", "").isalnum():
+                raise ValueError(f"Invalid argument key: {key}")
             if isinstance(value, str):
                 if any(char in value for char in dangerous_chars):
                     raise ValueError(
@@ -176,7 +179,7 @@ class MyScriptExecutor:
         Args:
             script_name (str): Name of the script
             script_path: Path to the script (relative or absolute)
-            arguments: Arguments to pass as command-line args
+            arguments: Arguments to pass as JSON on stdin
             skill_base_dir: Base directory of the skill
             skill_metadata: SkillMetadata instance
             timeout: Timeout in seconds
@@ -228,24 +231,8 @@ class MyScriptExecutor:
         else:
             cmd = [str(script_abs_path)]
 
-        if arguments:
-            for key, value in arguments.items():
-                # Sanitize key names
-                if not key.replace("_", "").replace("-", "").isalnum():
-                    raise ValueError(f"Invalid argument key: {key}")
-
-                if isinstance(value, bool):
-                    if value:
-                        cmd.append(f"--{key}")
-                elif isinstance(value, list):
-                    for item in value:
-                        cmd.append(f"--{key}")
-                        cmd.append(str(item))
-                elif value is not None:
-                    cmd.append(f"--{key}")
-                    cmd.append(str(value))
-
-        stdin_data: bytes | None = None
+        stdin_payload = arguments if arguments else {}
+        stdin_data: bytes = json.dumps(stdin_payload).encode("utf-8")
         cwd = str(skill_base_dir.resolve())
 
         # Create maximally restricted environment

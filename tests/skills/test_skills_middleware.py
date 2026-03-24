@@ -41,6 +41,14 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def get_tools(self) -> list[StructuredTool]:
         return []
 
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        raise NotImplementedError()
+
+    def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> str:
+        raise NotImplementedError()
+
 
 class _DummyModelRequest:
     def __init__(

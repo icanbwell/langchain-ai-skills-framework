@@ -84,7 +84,9 @@ class ReadSkillResourceTool(StructuredTool):
 
     @staticmethod
     def _resolve_resource_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_resource_name = kwargs.get("resource_name", args[0] if args else "")
+        raw_resource_name = kwargs.get(
+            "resource_name", args[1] if len(args) > 1 else ""
+        )
         return raw_resource_name if isinstance(raw_resource_name, str) else ""
 
     def _load_skill_resource(self, *, skill_name: str, resource_name: str) -> str:

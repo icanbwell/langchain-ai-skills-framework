@@ -104,14 +104,14 @@ class RunSkillScriptTool(StructuredTool):
 
     @staticmethod
     def _resolve_script_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_resource_name = kwargs.get("script_name", args[0] if args else "")
-        return raw_resource_name if isinstance(raw_resource_name, str) else ""
+        raw_script_name = kwargs.get("script_name", args[1] if len(args) > 1 else "")
+        return raw_script_name if isinstance(raw_script_name, str) else ""
 
     @staticmethod
     def _resolve_arguments(
         *, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> dict[str, Any] | None:
-        arguments = kwargs.get("arguments", args[0] if args else None)
+        arguments = kwargs.get("arguments", args[2] if len(args) > 2 else None)
         return arguments
 
     async def _run_skill_script(

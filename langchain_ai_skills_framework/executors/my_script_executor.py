@@ -32,7 +32,7 @@ class MyScriptExecutor:
         allowed_base_dirs: list[Path] | None = None,
         max_timeout: int = 300,  # 5 minutes max
         max_output_size: int = 10 * 1024 * 1024,  # 10MB max output
-    ):
+    ) -> None:
         """
         Initialize executor with security constraints.
 

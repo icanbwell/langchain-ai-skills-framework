@@ -228,15 +228,30 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         """Read a specific resource from a skill, such as a file or script."""
         details = self.get_skill_details(skill_name=skill_name)
-        resource_path = details.source_path.parent.joinpath("references").joinpath(
-            resource_name
-        )
-        if not resource_path.is_file():
+        references_dir: Path = details.source_path.parent.joinpath("references")
+        candidate_path: Path = references_dir.joinpath(resource_name)
+        try:
+            resolved_references: Path = references_dir.resolve()
+            resolved_resource: Path = candidate_path.resolve()
+        except OSError as exc:
             raise SkillValidationError(
+                f"Error resolving resource '{resource_name}' for skill '{skill_name}': {exc}"
+            ) from exc
+
+        try:
+            # Ensure the resource is within the skill's `references` directory
+            resolved_resource.relative_to(resolved_references)
+        except ValueError as exc:
+            raise SkillValidationError(
+                f"Invalid resource path '{resource_name}' for skill '{skill_name}'"
+            ) from exc
+
+        if not resolved_resource.is_file():
+            raise SkillNotFoundError(
                 f"Resource '{resource_name}' not found for skill '{skill_name}'"
             )
         try:
-            return resource_path.read_text(encoding="utf-8")
+            return resolved_resource.read_text(encoding="utf-8")
         except Exception as exc:
             raise SkillValidationError(
                 f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"

@@ -12,7 +12,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 
 
 class _StubSkillLoader(SkillLoaderProtocol):

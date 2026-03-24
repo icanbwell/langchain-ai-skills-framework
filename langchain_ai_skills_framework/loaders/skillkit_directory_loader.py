@@ -5,11 +5,11 @@ from html import escape
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Sequence
+from typing import Sequence, Any
 from uuid import UUID, uuid4
 
 from langchain_core.tools import StructuredTool
-from skillkit import SkillManager, SkillMetadata
+from skillkit import SkillManager, SkillMetadata, ScriptExecutionResult
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -31,7 +31,11 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
-from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
+    ReadSkillResourceTool,
+)
+from langchain_ai_skills_framework.tools.run_skill_script_tool import RunSkillScriptTool
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -208,7 +212,42 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             LoadSkillTool(
                 skill_loader=self,
             ),
+            ReadSkillResourceTool(
+                skill_loader=self,
+            ),
+            RunSkillScriptTool(
+                skill_loader=self,
+            ),
         ]
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        """Read a specific resource from a skill, such as a file or script."""
+        details = self.get_skill_details(skill_name=skill_name)
+        resource_path = details.source_path.parent.joinpath(resource_name)
+        if not resource_path.is_file():
+            raise SkillNotFoundError(
+                f"Resource '{resource_name}' not found for skill '{skill_name}'"
+            )
+        try:
+            return resource_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            raise SkillValidationError(
+                f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"
+            ) from exc
+
+    def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> str:
+        """Run a specific script from a skill and return its output."""
+        result: ScriptExecutionResult = self._manager.execute_skill_script(
+            skill_name=skill_name,
+            script_name=script_name,
+            arguments=arguments or {},
+        )
+        if result.exit_code != 0:
+            return result.stdout
+
+        return result.stdout
 
     # Snapshot lifecycle
 

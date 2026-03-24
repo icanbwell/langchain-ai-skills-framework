@@ -1,4 +1,4 @@
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable, Any
 
 from langchain_core.tools import StructuredTool
 
@@ -18,3 +18,9 @@ class SkillLoaderProtocol(Protocol):
     async def get_instructions(self) -> str: ...
 
     def get_tools(self) -> list[StructuredTool]: ...
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str: ...
+
+    def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> str: ...

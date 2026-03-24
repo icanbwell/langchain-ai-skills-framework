@@ -6,7 +6,7 @@ import time
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Mapping, Sequence, cast
+from typing import Mapping, Sequence, cast, Any
 from uuid import UUID, uuid4
 
 from langchain_core.tools import StructuredTool
@@ -38,7 +38,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
-from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -146,6 +146,14 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 skill_loader=self,
             ),
         ]
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        raise NotImplementedError()
+
+    def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> str:
+        raise NotImplementedError()
 
     # Snapshot lifecycle
     def _get_snapshot(self) -> SkillSnapshot:

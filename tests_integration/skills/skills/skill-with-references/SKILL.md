@@ -14,4 +14,4 @@ See [the reference guide](references/REFERENCE.md) for details.
 
 Run the extraction script: extract.py
 
-Run the word counting script: count_the.py
+Run the word counting script: count_the.py (pass JSON input with a `text` field, for example `{"text": "the cat and the dog"}`).

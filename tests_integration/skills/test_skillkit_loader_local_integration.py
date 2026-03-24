@@ -20,7 +20,7 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
 )
 
 
-class TestLangchainAISkillsFrameworkEnvironmentVariables(
+class MyLangchainAISkillsFrameworkEnvironmentVariables(
     LangchainAISkillsFrameworkEnvironmentVariables
 ):
     @override
@@ -33,7 +33,7 @@ class TestLangchainAISkillsFrameworkEnvironmentVariables(
 async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summaries() -> (
     None
 ):
-    environment_variables = TestLangchainAISkillsFrameworkEnvironmentVariables()
+    environment_variables = MyLangchainAISkillsFrameworkEnvironmentVariables()
     loader = SkillkitDirectoryLoader(
         environment_variables=environment_variables,
         github_skill_downloader=GithubSkillDownloader(),
@@ -98,10 +98,11 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         assert "Hello dependency-check" in script_result.stdout
 
         # test scripts
+        counted_text = "the cat and the dog saw The bird"
         script_result = await loader.run_skill_script(
             skill_name="skill-with-references",
             script_name="count_the.py",
-            arguments=None,
+            arguments={"text": counted_text},
         )
         print("========= Script count_the.py STDOUT ===========")
         print(f"{script_result.stdout}")
@@ -110,7 +111,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         print("===========================================")
         assert script_result.stdout is not None
         assert (
-            '{"the_count": 2, "text": "The quick brown fox jumps over the lazy dog."}'
+            '{"the_count": 3, "text": "the cat and the dog saw The bird"}'
             in script_result.stdout
         )
 

@@ -7,7 +7,6 @@ from typing import Any, cast
 
 import pytest
 
-import langchain_ai_skills_framework.executors.my_script_executor as my_script_executor_module
 from langchain_ai_skills_framework.executors.my_script_executor import (
     MyScriptExecutor,
     PathSecurityError,
@@ -91,7 +90,8 @@ async def test_execute_passes_arguments_as_json_on_stdin(
         return _FakeProcessResult(returncode=0, stdout=b"done\n", stderr=b"")
 
     monkeypatch.setattr(
-        my_script_executor_module.anyio, "run_process", _fake_run_process
+        "langchain_ai_skills_framework.executors.my_script_executor.anyio.run_process",
+        _fake_run_process,
     )
 
     executor = MyScriptExecutor()

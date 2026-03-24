@@ -80,7 +80,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
             skill_name="skill-with-references", script_name="extract.py", arguments=None
         )
         print(f"{script_result}")
-        assert "<available_skills>" in script_result
+        assert "Hello" in script_result
 
     except Exception:
         traceback.print_exc()

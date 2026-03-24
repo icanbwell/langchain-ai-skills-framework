@@ -241,9 +241,13 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> str:
         """Run a specific script from a skill and return its output."""
+
+        # remove ".py" extension since th Skillkit wants just the name
+        cleaned_script_name: str = script_name.replace(".py", "")
+
         result: ScriptExecutionResult = self._manager.execute_skill_script(
             skill_name=skill_name,
-            script_name=script_name,
+            script_name=cleaned_script_name,
             arguments=arguments or {},
         )
         if result.exit_code != 0:

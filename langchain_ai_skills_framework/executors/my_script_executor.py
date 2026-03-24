@@ -45,18 +45,30 @@ class MyScriptExecutor:
         self.max_timeout = max_timeout
         self.max_output_size = max_output_size
 
-    def _validate_path(self, script_path: Path, skill_base_dir: Path) -> None:
+    def _validate_path(self, script_path: Path, skill_base_dir: Path) -> Path:
         """
         Validate that the script path is safe.
 
         Raises:
             PathSecurityError: If path validation fails
         """
+        # Resolve the skill directory first, then anchor relative script paths to it.
+        try:
+            resolved_skill_base_dir = skill_base_dir.resolve(strict=True)
+        except (OSError, RuntimeError) as e:
+            raise PathSecurityError(f"Cannot resolve skill base directory: {e}") from e
+
+        candidate_script_path = (
+            script_path
+            if script_path.is_absolute()
+            else resolved_skill_base_dir.joinpath(script_path)
+        )
+
         # Resolve to absolute path to prevent directory traversal
         try:
-            resolved_path = script_path.resolve(strict=True)
+            resolved_path = candidate_script_path.resolve(strict=True)
         except (OSError, RuntimeError) as e:
-            raise PathSecurityError(f"Cannot resolve script path: {e}")
+            raise PathSecurityError(f"Cannot resolve script path: {e}") from e
 
         # Check if script exists
         if not resolved_path.exists():
@@ -68,18 +80,22 @@ class MyScriptExecutor:
 
         # Prevent directory traversal - ensure script is within skill_base_dir
         try:
-            resolved_path.relative_to(skill_base_dir.resolve())
+            resolved_path.relative_to(resolved_skill_base_dir)
         except ValueError:
             raise PathSecurityError(
                 f"Script path {resolved_path} is outside skill directory {skill_base_dir}"
-            )
+            ) from None
 
         # Check if allowed_base_dirs is set and validate
         if self.allowed_base_dirs:
-            is_in_allowed_dir = any(
-                str(resolved_path).startswith(str(base_dir.resolve()))
-                for base_dir in self.allowed_base_dirs
-            )
+            is_in_allowed_dir = False
+            for base_dir in self.allowed_base_dirs:
+                try:
+                    resolved_path.relative_to(base_dir.resolve(strict=True))
+                    is_in_allowed_dir = True
+                    break
+                except (ValueError, OSError, RuntimeError):
+                    continue
             if not is_in_allowed_dir:
                 raise PathSecurityError(
                     f"Script path {resolved_path} is not in allowed directories"
@@ -95,6 +111,8 @@ class MyScriptExecutor:
                 )
         except OSError:
             pass  # Permission check not available on this system
+
+        return resolved_path
 
     def _validate_arguments(self, arguments: dict[str, Any]) -> None:
         """
@@ -175,7 +193,7 @@ class MyScriptExecutor:
 
         """
         # Security validations
-        self._validate_path(script_path, skill_base_dir)
+        validated_script_path = self._validate_path(script_path, skill_base_dir)
         self._validate_arguments(arguments)
 
         # Enforce maximum timeout
@@ -185,7 +203,7 @@ class MyScriptExecutor:
         logger.info(
             f"Script execution requested: "
             f"script={script_name}, "
-            f"path={script_path}, "
+            f"path={validated_script_path}, "
             f"timeout={timeout}s"
         )
 
@@ -195,7 +213,7 @@ class MyScriptExecutor:
         cmd: list[str]
 
         # Build command - use absolute path
-        script_abs_path = script_path.resolve()
+        script_abs_path = validated_script_path
 
         if use_uv:
             # Add isolation flags for maximum security

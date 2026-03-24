@@ -98,6 +98,9 @@ RUN mkdir -p /usr/local/bin && ls -halt /usr/local/bin
 # Install the dependencies using pipenv in the final runtime environment
 RUN pipenv sync --dev --system --extra-pip-args="--prefer-binary"
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Expose port 5000 for the application
 EXPOSE 5000
 

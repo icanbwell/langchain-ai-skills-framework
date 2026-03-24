@@ -40,7 +40,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         summaries = loader.list_skill_summaries(allowed_skills=set())
         assert len(summaries) > 0
 
-        print("Parsed skills from GitHub:")
+        print("========= Skills ===========")
         for summary in summaries:
             print(
                 "- name={name}, description={description}, source_path={source_path}, "
@@ -51,35 +51,44 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
                     allowed_tools=",".join(summary.allowed_tools),
                 )
             )
-
+        print("===========================================")
         details = loader.get_skill_details(skill_name=summaries[0].name)
         assert details.name == summaries[0].name
         assert details.source_path.name == "SKILL.md"
 
         # test instructions
         instructions: str = await loader.get_instructions()
+        print("========= Instructions ===========")
         print(instructions)
+        print("===========================================")
         assert "<available_skills>" in instructions
 
         # test tools
         tools: list[StructuredTool] = loader.get_tools()
-        print(f"{len(tools)} tools")
+
+        print(f"========= Tools [{len(tools)}]  ===========")
         for tool in tools:
             print(tool)
+        print("===========================================")
+
         assert len(tools) > 0
 
         # test reference
         resource: str = loader.read_skill_resource(
             skill_name="skill-with-references", resource_name="REFERENCE.md"
         )
+        print("========= Resource REFERENCE.md ===========")
         print(f"{resource}")
+        print("===========================================")
         assert "This is a reference" in resource
 
         # test scripts
         script_result: str | None = await loader.run_skill_script(
             skill_name="skill-with-references", script_name="extract.py", arguments=None
         )
+        print("========= Script EXTRACT.md ===========")
         print(f"{script_result}")
+        print("===========================================")
         assert script_result is not None
         assert "Hello" in script_result
 

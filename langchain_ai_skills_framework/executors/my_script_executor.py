@@ -21,6 +21,7 @@ class MyScriptExecutor:
         skill_base_dir: Path,
         skill_metadata: SkillMetadata,
         timeout: int = 30,
+        use_uv: bool = True,
     ) -> MyScriptExecutionResult:
         """Execute a script with security controls.
 
@@ -31,6 +32,7 @@ class MyScriptExecutor:
             skill_base_dir: Base directory of the skill
             skill_metadata: SkillMetadata instance
             timeout: Timeout in seconds
+            use_uv: Use UV
 
         Returns:
             ScriptExecutionResult with execution details
@@ -46,7 +48,13 @@ class MyScriptExecutor:
         # Start timing
         start_time = time.perf_counter()
 
-        cmd: list[str] = [script_path.as_posix()]
+        cmd: list[str]
+
+        # Build command
+        if use_uv:
+            cmd = ["uv", "run", script_path.as_posix()]
+        else:
+            cmd = [script_path.as_posix()]
 
         if arguments:
             for key, value in arguments.items():

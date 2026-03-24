@@ -250,10 +250,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             script_name=cleaned_script_name,
             arguments=arguments or {},
         )
-        if result.exit_code != 0:
-            return result.stdout
-
-        return result.stdout
+        if result.success:
+            return result.stdout  # Script output
+        else:
+            return f"Error: {result.stderr} Exit code: {result.exit_code}"
 
     # Snapshot lifecycle
 

@@ -95,7 +95,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         print(f"{script_result.stderr}")
         print("===========================================")
         assert script_result.stdout is not None
-        assert "Hello" in script_result.stdout
+        assert "Hello dependency-check" in script_result.stdout
 
     except Exception:
         traceback.print_exc()

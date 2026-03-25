@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 from typing import Any, Type
 
 from langchain_core.callbacks import (
@@ -95,7 +94,7 @@ class RunInlineSkillScriptTool(StructuredTool):
         script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         script = self._resolve_script(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        return self._run_coroutine_sync(
+        return asyncio.run(
             self._run_inline_skill_script(
                 skill_name=skill_name,
                 script_name=script_name,
@@ -103,29 +102,6 @@ class RunInlineSkillScriptTool(StructuredTool):
                 arguments=arguments,
             )
         )
-
-    @staticmethod
-    def _run_coroutine_sync(coro: "asyncio.Future[str | None] | Any") -> str | None:
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-
-        result: dict[str, str | None] = {}
-        error: dict[str, BaseException] = {}
-
-        def _runner() -> None:
-            try:
-                result["value"] = asyncio.run(coro)
-            except BaseException as exc:  # pragma: no cover - defensive fallback
-                error["value"] = exc
-
-        thread = threading.Thread(target=_runner, daemon=True)
-        thread.start()
-        thread.join()
-        if "value" in error:
-            raise error["value"]
-        return result.get("value")
 
     async def _arun(
         self,

@@ -15,7 +15,7 @@ from langchain_ai_skills_framework.loaders.github_skill_downloader import (
 from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )
-from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
+from langchain_ai_skills_framework.tools.run_python_script_tool import (
     RunPythonScriptTool,
 )
 

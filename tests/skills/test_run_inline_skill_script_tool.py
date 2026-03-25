@@ -19,7 +19,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
 )
-from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
+from langchain_ai_skills_framework.tools.run_python_script_tool import (
     RunPythonScriptTool,
 )
 

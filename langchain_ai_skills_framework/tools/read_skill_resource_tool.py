@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Type
 
 from langchain_core.callbacks import (
@@ -16,6 +17,10 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+
+logger = logging.getLogger(__name__)
+logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class ReadSkillResourceInput(BaseModel):
@@ -73,9 +78,13 @@ class ReadSkillResourceTool(StructuredTool):
     ) -> str:
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         resource_name = self._resolve_resource_name(args=args, kwargs=kwargs)
-        return self._load_skill_resource(
+        resource = self._load_skill_resource(
             skill_name=skill_name, resource_name=resource_name
         )
+        logger.debug(
+            f"ReadSkillResourceTool: Loaded {resource_name} from {skill_name}\n{resource}"
+        )
+        return resource
 
     @staticmethod
     def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:

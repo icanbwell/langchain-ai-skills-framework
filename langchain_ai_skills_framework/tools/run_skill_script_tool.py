@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Type
@@ -22,6 +23,10 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+
+logger = logging.getLogger(__name__)
+logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class RunSkillScriptInput(BaseModel):
@@ -115,9 +120,16 @@ class RunSkillScriptTool(StructuredTool):
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        return await self._run_skill_script(
+        logger.debug(
+            f"RunSkillScriptTool: Running script {script_name} in {skill_name} with arguments {arguments}"
+        )
+        script_result = await self._run_skill_script(
             skill_name=skill_name, script_name=script_name, arguments=arguments
         )
+        logger.debug(
+            f"RunSkillScriptTool: Output from script {script_name} in {skill_name} with arguments {arguments}\n{script_result}"
+        )
+        return script_result
 
     @staticmethod
     def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:

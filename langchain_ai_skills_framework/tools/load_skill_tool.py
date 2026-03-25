@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Type
 
 from langchain_core.callbacks import (
@@ -16,6 +17,10 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+
+logger = logging.getLogger(__name__)
+logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class LoadSkillInput(BaseModel):
@@ -48,6 +53,8 @@ class LoadSkillTool(StructuredTool):
         **kwargs: Any,
     ) -> str:
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
+        skill = self._load_skill(skill_name)
+        logger.debug(f"LoadSkillTool (sync): {skill_name}\n{skill}")
         return self._load_skill(skill_name)
 
     async def _arun(
@@ -58,7 +65,9 @@ class LoadSkillTool(StructuredTool):
         **kwargs: Any,
     ) -> str:
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
-        return self._load_skill(skill_name)
+        skill = self._load_skill(skill_name)
+        logger.debug(f"LoadSkillTool: {skill_name}\n{skill}")
+        return skill
 
     @staticmethod
     def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:

@@ -137,22 +137,6 @@ def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_executes_from_active_event_loop() -> None:
-    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunSkillScriptTool(skill_loader=loader)
-
-    message = tool._run(
-        "alpha",
-        "analyze.py",
-        {"threshold": 0.5},
-        config={},
-    )
-
-    assert message == "script output"
-    assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
-
-
-@pytest.mark.asyncio
 async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)

@@ -1,17 +1,13 @@
 from __future__ import annotations
-
 import asyncio
 import logging
-from typing import Any, Type
-
+from typing import Any, Type, Literal
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool  # Changed from StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
-
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
@@ -30,109 +26,139 @@ class RunPythonScriptInput(BaseModel):
     script: str = Field(
         description=(
             """Python script content to execute.
-                    The full script body is executed in the configured runtime context."""
+            The full script body is executed in the configured runtime context."""
         ),
     )
-
     arguments: dict[str, Any] | None = Field(
         default=None,
         description=(
             """Optional dictionary of arguments to pass to the script when executing.
-                    The keys and values should match what the script expects."""
+            The keys and values should match what the script expects."""
         ),
     )
 
 
-class RunPythonScriptTool(StructuredTool):
+class RunPythonScriptOutput(BaseModel):
+    """Structured output schema for the run_python_script tool."""
+
+    model_config = ConfigDict(extra="allow")
+
+    success: bool = Field(description="Whether the script executed successfully")
+    stdout: str | None = Field(
+        default=None, description="Standard output from the script"
+    )
+    stderr: str | None = Field(
+        default=None, description="Standard error from the script"
+    )
+    exit_code: int | None = Field(
+        default=None, description="Exit code from the script execution"
+    )
+    error_message: str | None = Field(
+        default=None, description="Human-readable error message if failed"
+    )
+
+
+class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
     """LangChain tool that executes inline Python script content within a runtime context."""
 
     name: str = "run_python_script"
     description: str = """Execute inline script content within a skill's execution context.
+        This tool runs Python script content provided at runtime and executes it
+        using the selected runtime context and configuration.
 
-            This tool runs Python script content provided at runtime and executes it
-            using the selected runtime context and configuration.
+        When to use this:
+        - When you need to execute generated script content in the configured context
+        - When a workflow provides script text directly instead of a script file
 
-            When to use this:
-            - When you need to execute generated script content in the configured context
-            - When a workflow provides script text directly instead of a script file
-
-            Important:
-            - The script content is executed as provided
-            - Script supports PEP 723 inline metadata to define dependencies
-            - Keep script content minimal and task-specific
-            - Review skill instructions before running scripts
-            - Scripts may modify external state (files, databases, APIs)
-            - Execution errors are included in the output
-            """
+        Important:
+        - The script content is executed as provided
+        - Script supports PEP 723 inline metadata to define dependencies
+        - Keep script content minimal and task-specific
+        - Review skill instructions before running scripts
+        - Scripts may modify external state (files, databases, APIs)
+        - Execution errors are included in the output
+        """
     args_schema: Type[BaseModel] = RunPythonScriptInput
+    response_format: Literal['content', 'content_and_artifact'] = "content_and_artifact"
     _inline_script_name: str = "inline_script.py"
 
     def _run(
         self,
-        *args: Any,
-        config: RunnableConfig,
+        script: str,
+        arguments: dict[str, Any] | None = None,
         run_manager: CallbackManagerForToolRun | None = None,
-        **kwargs: Any,
-    ) -> str | None:
-        script = self._resolve_script(args=args, kwargs=kwargs)
-        arguments = self._resolve_arguments(args=args, kwargs=kwargs)
+    ) -> tuple[str, RunPythonScriptOutput]:
+        """Synchronous execution with named parameters."""
         return asyncio.run(
-            self._run_inline_skill_script(
+            self._arun(
                 script=script,
                 arguments=arguments,
+                run_manager=run_manager,
             )
         )
 
     async def _arun(
         self,
-        *args: Any,
-        config: RunnableConfig,
+        script: str,
+        arguments: dict[str, Any] | None = None,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-        **kwargs: Any,
-    ) -> str | None:
-        script = self._resolve_script(args=args, kwargs=kwargs)
-        arguments = self._resolve_arguments(args=args, kwargs=kwargs)
+    ) -> tuple[str, RunPythonScriptOutput]:
+        """Async execution with named parameters."""
         logger.debug(
             "RunPythonScriptTool: Running Python script with script=%s and arguments %s",
             script,
             arguments,
         )
+
         try:
-            script_result = await self._run_inline_skill_script(
+            result = await self._run_inline_skill_script(
                 script=script,
                 arguments=arguments,
             )
+
+            # Create structured output
+            output = RunPythonScriptOutput(
+                success=result.success,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.exit_code,
+                error_message=None if result.success else result.stderr,
+            )
+
             logger.debug(
                 "RunPythonScriptTool: Output from Python script with arguments %s\n%s",
                 arguments,
-                script_result,
+                output,
             )
-            return script_result
+
+            # Create human-readable summary
+            if output.success:
+                summary = f"Script executed successfully.\nOutput:\n{output.stdout}"
+            else:
+                summary = f"Script failed with exit code {output.exit_code}.\nError:\n{output.stderr}"
+
+            return summary, output
+
         except Exception as exc:
             logger.exception(
                 "RunPythonScriptTool: Error running Python script: %s",
                 script,
             )
-            return f"Error running script: {exc}"
-
-    @staticmethod
-    def _resolve_script(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_script = kwargs.get("script", args[0] if args else "")
-        return raw_script if isinstance(raw_script, str) else ""
-
-    @staticmethod
-    def _resolve_arguments(
-        *, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        arguments = kwargs.get("arguments", args[1] if len(args) > 1 else None)
-        return arguments
+            output = RunPythonScriptOutput(
+                success=False,
+                stdout=None,
+                stderr=str(exc),
+                exit_code=-1,
+                error_message=f"Error running script: {exc}",
+            )
+            return f"Error running script: {exc}", output
 
     async def _run_inline_skill_script(
         self,
-        *,
         script: str,
         arguments: dict[str, Any] | None,
-    ) -> str | None:
+    ) -> MyScriptExecutionResult:
+        """Execute the script using MyScriptExecutor."""
         normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
 
         executor = MyScriptExecutor()
@@ -142,6 +168,4 @@ class RunPythonScriptTool(StructuredTool):
             arguments=normalized_arguments,
             timeout=30,
         )
-        if result.success:
-            return result.stdout
-        return f"Error: {result.stderr} Exit code: {result.exit_code}"
+        return result

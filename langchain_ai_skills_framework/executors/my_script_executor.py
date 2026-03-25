@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -123,42 +124,17 @@ class MyScriptExecutor:
                 f"(max {self.max_output_size})"
             )
 
-    # noinspection PyMethodMayBeStatic
-    async def execute(
+    async def _execute_validated_script(
         self,
         *,
         script_name: str,
-        script_path: Path,
+        validated_script_path: Path,
         arguments: dict[str, Any],
         skill_base_dir: Path,
-        skill_metadata: SkillMetadata,
-        timeout: int = 30,
-        use_uv: bool = True,
+        timeout: int,
+        use_uv: bool,
     ) -> MyScriptExecutionResult:
-        """Execute a script with security controls.
-
-        Args:
-            script_name (str): Name of the script
-            script_path: Path to the script (relative or absolute)
-            arguments: Arguments to pass as JSON on stdin
-            skill_base_dir: Base directory of the skill
-            skill_metadata: SkillMetadata instance
-            timeout: Timeout in seconds
-            use_uv: Use UV for isolated execution
-
-        Returns:
-            ScriptExecutionResult with execution details
-
-        Raises:
-            PathSecurityError: If path validation fails
-            ScriptPermissionError: If script has dangerous permissions
-            ValueError: If arguments are invalid
-            Exception: If script execution fails
-
-        """
-        # Security validations
-        validated_script_path = self._validate_path(script_path, skill_base_dir)
-
+        """Execute a validated script path with constrained runtime settings."""
         # Enforce maximum timeout
         timeout = min(timeout, self.max_timeout)
 
@@ -175,9 +151,6 @@ class MyScriptExecutor:
 
         cmd: list[str]
 
-        # Build command - use absolute path
-        script_abs_path = validated_script_path
-
         if use_uv:
             # Add isolation flags for maximum security
             cmd = [
@@ -186,10 +159,10 @@ class MyScriptExecutor:
                 "--isolated",  # Don't discover project config
                 "--no-project",  # Don't use project environment
                 "-v",  # Verbose to see dependency installation
-                str(script_abs_path),
+                str(validated_script_path),
             ]
         else:
-            cmd = [str(script_abs_path)]
+            cmd = [str(validated_script_path)]
 
         stdin_payload = arguments if arguments else {}
         stdin_data: bytes = json.dumps(stdin_payload).encode("utf-8")
@@ -263,11 +236,13 @@ class MyScriptExecutor:
 
         except PermissionError as e:
             logger.error(
-                f"Permission denied executing script '{script_name}' at {script_path}: {e}"
+                f"Permission denied executing script '{script_name}' at "
+                f"{validated_script_path}: {e}"
             )
             raise Exception(
-                f"Permission denied executing script '{script_name}' at {script_path}. "
-                f"Ensure the script and uv binary have execute permissions: {e}"
+                f"Permission denied executing script '{script_name}' at "
+                f"{validated_script_path}. Ensure the script and uv binary have "
+                f"execute permissions: {e}"
             ) from e
         except FileNotFoundError as e:
             logger.error(f"Command not found for script '{script_name}': {e}")
@@ -297,3 +272,109 @@ class MyScriptExecutor:
             execution_time_ms=execution_time_ms,
             success=result.returncode == 0,
         )
+
+    # noinspection PyMethodMayBeStatic
+    async def execute(
+        self,
+        *,
+        script_name: str,
+        script_path: Path,
+        arguments: dict[str, Any],
+        skill_base_dir: Path,
+        skill_metadata: SkillMetadata,
+        timeout: int = 30,
+        use_uv: bool = True,
+    ) -> MyScriptExecutionResult:
+        """Execute a script with security controls.
+
+        Args:
+            script_name (str): Name of the script
+            script_path: Path to the script (relative or absolute)
+            arguments: Arguments to pass as JSON on stdin
+            skill_base_dir: Base directory of the skill
+            skill_metadata: SkillMetadata instance
+            timeout: Timeout in seconds
+            use_uv: Use UV for isolated execution
+
+        Returns:
+            ScriptExecutionResult with execution details
+
+        Raises:
+            PathSecurityError: If path validation fails
+            ScriptPermissionError: If script has dangerous permissions
+            ValueError: If arguments are invalid
+            Exception: If script execution fails
+
+        """
+        # Security validations
+        validated_script_path = self._validate_path(script_path, skill_base_dir)
+
+        return await self._execute_validated_script(
+            script_name=script_name,
+            validated_script_path=validated_script_path,
+            arguments=arguments,
+            skill_base_dir=skill_base_dir,
+            timeout=timeout,
+            use_uv=use_uv,
+        )
+
+    async def execute_script(
+        self,
+        *,
+        script_name: str,
+        script: str,
+        arguments: dict[str, Any],
+        skill_base_dir: Path,
+        skill_metadata: SkillMetadata,
+        timeout: int = 30,
+        use_uv: bool = True,
+    ) -> MyScriptExecutionResult:
+        """Execute inline script content with the same controls as execute()."""
+        del skill_metadata  # Not currently required for local execution.
+
+        if not script.strip():
+            raise ValueError("Script content cannot be empty")
+
+        try:
+            resolved_skill_base_dir = skill_base_dir.resolve(strict=True)
+        except (OSError, RuntimeError) as e:
+            raise PathSecurityError(f"Cannot resolve skill base directory: {e}") from e
+
+        temp_script_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".py",
+                prefix=".tmp_skill_script_",
+                dir=resolved_skill_base_dir,
+                delete=False,
+            ) as temp_file:
+                temp_file.write(script)
+                temp_script_path = Path(temp_file.name)
+
+            try:
+                temp_script_path.chmod(0o700)
+            except OSError:
+                pass
+
+            validated_script_path = self._validate_path(
+                temp_script_path, resolved_skill_base_dir
+            )
+
+            return await self._execute_validated_script(
+                script_name=script_name,
+                validated_script_path=validated_script_path,
+                arguments=arguments,
+                skill_base_dir=resolved_skill_base_dir,
+                timeout=timeout,
+                use_uv=use_uv,
+            )
+        finally:
+            if temp_script_path is not None:
+                try:
+                    temp_script_path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning(
+                        f"Failed to clean up temporary script file: {temp_script_path}"
+                    )

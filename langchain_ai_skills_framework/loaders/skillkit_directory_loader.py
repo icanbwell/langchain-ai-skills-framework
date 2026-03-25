@@ -279,7 +279,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         )
         return result
 
-    async def run_inline_skill_script(
+    async def run_inline_script(
         self,
         script_name: str,
         script: str,

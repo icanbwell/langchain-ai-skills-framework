@@ -28,7 +28,7 @@ class SkillLoaderProtocol(Protocol):
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult: ...
 
-    async def run_inline_skill_script(
+    async def run_inline_script(
         self,
         script_name: str,
         script: str,

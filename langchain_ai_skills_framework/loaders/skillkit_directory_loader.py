@@ -262,8 +262,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         """Run a specific script from a skill and return its output."""
 
-        # remove ".py" extension since th Skillkit wants just the name
-        cleaned_script_name: str = script_name.replace(".py", "")
+        # remove only a trailing ".py" extension since the Skillkit wants just the name
+        cleaned_script_name: str = (
+            script_name[:-3] if script_name.endswith(".py") else script_name
+        )
 
         result: MyScriptExecutionResult = await self.execute_skill_script(
             skill_name=skill_name,

@@ -4,7 +4,7 @@ import traceback
 from pathlib import Path
 from typing import override
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 
 from langchain_ai_skills_framework.environment.environment_variables import (
     LangchainAISkillsFrameworkEnvironmentVariables,
@@ -67,7 +67,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         assert "<available_skills>" in instructions
 
         # test tools
-        tools: list[StructuredTool] = loader.get_tools()
+        tools: list[BaseTool] = loader.get_tools()
 
         print(f"========= Tools [{len(tools)}]  ===========")
         for tool in tools:

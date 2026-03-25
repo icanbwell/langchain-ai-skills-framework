@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import pytest
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -42,7 +42,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:  # pragma: no cover
         return ""
 
-    def get_tools(self) -> list[StructuredTool]:
+    def get_tools(self) -> list[BaseTool]:
         return []
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:

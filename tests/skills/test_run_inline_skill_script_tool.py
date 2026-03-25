@@ -51,7 +51,7 @@ def test_run_returns_summary_and_structured_output(
         {"MixedCase": 0.5},
     )
 
-    assert message == "Script executed successfully.\nOutput:\nscript output"
+    assert message == "script output"
     assert output == RunPythonScriptOutput(
         success=True,
         stdout="script output",
@@ -80,7 +80,7 @@ async def test_arun_returns_summary_and_structured_output(
         {"MixedCase": 0.5},
     )
 
-    assert message == "Script executed successfully.\nOutput:\nscript output"
+    assert message == "script output"
     assert output == RunPythonScriptOutput(
         success=True,
         stdout="script output",

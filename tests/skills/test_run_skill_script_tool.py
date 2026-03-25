@@ -65,15 +65,6 @@ class _StubSkillLoader(SkillLoaderProtocol):
             success=True,
         )
 
-    async def run_inline_script(
-        self,
-        script_name: str,
-        script: str,
-        arguments: dict[str, Any] | None,
-    ) -> MyScriptExecutionResult:
-        del script_name, script, arguments
-        raise NotImplementedError()
-
 
 def _make_skill(name: str) -> SkillDetails:
     source_path = Path(f"/skills/{name}/SKILL.md")

@@ -52,15 +52,6 @@ class _StubSkillLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
-    async def run_inline_script(
-        self,
-        script_name: str,
-        script: str,
-        arguments: dict[str, Any] | None,
-    ) -> MyScriptExecutionResult:
-        del script_name, script, arguments
-        raise NotImplementedError()
-
 
 class _DummyModelRequest:
     def __init__(

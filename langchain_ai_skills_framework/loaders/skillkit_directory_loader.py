@@ -279,23 +279,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         )
         return result
 
-    async def run_inline_script(
-        self,
-        script_name: str,
-        script: str,
-        arguments: dict[str, Any] | None,
-    ) -> MyScriptExecutionResult:
-        """Run inline script content using a skill execution context."""
-        normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
-
-        executor = MyScriptExecutor()
-        return await executor.execute_inline_script(
-            script_name=script_name,
-            script=script,
-            arguments=normalized_arguments,
-            timeout=30,
-        )
-
     # Implement our own so we can run via uv
     async def execute_skill_script(
         self,

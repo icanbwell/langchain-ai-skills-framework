@@ -158,14 +158,6 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
-    async def run_inline_script(
-        self,
-        script_name: str,
-        script: str,
-        arguments: dict[str, Any] | None,
-    ) -> MyScriptExecutionResult:
-        raise NotImplementedError()
-
     # Snapshot lifecycle
     def _get_snapshot(self) -> SkillSnapshot:
         # Fast path: use the in-memory snapshot while TTL is still valid.

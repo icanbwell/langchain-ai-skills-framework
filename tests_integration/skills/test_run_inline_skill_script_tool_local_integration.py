@@ -16,7 +16,7 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )
 from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
-    RunInlineSkillScriptTool,
+    RunPythonScriptTool,
 )
 
 
@@ -36,11 +36,11 @@ def _build_loader() -> SkillkitDirectoryLoader:
 
 def _get_inline_script_tool(
     loader: SkillkitDirectoryLoader,
-) -> RunInlineSkillScriptTool:
+) -> RunPythonScriptTool:
     for tool in loader.get_tools():
-        if tool.name == "run_inline_skill_script":
-            return cast(RunInlineSkillScriptTool, tool)
-    raise AssertionError("run_inline_skill_script tool is not registered")
+        if tool.name == "run_python_script":
+            return cast(RunPythonScriptTool, tool)
+    raise AssertionError("run_python_script tool is not registered")
 
 
 @pytest.mark.asyncio

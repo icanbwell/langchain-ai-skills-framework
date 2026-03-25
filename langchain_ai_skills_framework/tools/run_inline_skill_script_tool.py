@@ -28,7 +28,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class RunInlineSkillScriptInput(BaseModel):
-    """Input schema for the run_inline_skill_script tool."""
+    """Input schema for the run_python_script tool."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -48,10 +48,10 @@ class RunInlineSkillScriptInput(BaseModel):
     )
 
 
-class RunInlineSkillScriptTool(StructuredTool):
+class RunPythonScriptTool(StructuredTool):
     """LangChain tool that executes inline Python script content within a skill context."""
 
-    name: str = "run_inline_skill_script"
+    name: str = "run_python_script"
     description: str = """Execute inline script content within a skill's execution context.
 
             This tool runs Python script content provided at runtime and executes it

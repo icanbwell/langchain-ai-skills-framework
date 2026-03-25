@@ -37,7 +37,7 @@ from langchain_ai_skills_framework.models.skills_model import (
 )
 from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
-    RunInlineSkillScriptTool,
+    RunPythonScriptTool,
 )
 from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
     ReadSkillResourceTool,
@@ -63,7 +63,7 @@ When a task falls within a skill's domain:
 2. Follow the skill's guidance to complete the task
 3. Use `read_skill_resource` to read files referenced by the skill
 4. Use `run_skill_script` to run scripts provided by the skill
-5. Use `run_inline_skill_script` to run inline script content in a skill context
+5. Use `run_python_script` to run inline script content in a skill context
 
 Use progressive disclosure: load only what you need, when you need it."""
 
@@ -227,7 +227,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             RunSkillScriptTool(
                 skill_loader=self,
             ),
-            RunInlineSkillScriptTool(
+            RunPythonScriptTool(
                 skill_loader=self,
             ),
         ]

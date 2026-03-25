@@ -20,7 +20,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
 )
 from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
-    RunInlineSkillScriptTool,
+    RunPythonScriptTool,
 )
 
 
@@ -105,9 +105,7 @@ def _make_skill(name: str) -> SkillDetails:
 def test_resolve_script_prefers_kwargs_and_uses_first_positional_arg(
     args: tuple[Any, ...], kwargs: dict[str, Any], expected: str
 ) -> None:
-    assert (
-        RunInlineSkillScriptTool._resolve_script(args=args, kwargs=kwargs) == expected
-    )
+    assert RunPythonScriptTool._resolve_script(args=args, kwargs=kwargs) == expected
 
 
 @pytest.mark.parametrize(
@@ -129,15 +127,12 @@ def test_resolve_script_prefers_kwargs_and_uses_first_positional_arg(
 def test_resolve_arguments_prefers_kwargs_and_uses_second_positional_arg(
     args: tuple[Any, ...], kwargs: dict[str, Any], expected: dict[str, Any] | None
 ) -> None:
-    assert (
-        RunInlineSkillScriptTool._resolve_arguments(args=args, kwargs=kwargs)
-        == expected
-    )
+    assert RunPythonScriptTool._resolve_arguments(args=args, kwargs=kwargs) == expected
 
 
 def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunInlineSkillScriptTool(skill_loader=loader)
+    tool = RunPythonScriptTool(skill_loader=loader)
 
     message = tool._run(
         "print('ok')",
@@ -154,7 +149,7 @@ def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
 @pytest.mark.asyncio
 async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunInlineSkillScriptTool(skill_loader=loader)
+    tool = RunPythonScriptTool(skill_loader=loader)
 
     message = await tool._arun(
         "print('ok')",

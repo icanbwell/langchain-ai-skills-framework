@@ -220,7 +220,7 @@ async def test_skillkit_loader_reads_metadata_content_and_instructions(
     )
     assert "Use `run_skill_script` to run scripts provided by the skill" in instructions
     assert (
-        "Use `run_inline_skill_script` to run inline script content in a skill context"
+        "Use `run_python_script` to run inline script content in a skill context"
         in instructions
     )
 
@@ -288,4 +288,4 @@ def test_skillkit_loader_registers_inline_script_tool(
 
     tool_names = {tool.name for tool in loader.get_tools()}
 
-    assert "run_inline_skill_script" in tool_names
+    assert "run_python_script" in tool_names

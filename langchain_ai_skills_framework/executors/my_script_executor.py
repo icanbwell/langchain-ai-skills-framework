@@ -115,45 +115,6 @@ class MyScriptExecutor:
 
         return resolved_path
 
-    def _validate_arguments(self, arguments: dict[str, Any]) -> None:
-        """
-        Validate arguments for security issues.
-
-        Raises:
-            ValueError: If arguments contain dangerous values
-        """
-        if not arguments:
-            return
-
-        # Check argument size to prevent DoS
-        import sys
-
-        arg_size = sys.getsizeof(str(arguments))
-        MAX_ARG_SIZE = 1024 * 1024  # 1MB
-        if arg_size > MAX_ARG_SIZE:
-            raise ValueError(
-                f"Arguments too large: {arg_size} bytes (max {MAX_ARG_SIZE})"
-            )
-
-        # Check for command injection attempts in string values
-        dangerous_chars = [";", "|", "&", "$", "`", "\n", "\r"]
-        for key, value in arguments.items():
-            if not key.replace("_", "").replace("-", "").isalnum():
-                raise ValueError(f"Invalid argument key: {key}")
-            if isinstance(value, str):
-                if any(char in value for char in dangerous_chars):
-                    raise ValueError(
-                        f"Argument '{key}' contains potentially dangerous characters"
-                    )
-            elif isinstance(value, list):
-                for item in value:
-                    if isinstance(item, str) and any(
-                        char in item for char in dangerous_chars
-                    ):
-                        raise ValueError(
-                            f"Argument '{key}' list contains potentially dangerous characters"
-                        )
-
     def _check_output_size(self, output: bytes) -> None:
         """Prevent memory exhaustion from large outputs"""
         if len(output) > self.max_output_size:
@@ -197,7 +158,6 @@ class MyScriptExecutor:
         """
         # Security validations
         validated_script_path = self._validate_path(script_path, skill_base_dir)
-        self._validate_arguments(arguments)
 
         # Enforce maximum timeout
         timeout = min(timeout, self.max_timeout)

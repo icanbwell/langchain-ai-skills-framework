@@ -1,11 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Awaitable, Callable
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Type
 
-import anyio
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
@@ -82,18 +80,6 @@ class RunSkillScriptTool(StructuredTool):
     args_schema: Type[BaseModel] = RunSkillScriptInput
     skill_loader: SkillLoaderProtocol
 
-    @staticmethod
-    def _run_coroutine_from_sync_context(
-        coroutine_factory: Callable[[], Awaitable[str | None]],
-    ) -> str | None:
-        try:
-            return anyio.run(coroutine_factory)
-        except RuntimeError as exc:
-            if "Already running" not in str(exc):
-                raise
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                return executor.submit(lambda: anyio.run(coroutine_factory)).result()
-
     def _run(
         self,
         *args: Any,
@@ -104,8 +90,8 @@ class RunSkillScriptTool(StructuredTool):
         skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
         script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        return self._run_coroutine_from_sync_context(
-            lambda: self._run_skill_script(
+        return asyncio.run(
+            self._run_skill_script(
                 skill_name=skill_name, script_name=script_name, arguments=arguments
             )
         )
@@ -123,13 +109,19 @@ class RunSkillScriptTool(StructuredTool):
         logger.debug(
             f"RunSkillScriptTool: Running script {script_name} in {skill_name} with arguments {arguments}"
         )
-        script_result = await self._run_skill_script(
-            skill_name=skill_name, script_name=script_name, arguments=arguments
-        )
-        logger.debug(
-            f"RunSkillScriptTool: Output from script {script_name} in {skill_name} with arguments {arguments}\n{script_result}"
-        )
-        return script_result
+        try:
+            script_result = await self._run_skill_script(
+                skill_name=skill_name, script_name=script_name, arguments=arguments
+            )
+            logger.debug(
+                f"RunSkillScriptTool: Output from script {script_name} in {skill_name} with arguments {arguments}\n{script_result}"
+            )
+            return script_result
+        except Exception as exc:
+            logger.exception(
+                f"RunSkillScriptTool: Error running script {script_name} in {skill_name}"
+            )
+            return f"Error running script: {exc}"
 
     @staticmethod
     def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:

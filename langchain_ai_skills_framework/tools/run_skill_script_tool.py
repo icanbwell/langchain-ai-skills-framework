@@ -1,17 +1,13 @@
 from __future__ import annotations
-
 import asyncio
 import logging
 from typing import Any, Type
-
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
-
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
@@ -28,68 +24,64 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class RunSkillScriptInput(BaseModel):
-    """Input schema for the load_skill tool."""
+    """Input schema for the run_skill_script tool."""
 
     model_config = ConfigDict(extra="forbid")
 
     skill_name: str = Field(
         description="Name of the skill containing the resource.",
     )
-
     script_name: str = Field(
         description=(
             """Exact name of the script as listed in the skill.
-                    Usually includes .py extension: "analyze.py", "process.py"
-                    Must match exactly - do not infer or guess."""
+            Usually includes .py extension: "analyze.py", "process.py"
+            Must match exactly - do not infer or guess."""
         ),
     )
-
     arguments: dict[str, Any] | None = Field(
         default=None,
         description=(
             """Optional dictionary of arguments to pass to the script when executing.
-                    The keys and values should match what the script expects.
-                    For example, if the script is designed to take parameters like {"input_file": "data.csv", "threshold": 0.5}, you would provide those here."""
+            The keys and values should match what the script expects.
+            For example, if the script is designed to take parameters like {"input_file": "data.csv", "threshold": 0.5}, you would provide those here."""
         ),
     )
 
 
-class RunSkillScriptTool(StructuredTool):
-    """LangChain tool that loads full skill definitions for the agent."""
+class RunSkillScriptTool(BaseTool):
+    """LangChain tool that executes skill scripts."""
 
     name: str = "run_skill_script"
     description: str = """Execute a skill script that performs actions or computations.
 
-            Scripts are executable programs provided by skills that can perform actions
-            (API calls, file operations), process data (transformations, analysis), or
-            generate outputs (reports, visualizations).
+        Scripts are executable programs provided by skills that can perform actions
+        (API calls, file operations), process data (transformations, analysis), or
+        generate outputs (reports, visualizations).
 
-            When to use this:
-            - When a skill's instructions tell you to run a specific script
-            - To perform automated tasks that the skill provides
-            - For data processing, API interactions, or file operations
+        When to use this:
+        - When a skill's instructions tell you to run a specific script
+        - To perform automated tasks that the skill provides
+        - For data processing, API interactions, or file operations
 
-            Important:
-            - Get script names from the skill's documentation first
-            - Use exact script names - do not modify or guess
-            - Check the script's parameter schema for required arguments
-            - Review skill instructions before running scripts
-            - Scripts may modify external state (files, databases, APIs)
-            - Execution errors are included in the output
-            """
+        Important:
+        - Get script names from the skill's documentation first
+        - Use exact script names - do not modify or guess
+        - Check the script's parameter schema for required arguments
+        - Review skill instructions before running scripts
+        - Scripts may modify external state (files, databases, APIs)
+        - Execution errors are included in the output
+        """
     args_schema: Type[BaseModel] = RunSkillScriptInput
     skill_loader: SkillLoaderProtocol
 
     def _run(
         self,
-        *args: Any,
-        config: RunnableConfig,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None = None,
         run_manager: CallbackManagerForToolRun | None = None,
-        **kwargs: Any,
     ) -> str | None:
-        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
-        script_name = self._resolve_script_name(args=args, kwargs=kwargs)
-        arguments = self._resolve_arguments(args=args, kwargs=kwargs)
+        """Synchronously execute a skill script."""
         return asyncio.run(
             self._run_skill_script(
                 skill_name=skill_name,
@@ -100,17 +92,16 @@ class RunSkillScriptTool(StructuredTool):
 
     async def _arun(
         self,
-        *args: Any,
-        config: RunnableConfig,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None = None,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-        **kwargs: Any,
     ) -> str | None:
-        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
-        script_name = self._resolve_script_name(args=args, kwargs=kwargs)
-        arguments = self._resolve_arguments(args=args, kwargs=kwargs)
+        """Asynchronously execute a skill script."""
         logger.debug(
             f"RunSkillScriptTool: Running script {script_name} in {skill_name} with arguments {arguments}"
         )
+
         try:
             script_result = await self._run_skill_script(
                 skill_name=skill_name, script_name=script_name, arguments=arguments
@@ -125,27 +116,12 @@ class RunSkillScriptTool(StructuredTool):
             )
             return f"Error running script: {exc}"
 
-    @staticmethod
-    def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_skill_name = kwargs.get("skill_name", args[0] if args else "")
-        return raw_skill_name if isinstance(raw_skill_name, str) else ""
-
-    @staticmethod
-    def _resolve_script_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_script_name = kwargs.get("script_name", args[1] if len(args) > 1 else "")
-        return raw_script_name if isinstance(raw_script_name, str) else ""
-
-    @staticmethod
-    def _resolve_arguments(
-        *, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        arguments = kwargs.get("arguments", args[2] if len(args) > 2 else None)
-        return arguments
-
     async def _run_skill_script(
-        self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> str | None:
+        """Execute the skill script and return results."""
         normalized_name = skill_name.strip()
+
         if not normalized_name:
             return self._format_availability_message(self.skill_loader, normalized_name)
 
@@ -153,6 +129,7 @@ class RunSkillScriptTool(StructuredTool):
             result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
                 skill_name=normalized_name, script_name=script_name, arguments=arguments
             )
+
             if result.success:
                 return result.stdout  # Script output
             else:
@@ -164,16 +141,19 @@ class RunSkillScriptTool(StructuredTool):
     def _format_availability_message(
         loader: SkillLoaderProtocol, normalized_name: str
     ) -> str:
+        """Format a message showing available skills."""
         available_names = sorted(
             summary.name
             for summary in loader.list_skill_summaries(allowed_skills=set())
         )
         available = ", ".join(available_names)
+
         availability_message = (
             f"Skill '{normalized_name}' not found."
             if normalized_name
             else "No skill name provided."
         )
+
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"
         )

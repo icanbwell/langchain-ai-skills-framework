@@ -89,38 +89,6 @@ def _make_skill(name: str) -> SkillDetails:
     )
 
 
-@pytest.mark.parametrize(
-    ("args", "kwargs", "expected"),
-    [
-        (("alpha", "analyze.py"), {}, "analyze.py"),
-        (("alpha",), {}, ""),
-        (("alpha", "analyze.py"), {"script_name": "process.py"}, "process.py"),
-    ],
-)
-def test_resolve_script_name_prefers_kwargs_and_uses_second_positional_arg(
-    args: tuple[Any, ...], kwargs: dict[str, Any], expected: str
-) -> None:
-    assert RunSkillScriptTool._resolve_script_name(args=args, kwargs=kwargs) == expected
-
-
-@pytest.mark.parametrize(
-    ("args", "kwargs", "expected"),
-    [
-        (("alpha", "analyze.py", {"threshold": 1}), {}, {"threshold": 1}),
-        (("alpha", "analyze.py"), {}, None),
-        (
-            ("alpha", "analyze.py", {"threshold": 1}),
-            {"arguments": {"threshold": 2}},
-            {"threshold": 2},
-        ),
-    ],
-)
-def test_resolve_arguments_prefers_kwargs_and_uses_third_positional_arg(
-    args: tuple[Any, ...], kwargs: dict[str, Any], expected: dict[str, Any] | None
-) -> None:
-    assert RunSkillScriptTool._resolve_arguments(args=args, kwargs=kwargs) == expected
-
-
 def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
@@ -129,7 +97,6 @@ def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
         "alpha",
         "analyze.py",
         {"threshold": 0.5},
-        config={},
     )
 
     assert message == "script output"
@@ -145,7 +112,6 @@ async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
         "alpha",
         "analyze.py",
         {"threshold": 0.5},
-        config={},
     )
 
     assert message == "script output"

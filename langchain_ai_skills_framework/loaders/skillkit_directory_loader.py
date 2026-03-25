@@ -36,6 +36,9 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSnapshot,
 )
 from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
+    RunInlineSkillScriptTool,
+)
 from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
     ReadSkillResourceTool,
 )
@@ -60,6 +63,7 @@ When a task falls within a skill's domain:
 2. Follow the skill's guidance to complete the task
 3. Use `read_skill_resource` to read files referenced by the skill
 4. Use `run_skill_script` to run scripts provided by the skill
+5. Use `run_inline_skill_script` to run inline script content in a skill context
 
 Use progressive disclosure: load only what you need, when you need it."""
 
@@ -223,6 +227,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             RunSkillScriptTool(
                 skill_loader=self,
             ),
+            RunInlineSkillScriptTool(
+                skill_loader=self,
+            ),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
@@ -273,6 +280,28 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             arguments=arguments or {},
         )
         return result
+
+    async def run_inline_skill_script(
+        self,
+        skill_name: str,
+        script_name: str,
+        script: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        """Run inline script content using a skill execution context."""
+        self.get_skill_details(skill_name=skill_name)
+        skill = self._manager.load_skill(skill_name)
+        normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
+
+        executor = MyScriptExecutor()
+        return await executor.execute_script(
+            script_name=script_name,
+            script=script,
+            arguments=normalized_arguments,
+            skill_base_dir=skill.base_directory,
+            skill_metadata=skill.metadata,
+            timeout=30,
+        )
 
     # Implement our own so we can run via uv
     async def execute_skill_script(

@@ -219,6 +219,10 @@ async def test_skillkit_loader_reads_metadata_content_and_instructions(
         in instructions
     )
     assert "Use `run_skill_script` to run scripts provided by the skill" in instructions
+    assert (
+        "Use `run_inline_skill_script` to run inline script content in a skill context"
+        in instructions
+    )
 
 
 def test_skillkit_loader_ignores_non_string_allowed_tools(
@@ -273,3 +277,15 @@ def test_skillkit_loader_refresh_and_missing_skill(
 
     with pytest.raises(SkillNotFoundError):
         loader.get_skill_details(skill_name="missing")
+
+
+def test_skillkit_loader_registers_inline_script_tool(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _write_skill(tmp_path, "alpha-skill")
+    loader, _ = _build_loader(monkeypatch, tmp_path)
+
+    tool_names = {tool.name for tool in loader.get_tools()}
+
+    assert "run_inline_skill_script" in tool_names

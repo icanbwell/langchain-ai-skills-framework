@@ -19,15 +19,15 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
 )
-from langchain_ai_skills_framework.tools.run_skill_script_tool import (
-    RunSkillScriptTool,
+from langchain_ai_skills_framework.tools.run_inline_skill_script_tool import (
+    RunInlineSkillScriptTool,
 )
 
 
 class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
         self._details = dict(details_by_name)
-        self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.calls: list[tuple[str, str, str, dict[str, Any] | None]] = []
 
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         del allowed_skills
@@ -54,7 +54,17 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult:
-        self.calls.append((skill_name, script_name, arguments))
+        del skill_name, script_name, arguments
+        raise NotImplementedError()
+
+    async def run_inline_skill_script(
+        self,
+        skill_name: str,
+        script_name: str,
+        script: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        self.calls.append((skill_name, script_name, script, arguments))
         if skill_name not in self._details:
             raise SkillNotFoundError
         return MyScriptExecutionResult(
@@ -64,16 +74,6 @@ class _StubSkillLoader(SkillLoaderProtocol):
             execution_time_ms=1.0,
             success=True,
         )
-
-    async def run_inline_skill_script(
-        self,
-        skill_name: str,
-        script_name: str,
-        script: str,
-        arguments: dict[str, Any] | None,
-    ) -> MyScriptExecutionResult:
-        del skill_name, script_name, script, arguments
-        raise NotImplementedError()
 
 
 def _make_skill(name: str) -> SkillDetails:
@@ -93,77 +93,76 @@ def _make_skill(name: str) -> SkillDetails:
 @pytest.mark.parametrize(
     ("args", "kwargs", "expected"),
     [
-        (("alpha", "analyze.py"), {}, "analyze.py"),
-        (("alpha",), {}, ""),
-        (("alpha", "analyze.py"), {"script_name": "process.py"}, "process.py"),
+        (("alpha", "analyze.py", "print('ok')"), {}, "print('ok')"),
+        (("alpha", "analyze.py"), {}, ""),
+        (
+            ("alpha", "analyze.py", "print('ok')"),
+            {"script": "print('better')"},
+            "print('better')",
+        ),
     ],
 )
-def test_resolve_script_name_prefers_kwargs_and_uses_second_positional_arg(
+def test_resolve_script_prefers_kwargs_and_uses_third_positional_arg(
     args: tuple[Any, ...], kwargs: dict[str, Any], expected: str
 ) -> None:
-    assert RunSkillScriptTool._resolve_script_name(args=args, kwargs=kwargs) == expected
+    assert (
+        RunInlineSkillScriptTool._resolve_script(args=args, kwargs=kwargs) == expected
+    )
 
 
 @pytest.mark.parametrize(
     ("args", "kwargs", "expected"),
     [
-        (("alpha", "analyze.py", {"threshold": 1}), {}, {"threshold": 1}),
-        (("alpha", "analyze.py"), {}, None),
         (
-            ("alpha", "analyze.py", {"threshold": 1}),
+            ("alpha", "analyze.py", "print('ok')", {"threshold": 1}),
+            {},
+            {"threshold": 1},
+        ),
+        (("alpha", "analyze.py", "print('ok')"), {}, None),
+        (
+            ("alpha", "analyze.py", "print('ok')", {"threshold": 1}),
             {"arguments": {"threshold": 2}},
             {"threshold": 2},
         ),
     ],
 )
-def test_resolve_arguments_prefers_kwargs_and_uses_third_positional_arg(
+def test_resolve_arguments_prefers_kwargs_and_uses_fourth_positional_arg(
     args: tuple[Any, ...], kwargs: dict[str, Any], expected: dict[str, Any] | None
 ) -> None:
-    assert RunSkillScriptTool._resolve_arguments(args=args, kwargs=kwargs) == expected
+    assert (
+        RunInlineSkillScriptTool._resolve_arguments(args=args, kwargs=kwargs)
+        == expected
+    )
 
 
 def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunSkillScriptTool(skill_loader=loader)
+    tool = RunInlineSkillScriptTool(skill_loader=loader)
 
     message = tool._run(
         "alpha",
         "analyze.py",
+        "print('ok')",
         {"threshold": 0.5},
         config={},
     )
 
     assert message == "script output"
-    assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
-
-
-@pytest.mark.asyncio
-async def test_run_executes_from_active_event_loop() -> None:
-    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunSkillScriptTool(skill_loader=loader)
-
-    message = tool._run(
-        "alpha",
-        "analyze.py",
-        {"threshold": 0.5},
-        config={},
-    )
-
-    assert message == "script output"
-    assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
+    assert loader.calls == [("alpha", "analyze.py", "print('ok')", {"threshold": 0.5})]
 
 
 @pytest.mark.asyncio
 async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunSkillScriptTool(skill_loader=loader)
+    tool = RunInlineSkillScriptTool(skill_loader=loader)
 
     message = await tool._arun(
         "alpha",
         "analyze.py",
+        "print('ok')",
         {"threshold": 0.5},
         config={},
     )
 
     assert message == "script output"
-    assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
+    assert loader.calls == [("alpha", "analyze.py", "print('ok')", {"threshold": 0.5})]

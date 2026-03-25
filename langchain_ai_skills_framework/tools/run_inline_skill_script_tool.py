@@ -32,18 +32,6 @@ class RunInlineSkillScriptInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    skill_name: str = Field(
-        description="Name of the skill used as the execution context.",
-    )
-
-    script_name: str = Field(
-        description=(
-            """Name used for the inline script execution context.
-                    Usually includes .py extension: \"analyze.py\", \"process.py\".
-                    Must match exactly when referenced by skill instructions."""
-        ),
-    )
-
     script: str = Field(
         description=(
             """Python script content to execute.
@@ -82,6 +70,7 @@ class RunInlineSkillScriptTool(StructuredTool):
             """
     args_schema: Type[BaseModel] = RunInlineSkillScriptInput
     skill_loader: SkillLoaderProtocol
+    _inline_script_name: str = "inline_script.py"
 
     def _run(
         self,
@@ -90,14 +79,10 @@ class RunInlineSkillScriptTool(StructuredTool):
         run_manager: CallbackManagerForToolRun | None = None,
         **kwargs: Any,
     ) -> str | None:
-        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
-        script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         script = self._resolve_script(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
         return asyncio.run(
             self._run_inline_skill_script(
-                skill_name=skill_name,
-                script_name=script_name,
                 script=script,
                 arguments=arguments,
             )
@@ -110,27 +95,22 @@ class RunInlineSkillScriptTool(StructuredTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
         **kwargs: Any,
     ) -> str | None:
-        skill_name = self._resolve_skill_name(args=args, kwargs=kwargs)
-        script_name = self._resolve_script_name(args=args, kwargs=kwargs)
         script = self._resolve_script(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
+        skill_name = self._resolve_skill_name()
         logger.debug(
-            "RunInlineSkillScriptTool: Running inline script %s in %s with script_length=%d and arguments %s",
-            script_name,
+            "RunInlineSkillScriptTool: Running inline script in %s with script_length=%d and arguments %s",
             skill_name,
             len(script),
             arguments,
         )
         try:
             script_result = await self._run_inline_skill_script(
-                skill_name=skill_name,
-                script_name=script_name,
                 script=script,
                 arguments=arguments,
             )
             logger.debug(
-                "RunInlineSkillScriptTool: Output from inline script %s in %s with arguments %s\n%s",
-                script_name,
+                "RunInlineSkillScriptTool: Output from inline script in %s with arguments %s\n%s",
                 skill_name,
                 arguments,
                 script_result,
@@ -138,51 +118,47 @@ class RunInlineSkillScriptTool(StructuredTool):
             return script_result
         except Exception as exc:
             logger.exception(
-                "RunInlineSkillScriptTool: Error running inline script %s in %s",
-                script_name,
+                "RunInlineSkillScriptTool: Error running inline script in %s",
                 skill_name,
             )
             return f"Error running script: {exc}"
 
     @staticmethod
-    def _resolve_skill_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_skill_name = kwargs.get("skill_name", args[0] if args else "")
-        return raw_skill_name if isinstance(raw_skill_name, str) else ""
-
-    @staticmethod
-    def _resolve_script_name(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_script_name = kwargs.get("script_name", args[1] if len(args) > 1 else "")
-        return raw_script_name if isinstance(raw_script_name, str) else ""
-
-    @staticmethod
     def _resolve_script(*, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
-        raw_script = kwargs.get("script", args[2] if len(args) > 2 else "")
+        raw_script = kwargs.get("script", args[0] if args else "")
         return raw_script if isinstance(raw_script, str) else ""
 
     @staticmethod
     def _resolve_arguments(
         *, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> dict[str, Any] | None:
-        arguments = kwargs.get("arguments", args[3] if len(args) > 3 else None)
+        arguments = kwargs.get("arguments", args[1] if len(args) > 1 else None)
         return arguments
+
+    def _resolve_skill_name(self) -> str | None:
+        available_names = [
+            summary.name
+            for summary in self.skill_loader.list_skill_summaries(allowed_skills=set())
+        ]
+        if not available_names:
+            return None
+        return sorted(available_names)[0]
 
     async def _run_inline_skill_script(
         self,
         *,
-        skill_name: str,
-        script_name: str,
         script: str,
         arguments: dict[str, Any] | None,
     ) -> str | None:
-        normalized_name = skill_name.strip()
-        if not normalized_name:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+        skill_name = self._resolve_skill_name()
+        if skill_name is None:
+            return self._format_availability_message(self.skill_loader)
 
         try:
             result: MyScriptExecutionResult = (
                 await self.skill_loader.run_inline_skill_script(
-                    skill_name=normalized_name,
-                    script_name=script_name,
+                    skill_name=skill_name,
+                    script_name=self._inline_script_name,
                     script=script,
                     arguments=arguments,
                 )
@@ -191,22 +167,16 @@ class RunInlineSkillScriptTool(StructuredTool):
                 return result.stdout
             return f"Error: {result.stderr} Exit code: {result.exit_code}"
         except SkillNotFoundError:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+            return self._format_availability_message(self.skill_loader)
 
     @staticmethod
-    def _format_availability_message(
-        loader: SkillLoaderProtocol, normalized_name: str
-    ) -> str:
+    def _format_availability_message(loader: SkillLoaderProtocol) -> str:
         available_names = sorted(
             summary.name
             for summary in loader.list_skill_summaries(allowed_skills=set())
         )
         available = ", ".join(available_names)
-        availability_message = (
-            f"Skill '{normalized_name}' not found."
-            if normalized_name
-            else "No skill name provided."
-        )
+        availability_message = "No skills are currently configured."
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"
         )

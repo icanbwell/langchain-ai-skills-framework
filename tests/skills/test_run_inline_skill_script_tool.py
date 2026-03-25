@@ -93,16 +93,16 @@ def _make_skill(name: str) -> SkillDetails:
 @pytest.mark.parametrize(
     ("args", "kwargs", "expected"),
     [
-        (("alpha", "analyze.py", "print('ok')"), {}, "print('ok')"),
-        (("alpha", "analyze.py"), {}, ""),
+        (("print('ok')",), {}, "print('ok')"),
+        ((), {}, ""),
         (
-            ("alpha", "analyze.py", "print('ok')"),
+            ("print('ok')",),
             {"script": "print('better')"},
             "print('better')",
         ),
     ],
 )
-def test_resolve_script_prefers_kwargs_and_uses_third_positional_arg(
+def test_resolve_script_prefers_kwargs_and_uses_first_positional_arg(
     args: tuple[Any, ...], kwargs: dict[str, Any], expected: str
 ) -> None:
     assert (
@@ -114,19 +114,19 @@ def test_resolve_script_prefers_kwargs_and_uses_third_positional_arg(
     ("args", "kwargs", "expected"),
     [
         (
-            ("alpha", "analyze.py", "print('ok')", {"threshold": 1}),
+            ("print('ok')", {"threshold": 1}),
             {},
             {"threshold": 1},
         ),
-        (("alpha", "analyze.py", "print('ok')"), {}, None),
+        (("print('ok')",), {}, None),
         (
-            ("alpha", "analyze.py", "print('ok')", {"threshold": 1}),
+            ("print('ok')", {"threshold": 1}),
             {"arguments": {"threshold": 2}},
             {"threshold": 2},
         ),
     ],
 )
-def test_resolve_arguments_prefers_kwargs_and_uses_fourth_positional_arg(
+def test_resolve_arguments_prefers_kwargs_and_uses_second_positional_arg(
     args: tuple[Any, ...], kwargs: dict[str, Any], expected: dict[str, Any] | None
 ) -> None:
     assert (
@@ -140,15 +140,15 @@ def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
     tool = RunInlineSkillScriptTool(skill_loader=loader)
 
     message = tool._run(
-        "alpha",
-        "analyze.py",
         "print('ok')",
         {"threshold": 0.5},
         config={},
     )
 
     assert message == "script output"
-    assert loader.calls == [("alpha", "analyze.py", "print('ok')", {"threshold": 0.5})]
+    assert loader.calls == [
+        ("alpha", "inline_script.py", "print('ok')", {"threshold": 0.5})
+    ]
 
 
 @pytest.mark.asyncio
@@ -157,12 +157,12 @@ async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
     tool = RunInlineSkillScriptTool(skill_loader=loader)
 
     message = await tool._arun(
-        "alpha",
-        "analyze.py",
         "print('ok')",
         {"threshold": 0.5},
         config={},
     )
 
     assert message == "script output"
-    assert loader.calls == [("alpha", "analyze.py", "print('ok')", {"threshold": 0.5})]
+    assert loader.calls == [
+        ("alpha", "inline_script.py", "print('ok')", {"threshold": 0.5})
+    ]

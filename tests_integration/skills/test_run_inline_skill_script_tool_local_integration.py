@@ -62,8 +62,6 @@ print(json.dumps(result))
 
     response = await tool.ainvoke(
         {
-            "skill_name": "skill-with-references",
-            "script_name": "inline_script.py",
             "script": inline_script,
             "arguments": {"MixedCase": "VALUE"},
         }
@@ -75,21 +73,16 @@ print(json.dumps(result))
 
 
 @pytest.mark.asyncio
-async def test_run_inline_skill_script_tool_missing_skill_lists_available_skills() -> (
-    None
-):
+async def test_run_inline_skill_script_tool_rejects_legacy_name_fields() -> None:
     loader = _build_loader()
     tool = _get_inline_script_tool(loader)
 
-    response = await tool.ainvoke(
-        {
-            "skill_name": "missing-skill",
-            "script_name": "inline_script.py",
-            "script": "print('ok')",
-            "arguments": None,
-        }
-    )
-
-    assert "Skill 'missing-skill' not found." in response
-    assert "Available skills:" in response
-    assert "skill-with-references" in response
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        await tool.ainvoke(
+            {
+                "skill_name": "skill-with-references",
+                "script_name": "inline_script.py",
+                "script": "print('ok')",
+                "arguments": None,
+            }
+        )

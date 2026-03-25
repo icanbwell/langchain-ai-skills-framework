@@ -92,7 +92,9 @@ class RunSkillScriptTool(StructuredTool):
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
         return asyncio.run(
             self._run_skill_script(
-                skill_name=skill_name, script_name=script_name, arguments=arguments
+                skill_name=skill_name,
+                script_name=script_name,
+                arguments=arguments,
             )
         )
 

@@ -283,23 +283,18 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     async def run_inline_skill_script(
         self,
-        skill_name: str,
         script_name: str,
         script: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         """Run inline script content using a skill execution context."""
-        self.get_skill_details(skill_name=skill_name)
-        skill = self._manager.load_skill(skill_name)
         normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
 
         executor = MyScriptExecutor()
-        return await executor.execute_script(
+        return await executor.execute_inline_script(
             script_name=script_name,
             script=script,
             arguments=normalized_arguments,
-            skill_base_dir=skill.base_directory,
-            skill_metadata=skill.metadata,
             timeout=30,
         )
 
@@ -336,7 +331,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         # Create executor and execute script
         executor = MyScriptExecutor()
 
-        return await executor.execute(
+        return await executor.execute_script_from_path(
             script_name=script_name,
             script_path=script_metadata.path,
             arguments=normalized_arguments,

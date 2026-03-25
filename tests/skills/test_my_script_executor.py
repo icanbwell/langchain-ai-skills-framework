@@ -97,7 +97,7 @@ async def test_execute_passes_arguments_as_json_on_stdin(
     executor = MyScriptExecutor()
     arguments = {"file_path": "document.pdf", "page_range": "all"}
 
-    result = await executor.execute(
+    result = await executor.execute_script_from_path(
         script_name="extract.py",
         script_path=Path("scripts/extract.py"),
         arguments=arguments,
@@ -124,7 +124,7 @@ async def test_execute_rejects_invalid_argument_keys(tmp_path: Path) -> None:
     executor = MyScriptExecutor()
 
     with pytest.raises(ValueError, match="Invalid argument key"):
-        await executor.execute(
+        await executor.execute_script_from_path(
             script_name="extract.py",
             script_path=Path("scripts/extract.py"),
             arguments={"bad key": "value"},
@@ -167,7 +167,7 @@ async def test_execute_script_runs_inline_script_and_cleans_temp_file(
     executor = MyScriptExecutor()
     arguments = {"file_path": "document.pdf"}
 
-    result = await executor.execute_script(
+    result = await executor.execute_inline_script(
         script_name="inline.py",
         script="print('ok')\n",
         arguments=arguments,
@@ -195,7 +195,7 @@ async def test_execute_script_rejects_empty_script(tmp_path: Path) -> None:
     executor = MyScriptExecutor()
 
     with pytest.raises(ValueError, match="cannot be empty"):
-        await executor.execute_script(
+        await executor.execute_inline_script(
             script_name="inline.py",
             script="   ",
             arguments={},

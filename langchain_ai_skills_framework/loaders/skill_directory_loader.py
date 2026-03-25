@@ -160,12 +160,10 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
 
     async def run_inline_skill_script(
         self,
-        skill_name: str,
         script_name: str,
         script: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
-        del skill_name, script_name, script, arguments
         raise NotImplementedError()
 
     # Snapshot lifecycle

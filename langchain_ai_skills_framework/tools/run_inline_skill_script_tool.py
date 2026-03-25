@@ -98,11 +98,9 @@ class RunPythonScriptTool(StructuredTool):
     ) -> str | None:
         script = self._resolve_script(args=args, kwargs=kwargs)
         arguments = self._resolve_arguments(args=args, kwargs=kwargs)
-        context_name = self._resolve_context_name()
         logger.debug(
-            "RunPythonScriptTool: Running Python script in %s with script_length=%d and arguments %s",
-            context_name,
-            len(script),
+            "RunPythonScriptTool: Running Python script with script=%s and arguments %s",
+            script,
             arguments,
         )
         try:
@@ -111,16 +109,15 @@ class RunPythonScriptTool(StructuredTool):
                 arguments=arguments,
             )
             logger.debug(
-                "RunPythonScriptTool: Output from Python script in %s with arguments %s\n%s",
-                context_name,
+                "RunPythonScriptTool: Output from Python script with arguments %s\n%s",
                 arguments,
                 script_result,
             )
             return script_result
         except Exception as exc:
             logger.exception(
-                "RunPythonScriptTool: Error running Python script in %s",
-                context_name,
+                "RunPythonScriptTool: Error running Python script: %s",
+                script,
             )
             return f"Error running script: {exc}"
 
@@ -136,29 +133,15 @@ class RunPythonScriptTool(StructuredTool):
         arguments = kwargs.get("arguments", args[1] if len(args) > 1 else None)
         return arguments
 
-    def _resolve_context_name(self) -> str | None:
-        available_names = [
-            summary.name
-            for summary in self.skill_loader.list_skill_summaries(allowed_skills=set())
-        ]
-        if not available_names:
-            return None
-        return sorted(available_names)[0]
-
     async def _run_inline_skill_script(
         self,
         *,
         script: str,
         arguments: dict[str, Any] | None,
     ) -> str | None:
-        context_name = self._resolve_context_name()
-        if context_name is None:
-            return self._format_availability_message(self.skill_loader)
-
         try:
             result: MyScriptExecutionResult = (
                 await self.skill_loader.run_inline_skill_script(
-                    skill_name=context_name,
                     script_name=self._inline_script_name,
                     script=script,
                     arguments=arguments,

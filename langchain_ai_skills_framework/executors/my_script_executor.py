@@ -138,7 +138,7 @@ class MyScriptExecutor:
         script_name: str,
         validated_script_path: Path,
         arguments: dict[str, Any],
-        skill_base_dir: Path,
+        skill_base_dir: Path | None,
         timeout: int,
         use_uv: bool,
     ) -> MyScriptExecutionResult:
@@ -174,10 +174,10 @@ class MyScriptExecutor:
 
         stdin_payload = arguments if arguments else {}
         stdin_data: bytes = json.dumps(stdin_payload).encode("utf-8")
-        cwd = str(skill_base_dir.resolve())
+        cwd = str(skill_base_dir.resolve()) if skill_base_dir else None
 
         # Create maximally restricted environment
-        env = {
+        env: dict[str, str] = {
             # Minimal required environment
             "PATH": os.environ.get("PATH", ""),
             "HOME": os.environ.get("HOME", ""),
@@ -192,8 +192,10 @@ class MyScriptExecutor:
             "PYTHONPATH": "",  # Clear PYTHONPATH
             # Skill-specific safe env vars
             "SKILL_NAME": script_name,
-            "SKILL_BASE_DIR": cwd,
         }
+
+        if cwd is not None:
+            env["SKILL_BASE_DIR"] = cwd
 
         try:
             result = None
@@ -282,7 +284,7 @@ class MyScriptExecutor:
         )
 
     # noinspection PyMethodMayBeStatic
-    async def execute(
+    async def execute_script_from_path(
         self,
         *,
         script_name: str,
@@ -327,29 +329,21 @@ class MyScriptExecutor:
             use_uv=use_uv,
         )
 
-    async def execute_script(
+    async def execute_inline_script(
         self,
         *,
         script_name: str,
         script: str,
         arguments: dict[str, Any],
-        skill_base_dir: Path,
-        skill_metadata: SkillMetadata,
         timeout: int = 30,
         use_uv: bool = True,
     ) -> MyScriptExecutionResult:
         """Execute inline script content with the same controls as execute()."""
-        del skill_metadata  # Not currently required for local execution.
 
         if not script.strip():
             raise ValueError("Script content cannot be empty")
 
         self._validate_argument_keys(arguments)
-
-        try:
-            resolved_skill_base_dir = skill_base_dir.resolve(strict=True)
-        except (OSError, RuntimeError) as e:
-            raise PathSecurityError(f"Cannot resolve skill base directory: {e}") from e
 
         temp_script_path: Path | None = None
         try:
@@ -358,7 +352,6 @@ class MyScriptExecutor:
                 encoding="utf-8",
                 suffix=".py",
                 prefix=".tmp_skill_script_",
-                dir=resolved_skill_base_dir,
                 delete=False,
             ) as temp_file:
                 temp_file.write(script)
@@ -369,15 +362,11 @@ class MyScriptExecutor:
             except OSError:
                 pass
 
-            validated_script_path = self._validate_path(
-                temp_script_path, resolved_skill_base_dir
-            )
-
             return await self._execute_validated_script(
                 script_name=script_name,
-                validated_script_path=validated_script_path,
+                validated_script_path=temp_script_path,
                 arguments=arguments,
-                skill_base_dir=resolved_skill_base_dir,
+                skill_base_dir=None,
                 timeout=timeout,
                 use_uv=use_uv,
             )

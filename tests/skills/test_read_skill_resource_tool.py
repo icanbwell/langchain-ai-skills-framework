@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-import pytest
 from langchain_core.tools import BaseTool
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -80,28 +79,11 @@ def _make_skill(name: str) -> SkillDetails:
     )
 
 
-@pytest.mark.parametrize(
-    ("args", "kwargs", "expected"),
-    [
-        (("alpha", "FORMS.md"), {}, "FORMS.md"),
-        (("alpha",), {}, ""),
-        (("alpha", "FORMS.md"), {"resource_name": "REFERENCE.md"}, "REFERENCE.md"),
-    ],
-)
-def test_resolve_resource_name_prefers_kwargs_and_uses_second_positional_arg(
-    args: tuple[Any, ...], kwargs: dict[str, Any], expected: str
-) -> None:
-    assert (
-        ReadSkillResourceTool._resolve_resource_name(args=args, kwargs=kwargs)
-        == expected
-    )
-
-
 def test_run_uses_second_positional_arg_for_resource_name() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message = tool._run("alpha", "FORMS.md", config={})
+    message = tool._run("alpha", "FORMS.md")
 
     assert message == "alpha:FORMS.md"
     assert loader.calls == [("alpha", "FORMS.md")]

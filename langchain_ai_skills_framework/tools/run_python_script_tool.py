@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -140,12 +141,14 @@ class RunPythonScriptTool(StructuredTool):
         arguments: dict[str, Any] | None,
     ) -> str | None:
         try:
-            result: MyScriptExecutionResult = (
-                await self.skill_loader.run_inline_skill_script(
-                    script_name=self._inline_script_name,
-                    script=script,
-                    arguments=arguments,
-                )
+            normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
+
+            executor = MyScriptExecutor()
+            result: MyScriptExecutionResult = await executor.execute_inline_script(
+                script_name=self._inline_script_name,
+                script=script,
+                arguments=normalized_arguments,
+                timeout=30,
             )
             if result.success:
                 return result.stdout

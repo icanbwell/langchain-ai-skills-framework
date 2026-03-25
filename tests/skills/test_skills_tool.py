@@ -96,5 +96,4 @@ def test_load_skill_tool_returns_skill_content() -> None:
 
     message = tool._load_skill(" alpha ")
 
-    assert message.startswith("Loaded skill: alpha")
-    assert "Body for alpha" in message
+    assert message == "Body for alpha"

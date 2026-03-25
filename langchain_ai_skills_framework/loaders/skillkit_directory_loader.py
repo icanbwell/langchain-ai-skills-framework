@@ -9,7 +9,7 @@ from typing import Sequence, Any
 from uuid import UUID, uuid4
 
 from langchain_core.tools import StructuredTool
-from skillkit import SkillManager, SkillMetadata, ScriptNotFoundError
+from skillkit import SkillManager, SkillMetadata, ScriptNotFoundError, Skill
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -361,8 +361,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         metadata: SkillMetadata | str
         for metadata in self._manager.list_skills():
             if isinstance(metadata, SkillMetadata):
-                # skill: Skill = self._manager.load_skill(name=metadata.name)
-                definition = self._map_skill(metadata=metadata, content="")
+                skill: Skill = self._manager.load_skill(name=metadata.name)
+                definition = self._map_skill(metadata=metadata, content=skill.content)
                 skill_group = self._resolve_skill_group(
                     str(definition.source_path.parent)
                 )

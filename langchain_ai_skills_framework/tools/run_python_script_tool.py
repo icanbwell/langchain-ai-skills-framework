@@ -16,12 +16,6 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
 from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
-from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
-    SkillNotFoundError,
-)
-from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
-    SkillLoaderProtocol,
-)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -71,7 +65,6 @@ class RunPythonScriptTool(StructuredTool):
             - Execution errors are included in the output
             """
     args_schema: Type[BaseModel] = RunPythonScriptInput
-    skill_loader: SkillLoaderProtocol
     _inline_script_name: str = "inline_script.py"
 
     def _run(
@@ -140,28 +133,15 @@ class RunPythonScriptTool(StructuredTool):
         script: str,
         arguments: dict[str, Any] | None,
     ) -> str | None:
-        try:
-            normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
+        normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
 
-            executor = MyScriptExecutor()
-            result: MyScriptExecutionResult = await executor.execute_inline_script(
-                script_name=self._inline_script_name,
-                script=script,
-                arguments=normalized_arguments,
-                timeout=30,
-            )
-            if result.success:
-                return result.stdout
-            return f"Error: {result.stderr} Exit code: {result.exit_code}"
-        except SkillNotFoundError:
-            return self._format_availability_message(self.skill_loader)
-
-    @staticmethod
-    def _format_availability_message(loader: SkillLoaderProtocol) -> str:
-        available_names = sorted(
-            summary.name
-            for summary in loader.list_skill_summaries(allowed_skills=set())
+        executor = MyScriptExecutor()
+        result: MyScriptExecutionResult = await executor.execute_inline_script(
+            script_name=self._inline_script_name,
+            script=script,
+            arguments=normalized_arguments,
+            timeout=30,
         )
-        available = ", ".join(available_names)
-        availability_message = "No runtime contexts are currently configured."
-        return f"{availability_message} Available contexts: {available or 'None configured'}"
+        if result.success:
+            return result.stdout
+        return f"Error: {result.stderr} Exit code: {result.exit_code}"

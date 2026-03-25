@@ -227,9 +227,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             RunSkillScriptTool(
                 skill_loader=self,
             ),
-            RunPythonScriptTool(
-                skill_loader=self,
-            ),
+            RunPythonScriptTool(),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:

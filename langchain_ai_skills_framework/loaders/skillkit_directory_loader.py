@@ -498,6 +498,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     def _map_skill(self, metadata: SkillMetadata, content: str) -> SkillDetails:
         """Map a skillkit skill into framework SkillDetails."""
+        del content
         normalized_name = self._normalize_skill_name(metadata.name)
         if not normalized_name:
             raise SkillValidationError("Skill name must not be empty")
@@ -522,7 +523,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             allowed_tools=metadata.allowed_tools,
         )
         return SkillDetails(
-            summary=summary, content=content, source_path=metadata.skill_path
+            summary=summary,
+            content="",
+            source_path=metadata.skill_path,
         )
 
     # Source path and name normalization

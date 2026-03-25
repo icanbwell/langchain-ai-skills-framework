@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -29,6 +30,8 @@ class ScriptPermissionError(Exception):
 
 
 class MyScriptExecutor:
+    _ARGUMENT_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
     def __init__(
         self,
         allowed_base_dirs: list[Path] | None = None,
@@ -123,6 +126,11 @@ class MyScriptExecutor:
                 f"Script output too large: {len(output)} bytes "
                 f"(max {self.max_output_size})"
             )
+
+    def _validate_argument_keys(self, arguments: dict[str, Any]) -> None:
+        for key in arguments:
+            if not self._ARGUMENT_KEY_PATTERN.fullmatch(key):
+                raise ValueError(f"Invalid argument key: {key}")
 
     async def _execute_validated_script(
         self,
@@ -307,6 +315,7 @@ class MyScriptExecutor:
 
         """
         # Security validations
+        self._validate_argument_keys(arguments)
         validated_script_path = self._validate_path(script_path, skill_base_dir)
 
         return await self._execute_validated_script(
@@ -334,6 +343,8 @@ class MyScriptExecutor:
 
         if not script.strip():
             raise ValueError("Script content cannot be empty")
+
+        self._validate_argument_keys(arguments)
 
         try:
             resolved_skill_base_dir = skill_base_dir.resolve(strict=True)

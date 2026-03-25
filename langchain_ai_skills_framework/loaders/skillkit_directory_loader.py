@@ -5,7 +5,7 @@ from html import escape
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Sequence, Any
+from typing import Sequence, Any, cast
 from uuid import UUID, uuid4
 
 from langchain_core.tools import StructuredTool
@@ -227,7 +227,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             RunSkillScriptTool(
                 skill_loader=self,
             ),
-            RunPythonScriptTool(),
+            cast(StructuredTool, RunPythonScriptTool()),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:

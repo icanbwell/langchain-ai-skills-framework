@@ -79,7 +79,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         - Execution errors are included in the output
         """
     args_schema: Type[BaseModel] = RunPythonScriptInput
-    response_format: Literal['content', 'content_and_artifact'] = "content_and_artifact"
+    response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     _inline_script_name: str = "inline_script.py"
 
     def _run(
@@ -93,7 +93,6 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
             self._arun(
                 script=script,
                 arguments=arguments,
-                run_manager=run_manager,
             )
         )
 

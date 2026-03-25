@@ -51,12 +51,11 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
     async def run_inline_skill_script(
         self,
-        skill_name: str,
         script_name: str,
         script: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
-        del skill_name, script_name, script, arguments
+        del script_name, script, arguments
         raise NotImplementedError()
 
 

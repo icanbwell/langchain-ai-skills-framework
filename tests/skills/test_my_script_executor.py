@@ -171,8 +171,6 @@ async def test_execute_script_runs_inline_script_and_cleans_temp_file(
         script_name="inline.py",
         script="print('ok')\n",
         arguments=arguments,
-        skill_base_dir=skill_base_dir,
-        skill_metadata=cast(Any, object()),
         use_uv=False,
     )
 
@@ -199,7 +197,5 @@ async def test_execute_script_rejects_empty_script(tmp_path: Path) -> None:
             script_name="inline.py",
             script="   ",
             arguments={},
-            skill_base_dir=skill_base_dir,
-            skill_metadata=cast(Any, object()),
             use_uv=False,
         )

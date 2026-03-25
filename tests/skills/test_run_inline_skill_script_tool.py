@@ -27,7 +27,7 @@ from langchain_ai_skills_framework.tools.run_python_script_tool import (
 class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
         self._details = dict(details_by_name)
-        self.calls: list[tuple[str, str, str, dict[str, Any] | None]] = []
+        self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         del allowed_skills
@@ -59,14 +59,11 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
     async def run_inline_skill_script(
         self,
-        skill_name: str,
         script_name: str,
         script: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
-        self.calls.append((skill_name, script_name, script, arguments))
-        if skill_name not in self._details:
-            raise SkillNotFoundError
+        self.calls.append((script_name, script, arguments))
         return MyScriptExecutionResult(
             stdout="script output",
             stderr=None,
@@ -141,9 +138,7 @@ def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
     )
 
     assert message == "script output"
-    assert loader.calls == [
-        ("alpha", "inline_script.py", "print('ok')", {"threshold": 0.5})
-    ]
+    assert loader.calls == [("inline_script.py", "print('ok')", {"threshold": 0.5})]
 
 
 @pytest.mark.asyncio
@@ -158,6 +153,4 @@ async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
     )
 
     assert message == "script output"
-    assert loader.calls == [
-        ("alpha", "inline_script.py", "print('ok')", {"threshold": 0.5})
-    ]
+    assert loader.calls == [("inline_script.py", "print('ok')", {"threshold": 0.5})]

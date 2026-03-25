@@ -36,6 +36,9 @@ class RunPythonScriptInput(BaseModel):
             The keys and values should match what the script expects."""
         ),
     )
+    timeout: int = Field(
+        description=("Timeout for the script execution in seconds."), default=30
+    )
 
 
 class RunPythonScriptOutput(BaseModel):
@@ -86,20 +89,19 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         self,
         script: str,
         arguments: dict[str, Any] | None = None,
+        timeout: int = 30,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> tuple[str, RunPythonScriptOutput]:
         """Synchronous execution with named parameters."""
         return asyncio.run(
-            self._arun(
-                script=script,
-                arguments=arguments,
-            )
+            self._arun(script=script, arguments=arguments, timeout=timeout)
         )
 
     async def _arun(
         self,
         script: str,
         arguments: dict[str, Any] | None = None,
+        timeout: int = 30,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, RunPythonScriptOutput]:
         """Async execution with named parameters."""
@@ -110,9 +112,8 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         )
 
         try:
-            result = await self._run_inline_skill_script(
-                script=script,
-                arguments=arguments,
+            result = await self._run_inline_script(
+                script=script, arguments=arguments, timeout=timeout
             )
 
             # Create structured output
@@ -132,7 +133,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
 
             # Create human-readable summary
             if output.success:
-                summary = f"Script executed successfully.\nOutput:\n{output.stdout}"
+                summary = f"{output.stdout}"
             else:
                 summary = f"Script failed with exit code {output.exit_code}.\nError:\n{output.stderr}"
 
@@ -152,10 +153,11 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
             )
             return f"Error running script: {exc}", output
 
-    async def _run_inline_skill_script(
+    async def _run_inline_script(
         self,
         script: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         """Execute the script using MyScriptExecutor."""
         normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
@@ -165,6 +167,6 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
             script_name=self._inline_script_name,
             script=script,
             arguments=normalized_arguments,
-            timeout=30,
+            timeout=timeout,
         )
         return result

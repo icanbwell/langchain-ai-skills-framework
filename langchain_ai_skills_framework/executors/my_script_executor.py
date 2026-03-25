@@ -359,7 +359,10 @@ class MyScriptExecutor:
 
             try:
                 temp_script_path.chmod(0o700)
-            except OSError:
+            except OSError as e:
+                logger.warning(
+                    f"Failed to set permissions for temporary script file: {temp_script_path} {e}"
+                )
                 pass
 
             return await self._execute_validated_script(

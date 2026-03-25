@@ -63,7 +63,6 @@ When a task falls within a skill's domain:
 2. Follow the skill's guidance to complete the task
 3. Use `read_skill_resource` to read files referenced by the skill
 4. Use `run_skill_script` to run scripts provided by the skill
-5. Use `run_python_script` to run inline script content in a skill context
 
 Use progressive disclosure: load only what you need, when you need it."""
 
@@ -474,7 +473,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     def _map_skill(self, metadata: SkillMetadata, content: str) -> SkillDetails:
         """Map a skillkit skill into framework SkillDetails."""
-        del content
         normalized_name = self._normalize_skill_name(metadata.name)
         if not normalized_name:
             raise SkillValidationError("Skill name must not be empty")
@@ -500,7 +498,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         )
         return SkillDetails(
             summary=summary,
-            content="",
+            content=content,
             source_path=metadata.skill_path,
         )
 

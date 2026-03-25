@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Mapping, Sequence, cast, Any
 from uuid import UUID, uuid4
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 from pydantic_ai_skills import SkillsToolset
 from pydantic_ai_skills.exceptions import (
     SkillRegistryError as PydanticSkillRegistryError,
@@ -143,7 +143,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:
         return await self._skills_toolset.get_instructions(ctx=None)  # type: ignore[arg-type, return-value]
 
-    def get_tools(self) -> list[StructuredTool]:
+    def get_tools(self) -> list[BaseTool]:
         return [
             LoadSkillTool(
                 skill_loader=self,

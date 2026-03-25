@@ -5,10 +5,10 @@ from html import escape
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Sequence, Any, cast
+from typing import Sequence, Any
 from uuid import UUID, uuid4
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 from skillkit import SkillManager, SkillMetadata, ScriptNotFoundError, Skill
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -216,7 +216,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         # Use custom template if provided, otherwise use default
         return _INSTRUCTION_SKILLS_HEADER.format(skills_list=skills_list)
 
-    def get_tools(self) -> list[StructuredTool]:
+    def get_tools(self) -> list[BaseTool]:
         return [
             LoadSkillTool(
                 skill_loader=self,
@@ -227,7 +227,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             RunSkillScriptTool(
                 skill_loader=self,
             ),
-            cast(StructuredTool, RunPythonScriptTool()),
+            RunPythonScriptTool(),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:

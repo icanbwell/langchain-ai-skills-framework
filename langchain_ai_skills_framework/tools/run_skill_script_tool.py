@@ -148,12 +148,12 @@ class RunSkillScriptTool(BaseTool):
             )
             if script_result.success:
                 return (
-                    script_result.stdout or "No script_result",
+                    script_result.stdout or "No output",
                     script_result.stdout or "",
                 )
             else:
                 return (
-                    script_result.stderr or script_result.stdout or "No script_result",
+                    script_result.stderr or script_result.stdout or "No output",
                     script_result.stdout or "",
                 )
         except ToolException:

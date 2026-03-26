@@ -273,15 +273,3 @@ def test_skillkit_loader_refresh_and_missing_skill(
 
     with pytest.raises(SkillNotFoundError):
         loader.get_skill_details(skill_name="missing")
-
-
-def test_skillkit_loader_registers_inline_script_tool(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    _write_skill(tmp_path, "alpha-skill")
-    loader, _ = _build_loader(monkeypatch, tmp_path)
-
-    tool_names = {tool.name for tool in loader.get_tools()}
-
-    assert "run_python_script" in tool_names

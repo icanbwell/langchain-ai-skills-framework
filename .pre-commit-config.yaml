@@ -1,4 +1,4 @@
-exclude: (^.idea/|^docsrc|^docs)
+exclude: (^.idea/|^docsrc|^docs|^tests_integration/skills/skills/.*\.py$)
 
 repos:
   # Pre-commit hooks for basic checks

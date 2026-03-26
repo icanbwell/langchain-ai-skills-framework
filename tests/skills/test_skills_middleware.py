@@ -7,8 +7,11 @@ import pytest
 from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain.messages import SystemMessage
 from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
@@ -38,8 +41,16 @@ class _StubSkillLoader(SkillLoaderProtocol):
         )
         return f"\n\n<available_skills>{skills_lines}</available_skills>\n\n"
 
-    def get_tools(self) -> list[StructuredTool]:
+    def get_tools(self) -> list[BaseTool]:
         return []
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        raise NotImplementedError()
+
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult:
+        raise NotImplementedError()
 
 
 class _DummyModelRequest:

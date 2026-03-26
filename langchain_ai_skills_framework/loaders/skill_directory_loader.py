@@ -6,10 +6,10 @@ import time
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Mapping, Sequence, cast
+from typing import Mapping, Sequence, cast, Any
 from uuid import UUID, uuid4
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 from pydantic_ai_skills import SkillsToolset
 from pydantic_ai_skills.exceptions import (
     SkillRegistryError as PydanticSkillRegistryError,
@@ -17,6 +17,9 @@ from pydantic_ai_skills.exceptions import (
 )
 from pydantic_ai_skills.types import Skill
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -38,7 +41,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
-from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -140,12 +143,20 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:
         return await self._skills_toolset.get_instructions(ctx=None)  # type: ignore[arg-type, return-value]
 
-    def get_tools(self) -> list[StructuredTool]:
+    def get_tools(self) -> list[BaseTool]:
         return [
             LoadSkillTool(
                 skill_loader=self,
             ),
         ]
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        raise NotImplementedError()
+
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult:
+        raise NotImplementedError()
 
     # Snapshot lifecycle
     def _get_snapshot(self) -> SkillSnapshot:

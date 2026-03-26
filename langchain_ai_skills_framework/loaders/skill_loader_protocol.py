@@ -1,7 +1,10 @@
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable, Any
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 
 
@@ -17,4 +20,10 @@ class SkillLoaderProtocol(Protocol):
 
     async def get_instructions(self) -> str: ...
 
-    def get_tools(self) -> list[StructuredTool]: ...
+    def get_tools(self) -> list[BaseTool]: ...
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str: ...
+
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult: ...

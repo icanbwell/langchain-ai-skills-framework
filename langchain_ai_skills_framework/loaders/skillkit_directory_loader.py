@@ -5,12 +5,16 @@ from html import escape
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Sequence
+from typing import Sequence, Any
 from uuid import UUID, uuid4
 
-from langchain_core.tools import StructuredTool
-from skillkit import SkillManager, SkillMetadata
+from langchain_core.tools import BaseTool
+from skillkit import SkillManager, SkillMetadata, ScriptNotFoundError, Skill
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import (
+    MyScriptExecutionResult,
+)
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -31,7 +35,11 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
     SkillSnapshot,
 )
-from langchain_ai_skills_framework.tools.skills_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
+    ReadSkillResourceTool,
+)
+from langchain_ai_skills_framework.tools.run_skill_script_tool import RunSkillScriptTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -50,7 +58,8 @@ Each skill provides specialized instructions, resources, and scripts for specifi
 When a task falls within a skill's domain:
 1. Use `load_skill` to read the complete skill instructions
 2. Follow the skill's guidance to complete the task
-3. Use any additional skill resources and scripts as needed
+3. Use `read_skill_resource` to read files referenced by the skill
+4. Use `run_skill_script` to run scripts provided by the skill
 
 Use progressive disclosure: load only what you need, when you need it."""
 
@@ -102,7 +111,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         elif isinstance(skills_directory, str):
             configured_directory = skills_directory
         else:
-            raise SkillValidationError("skills_directory must be a string or Path")
+            raise SkillValidationError(
+                f"skills_directory must be a string or Path: {type(skills_directory)}"
+            )
 
         if not configured_directory.strip():
             raise SkillValidationError("skills_directory is not configured")
@@ -134,7 +145,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return lightweight skill summaries from the current snapshot."""
 
-        del allowed_skills
         snapshot = self._get_snapshot()
         logger.debug(
             "SkillkitDirectoryLoader %s returning %d summaries",
@@ -202,12 +212,109 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         # Use custom template if provided, otherwise use default
         return _INSTRUCTION_SKILLS_HEADER.format(skills_list=skills_list)
 
-    def get_tools(self) -> list[StructuredTool]:
+    def get_tools(self) -> list[BaseTool]:
         return [
             LoadSkillTool(
                 skill_loader=self,
             ),
+            ReadSkillResourceTool(
+                skill_loader=self,
+            ),
+            RunSkillScriptTool(
+                skill_loader=self,
+            ),
         ]
+
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        """Read a specific resource from a skill, such as a file or script."""
+        details = self.get_skill_details(skill_name=skill_name)
+        references_dir: Path = details.source_path.parent.joinpath("references")
+        candidate_path: Path = references_dir.joinpath(resource_name)
+        try:
+            resolved_references: Path = references_dir.resolve()
+            resolved_resource: Path = candidate_path.resolve()
+        except OSError as exc:
+            raise SkillValidationError(
+                f"Error resolving resource '{resource_name}' for skill '{skill_name}': {exc}"
+            ) from exc
+
+        try:
+            # Ensure the resource is within the skill's `references` directory
+            resolved_resource.relative_to(resolved_references)
+        except ValueError as exc:
+            raise SkillValidationError(
+                f"Invalid resource path '{resource_name}' for skill '{skill_name}'"
+            ) from exc
+
+        if not resolved_resource.is_file():
+            raise SkillNotFoundError(
+                f"Resource '{resource_name}' not found for skill '{skill_name}'"
+            )
+        try:
+            return resolved_resource.read_text(encoding="utf-8")
+        except Exception as exc:
+            raise SkillValidationError(
+                f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"
+            ) from exc
+
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult:
+        """Run a specific script from a skill and return its output."""
+
+        # remove only a trailing ".py" extension since the Skillkit wants just the name
+        cleaned_script_name: str = (
+            script_name[:-3] if script_name.endswith(".py") else script_name
+        )
+
+        result: MyScriptExecutionResult = await self.execute_skill_script(
+            skill_name=skill_name,
+            script_name=cleaned_script_name,
+            arguments=arguments or {},
+        )
+        return result
+
+    # Implement our own so we can run via uv
+    async def execute_skill_script(
+        self,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any],
+        timeout: int | None = None,
+    ) -> MyScriptExecutionResult:
+        # Look up skill
+        skill = self._manager.load_skill(skill_name)
+        # Find script in skill's detected scripts (triggers lazy detection)
+        script_metadata = None
+        for script in skill.scripts:
+            if script.name == script_name:
+                script_metadata = script
+                break
+
+        if script_metadata is None:
+            raise ScriptNotFoundError(
+                f"Script '{script_name}' not found in skill '{skill_name}'. "
+                f"Available scripts: {', '.join(s.name for s in skill.scripts) or 'none'}"
+            )
+
+        effective_timeout = timeout if timeout is not None else 30
+
+        # Normalize argument keys to lowercase for case-insensitive matching
+        # This ensures scripts receive predictable parameter names regardless
+        # of how framework integrations or LLMs capitalize them
+        normalized_arguments = {k.lower(): v for k, v in arguments.items()}
+
+        # Create executor and execute script
+        executor = MyScriptExecutor()
+
+        return await executor.execute_script_from_path(
+            script_name=script_name,
+            script_path=script_metadata.path,
+            arguments=normalized_arguments,
+            skill_base_dir=skill.base_directory,
+            skill_metadata=skill.metadata,
+            timeout=effective_timeout,
+        )
 
     # Snapshot lifecycle
 
@@ -256,7 +363,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         metadata: SkillMetadata | str
         for metadata in self._manager.list_skills():
             if isinstance(metadata, SkillMetadata):
-                definition = self._map_skill(metadata=metadata, content="")
+                skill: Skill = self._manager.load_skill(name=metadata.name)
+                definition = self._map_skill(metadata=metadata, content=skill.content)
                 skill_group = self._resolve_skill_group(
                     str(definition.source_path.parent)
                 )
@@ -385,7 +493,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             allowed_tools=metadata.allowed_tools,
         )
         return SkillDetails(
-            summary=summary, content=content, source_path=metadata.skill_path
+            summary=summary,
+            content=content,
+            source_path=metadata.skill_path,
         )
 
     # Source path and name normalization

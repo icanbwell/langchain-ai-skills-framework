@@ -33,6 +33,7 @@ log_sources = [
     "ERRORS",
     "BAILEY",
     "CACHE",
+    "SKILLS",
 ]
 
 SRC_LOG_LEVELS = {}

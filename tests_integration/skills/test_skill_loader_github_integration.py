@@ -4,7 +4,7 @@ import os
 import traceback
 
 import pytest
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import BaseTool
 
 from langchain_ai_skills_framework.environment.environment_variables import (
     LangchainAISkillsFrameworkEnvironmentVariables,
@@ -64,7 +64,7 @@ async def test_skill_loader_reads_skills_from_github_and_prints_parsed_summaries
         assert "<available_skills>" in instructions
 
         # test tools
-        tools: list[StructuredTool] = loader.get_tools()
+        tools: list[BaseTool] = loader.get_tools()
         print(f"{len(tools)} tools")
         for tool in tools:
             print(tool)

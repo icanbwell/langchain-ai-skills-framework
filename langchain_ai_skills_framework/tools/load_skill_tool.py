@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from typing import Type
+from typing import Type, Literal, Tuple
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
@@ -38,27 +38,28 @@ class LoadSkillTool(BaseTool):
         " handling instructions, policies, and guidelines."
     )
     args_schema: Type[BaseModel] = LoadSkillInput
+    response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
 
     def _run(
         self,
         skill_name: str,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> str:
+    ) -> Tuple[str, str]:
         """Synchronously load a skill by name."""
         skill = self._load_skill(skill_name)
         logger.debug("LoadSkillTool (sync): loaded skill_name=%s", skill_name)
-        return skill
+        return skill, skill
 
     async def _arun(
         self,
         skill_name: str,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> str:
+    ) -> Tuple[str, str]:
         """Asynchronously load a skill by name."""
         skill = self._load_skill(skill_name)
         logger.debug("LoadSkillTool (async): loaded skill_name=%s", skill_name)
-        return skill
+        return skill, skill
 
     def _load_skill(self, skill_name: str) -> str:
         """Load skill content and raise when a skill cannot be resolved."""

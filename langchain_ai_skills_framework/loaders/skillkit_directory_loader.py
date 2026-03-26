@@ -36,9 +36,6 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSnapshot,
 )
 from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
-from langchain_ai_skills_framework.tools.run_python_script_tool import (
-    RunPythonScriptTool,
-)
 from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
     ReadSkillResourceTool,
 )
@@ -226,7 +223,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             RunSkillScriptTool(
                 skill_loader=self,
             ),
-            RunPythonScriptTool(),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:

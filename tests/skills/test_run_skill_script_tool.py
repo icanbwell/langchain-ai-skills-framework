@@ -99,13 +99,14 @@ def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    message = tool._run(
+    message, output = tool._run(
         "alpha",
         "analyze.py",
         {"threshold": 0.5},
     )
 
-    assert message == "script output"
+    assert message == "Success"
+    assert output == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
 
 
@@ -114,13 +115,14 @@ async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    message = await tool._arun(
+    message, output = await tool._arun(
         "alpha",
         "analyze.py",
         {"threshold": 0.5},
     )
 
-    assert message == "script output"
+    assert message == "Success"
+    assert output == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
 
 

@@ -9,7 +9,6 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
 from langchain_ai_skills_framework.tools.run_python_script_tool import (
-    RunPythonScriptOutput,
     RunPythonScriptTool,
 )
 
@@ -72,14 +71,8 @@ def test_run_returns_summary_and_structured_output(
         {"MixedCase": 0.5},
     )
 
-    assert message == "script output"
-    assert output == RunPythonScriptOutput(
-        success=True,
-        stdout="script output",
-        stderr=None,
-        exit_code=0,
-        error_message=None,
-    )
+    assert message == "Success"
+    assert output == "script output"
     assert _StubExecutor.calls == [
         ("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
     ]
@@ -101,14 +94,8 @@ async def test_arun_returns_summary_and_structured_output(
         {"MixedCase": 0.5},
     )
 
-    assert message == "script output"
-    assert output == RunPythonScriptOutput(
-        success=True,
-        stdout="script output",
-        stderr=None,
-        exit_code=0,
-        error_message=None,
-    )
+    assert message == "Success"
+    assert output == "script output"
     assert _StubExecutor.calls == [
         ("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
     ]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Any, Type
+from typing import Any, Type, Literal, Tuple
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
@@ -72,6 +72,7 @@ class RunSkillScriptTool(BaseTool):
         - Execution errors are included in the output
         """
     args_schema: Type[BaseModel] = RunSkillScriptInput
+    response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
 
     def _run(
@@ -80,13 +81,11 @@ class RunSkillScriptTool(BaseTool):
         script_name: str,
         arguments: dict[str, Any] | None = None,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> str | None:
+    ) -> Tuple[str, str]:
         """Synchronously execute a skill script."""
         return asyncio.run(
-            self._run_skill_script(
-                skill_name=skill_name,
-                script_name=script_name,
-                arguments=arguments,
+            self._arun(
+                skill_name=skill_name, script_name=script_name, arguments=arguments
             )
         )
 
@@ -96,7 +95,7 @@ class RunSkillScriptTool(BaseTool):
         script_name: str,
         arguments: dict[str, Any] | None = None,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> str | None:
+    ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
         logger.debug(
             "RunSkillScriptTool: Running script_name=%s skill_name=%s argument_keys=%s",
@@ -105,7 +104,7 @@ class RunSkillScriptTool(BaseTool):
             sorted((arguments or {}).keys()),
         )
         try:
-            script_result = await self._run_skill_script(
+            script_result: MyScriptExecutionResult = await self._run_skill_script(
                 skill_name=skill_name, script_name=script_name, arguments=arguments
             )
             logger.debug(
@@ -113,7 +112,7 @@ class RunSkillScriptTool(BaseTool):
                 script_name,
                 skill_name,
             )
-            return script_result
+            return script_result.stderr or "Success", script_result.stdout or ""
         except ToolException:
             raise
         except Exception as exc:
@@ -128,7 +127,7 @@ class RunSkillScriptTool(BaseTool):
 
     async def _run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
-    ) -> str | None:
+    ) -> MyScriptExecutionResult:
         """Execute the skill script and return results."""
         normalized_name = skill_name.strip()
 
@@ -143,7 +142,7 @@ class RunSkillScriptTool(BaseTool):
             )
 
             if result.success:
-                return result.stdout  # Script output
+                return result  # Script output
             raise ToolException(
                 f"Script '{script_name}' failed in skill '{normalized_name}'. "
                 f"Exit code: {result.exit_code}. Error: {result.stderr or 'Unknown error'}"

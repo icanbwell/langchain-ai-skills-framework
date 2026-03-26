@@ -91,7 +91,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> tuple[str, RunPythonScriptOutput]:
+    ) -> tuple[str, str]:
         """Synchronous execution with named parameters."""
         return asyncio.run(
             self._arun(script=script, arguments=arguments, timeout=timeout)
@@ -103,7 +103,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> tuple[str, RunPythonScriptOutput]:
+    ) -> tuple[str, str]:
         """Async execution with named parameters."""
         logger.debug(
             "RunPythonScriptTool: Running inline script argument_keys=%s timeout=%s",
@@ -137,8 +137,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                 output,
             )
 
-            content = output.stdout if output.stdout is not None else "Success"
-            return content, output
+            return output.stderr or "Success", output.stdout or ""
 
         except ToolException:
             raise

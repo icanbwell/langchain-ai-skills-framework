@@ -72,7 +72,7 @@ def test_run_returns_summary_and_structured_output(
         arguments={"MixedCase": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert _StubExecutor.calls == [
         ("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
@@ -93,7 +93,7 @@ def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
         arguments={"MixedCase": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert _StubExecutor.calls == [
         ("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
@@ -117,7 +117,7 @@ async def test_arun_returns_summary_and_structured_output(
         arguments={"MixedCase": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert _StubExecutor.calls == [
         ("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
@@ -141,7 +141,7 @@ async def test_arun_uses_custom_script_name(
         arguments={"MixedCase": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert _StubExecutor.calls == [
         ("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)

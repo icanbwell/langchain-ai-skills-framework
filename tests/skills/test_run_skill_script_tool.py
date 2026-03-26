@@ -105,7 +105,7 @@ def test_run_executes_script_with_named_arguments() -> None:
         arguments={"threshold": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
 
@@ -121,7 +121,7 @@ async def test_arun_executes_script_with_named_arguments() -> None:
         arguments={"threshold": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
 
@@ -156,7 +156,7 @@ async def test_arun_raises_tool_exception_when_script_fails() -> None:
             "alpha",
             "analyze.py",
             "not-a-dict",
-            "Script arguments must be a dictionary when provided.",
+            "Arguments must be a dict.",
         ),
     ],
 )

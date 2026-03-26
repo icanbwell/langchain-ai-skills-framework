@@ -134,7 +134,10 @@ class RunSkillScriptTool(BaseTool):
                 normalized_script_name,
                 normalized_name,
             )
-            return script_result.stderr or "Success", script_result.stdout or ""
+            return (
+                script_result.stderr or script_result.stdout or "No output",
+                script_result.stdout or "",
+            )
         except ToolException:
             raise
         except Exception as exc:

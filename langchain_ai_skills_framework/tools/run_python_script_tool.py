@@ -155,7 +155,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                 output,
             )
 
-            return output.stderr or "Success", output.stdout or ""
+            return output.stderr or output.stdout or "No output", output.stdout or ""
 
         except ToolException:
             raise

@@ -183,3 +183,9 @@ class RunSkillScriptTool(BaseTool):
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"
         )
+
+    @staticmethod
+    def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
+        """Get the friendly name of the skill."""
+        skill_name = tool_input.get("skill_name") if tool_input else None
+        return f"{skill_name}"

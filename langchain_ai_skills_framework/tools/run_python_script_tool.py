@@ -164,3 +164,9 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
             timeout=timeout,
         )
         return result
+
+    @staticmethod
+    def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
+        """Get the friendly name of the skill."""
+        skill_name = tool_input.get("skill_name") if tool_input else None
+        return f"{skill_name}"

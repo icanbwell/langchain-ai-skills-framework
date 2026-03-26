@@ -5,6 +5,7 @@ from typing import Any, Mapping, Sequence
 
 import pytest
 from langchain_core.tools import BaseTool
+from langchain_core.tools import ToolException
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -66,6 +67,20 @@ class _StubSkillLoader(SkillLoaderProtocol):
         )
 
 
+class _FailingScriptLoader(_StubSkillLoader):
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult:
+        self.calls.append((skill_name, script_name, arguments))
+        return MyScriptExecutionResult(
+            stdout=None,
+            stderr="boom",
+            exit_code=2,
+            execution_time_ms=1.0,
+            success=False,
+        )
+
+
 def _make_skill(name: str) -> SkillDetails:
     source_path = Path(f"/skills/{name}/SKILL.md")
     summary = SkillSummary(
@@ -107,3 +122,21 @@ async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
 
     assert message == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
+
+
+@pytest.mark.asyncio
+async def test_arun_raises_tool_exception_when_skill_missing() -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match="Skill 'missing' not found"):
+        await tool._arun("missing", "analyze.py", None)
+
+
+@pytest.mark.asyncio
+async def test_arun_raises_tool_exception_when_script_fails() -> None:
+    loader = _FailingScriptLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match="Script 'analyze.py' failed"):
+        await tool._arun("alpha", "analyze.py", None)

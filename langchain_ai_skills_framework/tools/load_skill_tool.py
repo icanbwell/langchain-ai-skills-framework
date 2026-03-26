@@ -5,7 +5,7 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, ToolException
 from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -47,7 +47,7 @@ class LoadSkillTool(BaseTool):
     ) -> str:
         """Synchronously load a skill by name."""
         skill = self._load_skill(skill_name)
-        logger.debug(f"LoadSkillTool (sync): {skill_name}\n{skill}")
+        logger.debug("LoadSkillTool (sync): loaded skill_name=%s", skill_name)
         return skill
 
     async def _arun(
@@ -57,21 +57,30 @@ class LoadSkillTool(BaseTool):
     ) -> str:
         """Asynchronously load a skill by name."""
         skill = self._load_skill(skill_name)
-        logger.debug(f"LoadSkillTool: {skill_name}\n{skill}")
+        logger.debug("LoadSkillTool (async): loaded skill_name=%s", skill_name)
         return skill
 
     def _load_skill(self, skill_name: str) -> str:
-        """Load skill content or return availability message."""
+        """Load skill content and raise when a skill cannot be resolved."""
         normalized_name = skill_name.strip()
 
         if not normalized_name:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            )
 
         try:
             skill = self.skill_loader.get_skill_details(skill_name=normalized_name)
             return f"{skill.content}"
-        except SkillNotFoundError:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+        except SkillNotFoundError as exc:
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            ) from exc
+        except Exception as exc:
+            logger.exception("LoadSkillTool failed for skill_name=%s", normalized_name)
+            raise ToolException(
+                f"Unable to load skill '{normalized_name}' due to an internal error."
+            ) from exc
 
     @staticmethod
     def _format_availability_message(

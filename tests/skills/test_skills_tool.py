@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping, Sequence, Any
 
+import pytest
 from langchain_core.tools import BaseTool
+from langchain_core.tools import ToolException
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -65,9 +67,8 @@ def test_load_skill_tool_returns_availability_for_empty_name() -> None:
     loader = _StubSkillLoader({"alpha": details})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message = tool._load_skill("")
-
-    assert message == "No skill name provided. Available skills: alpha"
+    with pytest.raises(ToolException, match="No skill name provided"):
+        tool._load_skill("")
 
 
 def test_load_skill_tool_returns_availability_when_missing() -> None:
@@ -76,17 +77,15 @@ def test_load_skill_tool_returns_availability_when_missing() -> None:
     loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message = tool._load_skill("gamma")
-
-    assert message == "Skill 'gamma' not found. Available skills: alpha, beta"
+    with pytest.raises(ToolException, match="Skill 'gamma' not found"):
+        tool._load_skill("gamma")
 
 
 def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
-    message = tool._load_skill("alpha")
-
-    assert message == "Skill 'alpha' not found. Available skills: None configured"
+    with pytest.raises(ToolException, match="Available skills: None configured"):
+        tool._load_skill("alpha")
 
 
 def test_load_skill_tool_returns_skill_content() -> None:

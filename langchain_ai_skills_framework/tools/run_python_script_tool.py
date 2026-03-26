@@ -6,7 +6,7 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool  # Changed from StructuredTool
+from langchain_core.tools import BaseTool, ToolException
 from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -106,15 +106,21 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
     ) -> tuple[str, RunPythonScriptOutput]:
         """Async execution with named parameters."""
         logger.debug(
-            "RunPythonScriptTool: Running Python script with script=%s and arguments %s",
-            script,
-            arguments,
+            "RunPythonScriptTool: Running inline script argument_keys=%s timeout=%s",
+            sorted((arguments or {}).keys()),
+            timeout,
         )
 
         try:
             result = await self._run_inline_script(
                 script=script, arguments=arguments, timeout=timeout
             )
+
+            if not result.success:
+                raise ToolException(
+                    f"Inline script failed with exit code {result.exit_code}. "
+                    f"Error: {result.stderr or 'Unknown error'}"
+                )
 
             # Create structured output
             output = RunPythonScriptOutput(
@@ -139,19 +145,13 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
 
             return summary, output
 
+        except ToolException:
+            raise
         except Exception as exc:
             logger.exception(
-                "RunPythonScriptTool: Error running Python script: %s",
-                script,
+                "RunPythonScriptTool: Error running inline Python script",
             )
-            output = RunPythonScriptOutput(
-                success=False,
-                stdout=None,
-                stderr=str(exc),
-                exit_code=-1,
-                error_message=f"Error running script: {exc}",
-            )
-            return f"Error running script: {exc}", output
+            raise ToolException(f"Error running inline Python script: {exc}") from exc
 
     async def _run_inline_script(
         self,

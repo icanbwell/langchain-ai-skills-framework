@@ -7,7 +7,7 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, ToolException
 from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -78,24 +78,39 @@ class ReadSkillResourceTool(BaseTool):
             skill_name=skill_name, resource_name=resource_name
         )
         logger.debug(
-            f"ReadSkillResourceTool: Loaded {resource_name} from {skill_name}\n{resource}"
+            "ReadSkillResourceTool: Loaded resource_name=%s from skill_name=%s",
+            resource_name,
+            skill_name,
         )
         return resource
 
     def _load_skill_resource(self, *, skill_name: str, resource_name: str) -> str:
-        """Load resource content or return availability message."""
+        """Load resource content and raise when a skill cannot be resolved."""
         normalized_name = skill_name.strip()
 
         if not normalized_name:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            )
 
         try:
             resource = self.skill_loader.read_skill_resource(
                 skill_name=normalized_name, resource_name=resource_name
             )
             return resource
-        except SkillNotFoundError:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+        except SkillNotFoundError as exc:
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            ) from exc
+        except Exception as exc:
+            logger.exception(
+                "ReadSkillResourceTool failed for skill_name=%s resource_name=%s",
+                normalized_name,
+                resource_name,
+            )
+            raise ToolException(
+                f"Unable to read resource '{resource_name}' from skill '{normalized_name}' due to an internal error."
+            ) from exc
 
     @staticmethod
     def _format_availability_message(

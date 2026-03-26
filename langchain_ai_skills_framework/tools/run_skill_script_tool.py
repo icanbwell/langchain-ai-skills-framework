@@ -6,7 +6,7 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, ToolException
 from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -99,22 +99,32 @@ class RunSkillScriptTool(BaseTool):
     ) -> str | None:
         """Asynchronously execute a skill script."""
         logger.debug(
-            f"RunSkillScriptTool: Running script {script_name} in {skill_name} with arguments {arguments}"
+            "RunSkillScriptTool: Running script_name=%s skill_name=%s argument_keys=%s",
+            script_name,
+            skill_name,
+            sorted((arguments or {}).keys()),
         )
-
         try:
             script_result = await self._run_skill_script(
                 skill_name=skill_name, script_name=script_name, arguments=arguments
             )
             logger.debug(
-                f"RunSkillScriptTool: Output from script {script_name} in {skill_name} with arguments {arguments}\n{script_result}"
+                "RunSkillScriptTool: Script completed script_name=%s skill_name=%s",
+                script_name,
+                skill_name,
             )
             return script_result
+        except ToolException:
+            raise
         except Exception as exc:
             logger.exception(
-                f"RunSkillScriptTool: Error running script {script_name} in {skill_name}"
+                "RunSkillScriptTool unexpected failure script_name=%s skill_name=%s",
+                script_name,
+                skill_name,
             )
-            return f"Error running script: {exc}"
+            raise ToolException(
+                f"Unable to run script '{script_name}' in skill '{skill_name}' due to an internal error."
+            ) from exc
 
     async def _run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
@@ -123,7 +133,9 @@ class RunSkillScriptTool(BaseTool):
         normalized_name = skill_name.strip()
 
         if not normalized_name:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            )
 
         try:
             result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
@@ -132,10 +144,25 @@ class RunSkillScriptTool(BaseTool):
 
             if result.success:
                 return result.stdout  # Script output
-            else:
-                return f"Error: {result.stderr} Exit code: {result.exit_code}"
-        except SkillNotFoundError:
-            return self._format_availability_message(self.skill_loader, normalized_name)
+            raise ToolException(
+                f"Script '{script_name}' failed in skill '{normalized_name}'. "
+                f"Exit code: {result.exit_code}. Error: {result.stderr or 'Unknown error'}"
+            )
+        except ToolException:
+            raise
+        except SkillNotFoundError as exc:
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            ) from exc
+        except Exception as exc:
+            logger.exception(
+                "RunSkillScriptTool failed for skill_name=%s script_name=%s",
+                normalized_name,
+                script_name,
+            )
+            raise ToolException(
+                f"Unable to run script '{script_name}' in skill '{normalized_name}' due to an internal error."
+            ) from exc
 
     @staticmethod
     def _format_availability_message(

@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import pytest
 from langchain_core.tools import BaseTool
+from langchain_core.tools import ToolException
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -78,3 +80,19 @@ def test_run_uses_second_positional_arg_for_resource_name() -> None:
 
     assert message == "alpha:FORMS.md"
     assert loader.calls == [("alpha", "FORMS.md")]
+
+
+def test_run_raises_tool_exception_for_missing_skill() -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = ReadSkillResourceTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match="Skill 'missing' not found"):
+        tool._run("missing", "FORMS.md")
+
+
+def test_run_raises_tool_exception_for_empty_skill_name() -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = ReadSkillResourceTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match="No skill name provided"):
+        tool._run(" ", "FORMS.md")

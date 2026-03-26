@@ -17,6 +17,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.utilities.text_humanizer import Humanizer
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -138,5 +139,6 @@ class ReadSkillResourceTool(BaseTool):
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         """Get the friendly name of the skill."""
-        skill_name = tool_input.get("skill_name") if tool_input else None
-        return f"{skill_name}"
+        skill_name: str = tool_input.get("skill_name") if tool_input else None
+        resource_name: str = tool_input.get("resource_name") if tool_input else None
+        return f"{Humanizer.humanize_tool_name(key=skill_name)} {Humanizer.humanize_tool_name(key=resource_name)}"

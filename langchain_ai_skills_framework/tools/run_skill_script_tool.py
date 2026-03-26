@@ -98,20 +98,41 @@ class RunSkillScriptTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
+        if not isinstance(skill_name, str):
+            raise ToolException("Skill name must be a string.")
+
+        normalized_name = skill_name.strip()
+        if not normalized_name:
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            )
+
+        if not isinstance(script_name, str):
+            raise ToolException("Script name must be a string.")
+
+        normalized_script_name = script_name.strip()
+        if not normalized_script_name:
+            raise ToolException("No script name provided.")
+
+        if arguments is not None and not isinstance(arguments, dict):
+            raise ToolException("Script arguments must be a dictionary when provided.")
+
         logger.debug(
             "RunSkillScriptTool: Running script_name=%s skill_name=%s argument_keys=%s",
-            script_name,
-            skill_name,
+            normalized_script_name,
+            normalized_name,
             sorted((arguments or {}).keys()),
         )
         try:
             script_result: MyScriptExecutionResult = await self._run_skill_script(
-                skill_name=skill_name, script_name=script_name, arguments=arguments
+                skill_name=normalized_name,
+                script_name=normalized_script_name,
+                arguments=arguments,
             )
             logger.debug(
                 "RunSkillScriptTool: Script completed script_name=%s skill_name=%s",
-                script_name,
-                skill_name,
+                normalized_script_name,
+                normalized_name,
             )
             return script_result.stderr or "Success", script_result.stdout or ""
         except ToolException:
@@ -119,11 +140,11 @@ class RunSkillScriptTool(BaseTool):
         except Exception as exc:
             logger.exception(
                 "RunSkillScriptTool unexpected failure script_name=%s skill_name=%s",
-                script_name,
-                skill_name,
+                normalized_script_name,
+                normalized_name,
             )
             raise ToolException(
-                f"Unable to run script '{script_name}' in skill '{skill_name}' due to an internal error."
+                f"Unable to run script '{normalized_script_name}' in skill '{normalized_name}' due to an internal error."
             ) from exc
 
     async def _run_skill_script(
@@ -188,6 +209,6 @@ class RunSkillScriptTool(BaseTool):
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         """Get the friendly name of the skill."""
-        skill_name: str = tool_input.get("skill_name") if tool_input else None
-        script_name: str = tool_input.get("script_name") if tool_input else None
+        skill_name: str = str(tool_input.get("skill_name") if tool_input else "")
+        script_name: str = str(tool_input.get("script_name") if tool_input else "")
         return f"{Humanizer.humanize_tool_name(key=skill_name)} ({script_name})"

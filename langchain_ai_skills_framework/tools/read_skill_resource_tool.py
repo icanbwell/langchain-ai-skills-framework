@@ -77,13 +77,29 @@ class ReadSkillResourceTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously load a skill resource."""
+        if not isinstance(skill_name, str):
+            raise ToolException("Skill name must be a string.")
+
+        normalized_name = skill_name.strip()
+        if not normalized_name:
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            )
+
+        if not isinstance(resource_name, str):
+            raise ToolException("Resource name must be a string.")
+
+        normalized_resource_name = resource_name.strip()
+        if not normalized_resource_name:
+            raise ToolException("No resource name provided.")
+
         resource = self._load_skill_resource(
-            skill_name=skill_name, resource_name=resource_name
+            skill_name=normalized_name, resource_name=normalized_resource_name
         )
         logger.debug(
             "ReadSkillResourceTool: Loaded resource_name=%s from skill_name=%s",
-            resource_name,
-            skill_name,
+            normalized_resource_name,
+            normalized_name,
         )
         return resource, resource
 
@@ -139,6 +155,6 @@ class ReadSkillResourceTool(BaseTool):
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         """Get the friendly name of the skill."""
-        skill_name: str = tool_input.get("skill_name") if tool_input else None
-        resource_name: str = tool_input.get("resource_name") if tool_input else None
+        skill_name: str = str(tool_input.get("skill_name") if tool_input else "")
+        resource_name: str = str(tool_input.get("resource_name") if tool_input else "")
         return f"{Humanizer.humanize_tool_name(key=skill_name)} {Humanizer.humanize_tool_name(key=resource_name)}"

@@ -58,8 +58,17 @@ class LoadSkillTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously load a skill by name."""
-        skill = self._load_skill(skill_name)
-        logger.debug("LoadSkillTool (async): loaded skill_name=%s", skill_name)
+        if not isinstance(skill_name, str):
+            raise ToolException("Skill name must be a string.")
+
+        normalized_name = skill_name.strip()
+        if not normalized_name:
+            raise ToolException(
+                self._format_availability_message(self.skill_loader, normalized_name)
+            )
+
+        skill = self._load_skill(normalized_name)
+        logger.debug("LoadSkillTool (async): loaded skill_name=%s", normalized_name)
         return skill, skill
 
     def _load_skill(self, skill_name: str) -> str:
@@ -108,5 +117,5 @@ class LoadSkillTool(BaseTool):
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         """Get the friendly name of the skill."""
-        skill_name: str = tool_input.get("skill_name") if tool_input else None
+        skill_name: str = str(tool_input.get("skill_name") if tool_input else "")
         return f"{Humanizer.humanize_tool_name(key=skill_name)}"

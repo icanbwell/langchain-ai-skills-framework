@@ -96,3 +96,26 @@ def test_load_skill_tool_returns_skill_content() -> None:
     message = tool._load_skill(" alpha ")
 
     assert message == "Body for alpha"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("skill_name", "message"),
+    [
+        (123, "Skill name must be a string."),
+        ("", "No skill name provided."),
+    ],
+)
+async def test_arun_validates_skill_name(skill_name: Any, message: str) -> None:
+    details = _make_skill("alpha", content="Body for alpha")
+    loader = _StubSkillLoader({"alpha": details})
+    tool = LoadSkillTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match=message):
+        await tool._arun(skill_name)
+
+
+def test_get_friendly_name_casts_skill_name_to_string() -> None:
+    friendly_name = LoadSkillTool.get_friendly_name(tool_input={"skill_name": None})
+
+    assert friendly_name == "None"

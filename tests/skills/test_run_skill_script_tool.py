@@ -142,3 +142,40 @@ async def test_arun_raises_tool_exception_when_script_fails() -> None:
 
     with pytest.raises(ToolException, match="Script 'analyze.py' failed"):
         await tool._arun("alpha", "analyze.py", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("skill_name", "script_name", "arguments", "message"),
+    [
+        (123, "analyze.py", None, "Skill name must be a string."),
+        ("", "analyze.py", None, "No skill name provided."),
+        ("alpha", 123, None, "Script name must be a string."),
+        ("alpha", "", None, "No script name provided."),
+        (
+            "alpha",
+            "analyze.py",
+            "not-a-dict",
+            "Script arguments must be a dictionary when provided.",
+        ),
+    ],
+)
+async def test_arun_validates_parameters(
+    skill_name: Any,
+    script_name: Any,
+    arguments: Any,
+    message: str,
+) -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match=message):
+        await tool._arun(skill_name, script_name, arguments)
+
+
+def test_get_friendly_name_casts_inputs_to_string() -> None:
+    friendly_name = RunSkillScriptTool.get_friendly_name(
+        tool_input={"skill_name": None, "script_name": 123}
+    )
+
+    assert friendly_name == "None (123)"

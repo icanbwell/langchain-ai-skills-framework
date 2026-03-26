@@ -47,6 +47,9 @@ class RunSkillScriptInput(BaseModel):
             For example, if the script is designed to take parameters like {"input_file": "data.csv", "threshold": 0.5}, you would provide those here."""
         ),
     )
+    timeout: int = Field(
+        description="Timeout for the script execution in seconds.", default=30
+    )
 
 
 class RunSkillScriptTool(BaseTool):
@@ -78,28 +81,37 @@ class RunSkillScriptTool(BaseTool):
 
     def _run(
         self,
+        *,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
+        timeout: int = 30,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Synchronously execute a skill script."""
         return asyncio.run(
             self._arun(
-                skill_name=skill_name, script_name=script_name, arguments=arguments
+                skill_name=skill_name,
+                script_name=script_name,
+                arguments=arguments,
+                timeout=timeout,
             )
         )
 
     async def _arun(
         self,
+        *,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
+        timeout: int = 30,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
         if not isinstance(skill_name, str):
             raise ToolException("Skill name must be a string.")
+        if arguments is not None and not isinstance(arguments, dict):
+            raise ToolException("Arguments must be a dict.")
 
         normalized_name = skill_name.strip()
         if not normalized_name:

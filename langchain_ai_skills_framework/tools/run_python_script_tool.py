@@ -88,18 +88,17 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         """
     args_schema: Type[BaseModel] = RunPythonScriptInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
-    _inline_script_name: str = "inline_script.py"
 
     def _run(
         self,
+        *,
         script: str,
+        script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
-        script_name: str | None = None,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Synchronous execution with named parameters."""
-        del run_manager
         return asyncio.run(
             self._arun(
                 script=script,
@@ -111,17 +110,26 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
 
     async def _arun(
         self,
+        *,
         script: str,
+        script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
-        script_name: str | None = None,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Async execution with named parameters."""
-        del run_manager
+        if not isinstance(script_name, str):
+            raise ToolException("Script name must be a string.")
+        if arguments is not None and not isinstance(arguments, dict):
+            raise ToolException("Arguments must be a dict.")
+        if not isinstance(timeout, int):
+            raise ToolException("Timeout must be an int.")
+        if not isinstance(script_name, str):
+            raise ToolException("Script name must be a string.")
+
         logger.debug(
             "RunPythonScriptTool: Running inline script script_name=%s argument_keys=%s timeout=%s",
-            script_name or self._inline_script_name,
+            script_name,
             sorted((arguments or {}).keys()),
             timeout,
         )
@@ -167,13 +175,14 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
 
     async def _run_inline_script(
         self,
+        *,
         script: str,
-        script_name: str | None,
+        script_name: str,
         arguments: dict[str, Any] | None,
         timeout: int = 30,
     ) -> MyScriptExecutionResult:
         """Execute the script using MyScriptExecutor."""
-        resolved_script_name = (script_name or self._inline_script_name).strip()
+        resolved_script_name = script_name.strip()
         if not resolved_script_name:
             raise ToolException("script_name must be a non-empty string")
 

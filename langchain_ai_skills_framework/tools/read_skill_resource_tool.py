@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Type, Literal, Tuple, Any
 
@@ -60,18 +61,19 @@ class ReadSkillResourceTool(BaseTool):
 
     def _run(
         self,
+        *,
         skill_name: str,
         resource_name: str,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Synchronously load a skill resource."""
-        resource = self._load_skill_resource(
-            skill_name=skill_name, resource_name=resource_name
+        return asyncio.run(
+            self._arun(skill_name=skill_name, resource_name=resource_name)
         )
-        return resource, resource
 
     async def _arun(
         self,
+        *,
         skill_name: str,
         resource_name: str,
         run_manager: AsyncCallbackManagerForToolRun | None = None,

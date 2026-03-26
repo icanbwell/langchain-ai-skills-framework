@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import asyncio
 import logging
 from typing import Type, Literal, Tuple, Any
 from langchain_core.callbacks import (
@@ -44,16 +46,20 @@ class LoadSkillTool(BaseTool):
 
     def _run(
         self,
+        *,
         skill_name: str,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Synchronously load a skill by name."""
-        skill = self._load_skill(skill_name)
-        logger.debug("LoadSkillTool (sync): loaded skill_name=%s", skill_name)
-        return skill, skill
+        return asyncio.run(
+            self._arun(
+                skill_name=skill_name,
+            )
+        )
 
     async def _arun(
         self,
+        *,
         skill_name: str,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:

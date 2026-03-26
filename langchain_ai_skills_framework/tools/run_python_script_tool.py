@@ -137,13 +137,8 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                 output,
             )
 
-            # Create human-readable summary
-            if output.success:
-                summary = f"{output.stdout}"
-            else:
-                summary = f"Script failed with exit code {output.exit_code}.\nError:\n{output.stderr}"
-
-            return summary, output
+            content = output.stdout if output.stdout is not None else "Success"
+            return content, output
 
         except ToolException:
             raise

@@ -112,7 +112,7 @@ async def test_arun_validates_skill_name(skill_name: Any, message: str) -> None:
     tool = LoadSkillTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match=message):
-        await tool._arun(skill_name)
+        await tool._arun(skill_name=skill_name)
 
 
 def test_get_friendly_name_casts_skill_name_to_string() -> None:

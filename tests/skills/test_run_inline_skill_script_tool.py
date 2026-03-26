@@ -67,8 +67,9 @@ def test_run_returns_summary_and_structured_output(
     tool = RunPythonScriptTool()
 
     message, output = tool._run(
-        "print('ok')",
-        {"MixedCase": 0.5},
+        script="print('ok')",
+        script_name="inline_script.py",
+        arguments={"MixedCase": 0.5},
     )
 
     assert message == "Success"
@@ -87,9 +88,9 @@ def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
     tool = RunPythonScriptTool()
 
     message, output = tool._run(
-        "print('ok')",
-        {"MixedCase": 0.5},
+        script="print('ok')",
         script_name="custom_script.py",
+        arguments={"MixedCase": 0.5},
     )
 
     assert message == "Success"
@@ -111,8 +112,9 @@ async def test_arun_returns_summary_and_structured_output(
     )
 
     message, output = await tool._arun(
-        "print('ok')",
-        {"MixedCase": 0.5},
+        script="print('ok')",
+        script_name="inline_script.py",
+        arguments={"MixedCase": 0.5},
     )
 
     assert message == "Success"
@@ -134,9 +136,9 @@ async def test_arun_uses_custom_script_name(
     )
 
     message, output = await tool._arun(
-        "print('ok')",
-        {"MixedCase": 0.5},
+        script="print('ok')",
         script_name="custom_script.py",
+        arguments={"MixedCase": 0.5},
     )
 
     assert message == "Success"
@@ -157,7 +159,7 @@ async def test_arun_raises_tool_exception_for_blank_script_name(
     )
 
     with pytest.raises(ToolException, match="script_name must be a non-empty string"):
-        await tool._arun("print('ok')", None, script_name="   ")
+        await tool._arun(script="print('ok')", script_name="   ", arguments=None)
 
 
 @pytest.mark.asyncio
@@ -171,4 +173,6 @@ async def test_arun_raises_tool_exception_when_inline_script_fails(
     )
 
     with pytest.raises(ToolException, match="Inline script failed"):
-        await tool._arun("print('fail')", None)
+        await tool._arun(
+            script="print('fail')", script_name="inline_script.py", arguments=None
+        )

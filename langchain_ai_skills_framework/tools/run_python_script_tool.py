@@ -148,8 +148,8 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                     f"Error: {result.stderr or 'Unknown error'}"
                 )
 
-            # Create structured output
-            output = RunPythonScriptOutput(
+            # Create structured script_result
+            script_result = RunPythonScriptOutput(
                 success=result.success,
                 stdout=result.stdout,
                 stderr=result.stderr,
@@ -160,10 +160,19 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
             logger.debug(
                 "RunPythonScriptTool: Output from Python script with arguments %s\n%s",
                 arguments,
-                output,
+                script_result,
             )
 
-            return output.stderr or output.stdout or "No output", output.stdout or ""
+            if script_result.success:
+                return (
+                    script_result.stdout or "No script_result",
+                    script_result.stdout or "",
+                )
+            else:
+                return (
+                    script_result.stderr or script_result.stdout or "No script_result",
+                    script_result.stdout or "",
+                )
 
         except ToolException:
             raise

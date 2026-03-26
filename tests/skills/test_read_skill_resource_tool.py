@@ -78,7 +78,7 @@ def test_run_uses_second_positional_arg_for_resource_name() -> None:
 
     message = tool._run("alpha", "FORMS.md")
 
-    assert message == "alpha:FORMS.md"
+    assert message == ("alpha:FORMS.md", "alpha:FORMS.md")
     assert loader.calls == [("alpha", "FORMS.md")]
 
 

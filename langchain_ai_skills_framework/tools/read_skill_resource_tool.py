@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Type
+from typing import Type, Literal, Tuple
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -54,6 +54,7 @@ class ReadSkillResourceTool(BaseTool):
         - To access form templates, reference documentation, or data schemas
         - When you need supplementary information beyond the skill instructions"""
     args_schema: Type[BaseModel] = ReadSkillResourceInput
+    response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
 
     def _run(
@@ -61,18 +62,19 @@ class ReadSkillResourceTool(BaseTool):
         skill_name: str,
         resource_name: str,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> str:
+    ) -> Tuple[str, str]:
         """Synchronously load a skill resource."""
-        return self._load_skill_resource(
+        resource = self._load_skill_resource(
             skill_name=skill_name, resource_name=resource_name
         )
+        return resource, resource
 
     async def _arun(
         self,
         skill_name: str,
         resource_name: str,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> str:
+    ) -> Tuple[str, str]:
         """Asynchronously load a skill resource."""
         resource = self._load_skill_resource(
             skill_name=skill_name, resource_name=resource_name
@@ -82,7 +84,7 @@ class ReadSkillResourceTool(BaseTool):
             resource_name,
             skill_name,
         )
-        return resource
+        return resource, resource
 
     def _load_skill_resource(self, *, skill_name: str, resource_name: str) -> str:
         """Load resource content and raise when a skill cannot be resolved."""

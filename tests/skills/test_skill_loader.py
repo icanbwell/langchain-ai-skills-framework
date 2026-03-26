@@ -154,7 +154,11 @@ def test_skill_loader_accepts_non_string_metadata_values(
                 )
             }
 
-    monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
+        def reload(self, *, include_registries: bool = False) -> None:
+            del include_registries
+            return None
+
+    monkeypatch.setattr(loader, "_skills_toolset", _FakeToolset(), raising=False)
 
     details = loader.get_skill_details(skill_name="alpha-skill")
     assert details.summary.metadata == {
@@ -196,7 +200,11 @@ def test_skill_loader_rejects_non_string_metadata_keys(
                 )
             }
 
-    monkeypatch.setattr(loader, "_create_toolset", lambda: _FakeToolset())
+        def reload(self, *, include_registries: bool = False) -> None:
+            del include_registries
+            return None
+
+    monkeypatch.setattr(loader, "_skills_toolset", _FakeToolset(), raising=False)
 
     with pytest.raises(SkillValidationError, match="metadata keys must be strings"):
         loader.list_skill_summaries(allowed_skills=set())
@@ -438,6 +446,8 @@ def test_skill_loader_reloads_toolset_after_ttl_expires(
 
         def reload(self, *, include_registries: bool = False) -> None:
             self.reload_calls.append(include_registries)
+            if len(self.reload_calls) == 1:
+                return
             self.skills = {
                 "alpha-skill": Skill(
                     name="alpha-skill",
@@ -448,7 +458,7 @@ def test_skill_loader_reloads_toolset_after_ttl_expires(
             }
 
     fake_toolset = _FakeToolset()
-    monkeypatch.setattr(loader, "_create_toolset", lambda: fake_toolset)
+    monkeypatch.setattr(loader, "_skills_toolset", fake_toolset, raising=False)
 
     assert "Version 1" in loader.get_skill_details(skill_name="alpha-skill").content
 
@@ -459,7 +469,7 @@ def test_skill_loader_reloads_toolset_after_ttl_expires(
     )
 
     assert "Version 2" in loader.get_skill_details(skill_name="alpha-skill").content
-    assert fake_toolset.reload_calls == [True]
+    assert fake_toolset.reload_calls == [True, True]
 
 
 def test_skill_loader_returns_empty_when_directory_missing(

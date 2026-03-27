@@ -127,12 +127,15 @@ async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_when_skill_missing() -> None:
+async def test_arun_returns_not_found_message_when_skill_missing() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Skill 'missing' not found"):
-        await tool._arun("missing", "analyze.py", None)
+    message, output = await tool._arun("missing", "analyze.py", None)
+
+    assert "Skill 'missing' not found" in message
+    assert "Available skills: alpha" in message
+    assert output == ""
 
 
 @pytest.mark.asyncio

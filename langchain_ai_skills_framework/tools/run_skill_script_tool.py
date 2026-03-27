@@ -142,6 +142,13 @@ class RunSkillScriptTool(BaseTool):
                 f"Script '{normalized_script_name}' not found in skill '{normalized_name}'.",
                 "",
             )
+        except SkillNotFoundError:
+            return (
+                self._format_availability_message(self.skill_loader, normalized_name),
+                "",
+            )
+        except ToolException:
+            raise
         except Exception as exc:
             logger.exception(
                 "RunSkillScriptTool unexpected failure script_name=%s skill_name=%s",

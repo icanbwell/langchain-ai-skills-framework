@@ -161,6 +161,7 @@ class MyScriptExecutor:
 
         if use_uv:
             # https://docs.astral.sh/uv/guides/scripts/#declaring-script-dependencies
+            # https://docs.astral.sh/uv/reference/cli/#uv-run
             # Add isolation flags for maximum security
             # uv - The main command, invoking the uv tool
             # run - Subcommand that runs a Python script or command in an isolated environment
@@ -180,6 +181,8 @@ class MyScriptExecutor:
                 "run",
                 "--isolated",  # Don't discover project config
                 "--no-project",  # Don't use project environment
+                "--no-config",  # Don't use any config files at all (uv.toml, pyproject.toml, etc.)
+                "--no-progress",  # Don't show progress bars (cleaner output)
                 "-v",  # Verbose to see dependency installation
                 str(validated_script_path),
             ]

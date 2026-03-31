@@ -117,10 +117,10 @@ class ReadSkillResourceTool(BaseTool):
                 skill_name=normalized_name, resource_name=resource_name
             )
             return resource
-        except SkillNotFoundError as exc:
-            raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
-            ) from exc
+        except SkillNotFoundError:
+            return self._format_availability_message(
+                self.skill_loader, normalized_name, resource_name=resource_name
+            )
         except Exception as exc:
             logger.exception(
                 "ReadSkillResourceTool failed for skill_name=%s resource_name=%s",
@@ -133,7 +133,9 @@ class ReadSkillResourceTool(BaseTool):
 
     @staticmethod
     def _format_availability_message(
-        loader: SkillLoaderProtocol, normalized_name: str
+        loader: SkillLoaderProtocol,
+        normalized_name: str,
+        resource_name: str | None = None,
     ) -> str:
         """Format a message showing available skills."""
         available_names = sorted(
@@ -142,11 +144,14 @@ class ReadSkillResourceTool(BaseTool):
         )
         available = ", ".join(available_names)
 
-        availability_message = (
-            f"Skill '{normalized_name}' not found."
-            if normalized_name
-            else "No skill name provided."
-        )
+        if resource_name and normalized_name:
+            availability_message = (
+                f"Resource '{resource_name}' not found in skill '{normalized_name}'."
+            )
+        elif normalized_name:
+            availability_message = f"Skill '{normalized_name}' not found."
+        else:
+            availability_message = "No skill name provided."
 
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"

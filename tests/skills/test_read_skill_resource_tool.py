@@ -82,12 +82,14 @@ def test_run_uses_second_positional_arg_for_resource_name() -> None:
     assert loader.calls == [("alpha", "FORMS.md")]
 
 
-def test_run_raises_tool_exception_for_missing_skill() -> None:
+def test_run_returns_not_found_message_for_missing_skill() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Skill 'missing' not found"):
-        tool._run("missing", "FORMS.md")
+    result = tool._run("missing", "FORMS.md")
+
+    assert "Resource 'FORMS.md' not found in skill 'missing'" in result[0]
+    assert "Available skills: alpha" in result[0]
 
 
 def test_run_raises_tool_exception_for_empty_skill_name() -> None:

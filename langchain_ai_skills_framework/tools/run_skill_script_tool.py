@@ -210,6 +210,8 @@ class RunSkillScriptTool(BaseTool):
             raise
         except SkillNotFoundError:
             raise
+        except ScriptNotFoundError:
+            raise
         except Exception as exc:
             logger.exception(
                 "RunSkillScriptTool failed for skill_name=%s script_name=%s",

@@ -139,7 +139,11 @@ class RunSkillScriptTool(BaseTool):
             return script_result.stderr or "Success", script_result.stdout or ""
         except ScriptNotFoundError:
             return (
-                f"Script '{normalized_script_name}' not found in skill '{normalized_name}'.",
+                self._format_availability_message(
+                    self.skill_loader,
+                    normalized_name,
+                    script_name=normalized_script_name,
+                ),
                 "",
             )
         except SkillNotFoundError:
@@ -185,6 +189,8 @@ class RunSkillScriptTool(BaseTool):
             raise
         except SkillNotFoundError:
             raise
+        except ScriptNotFoundError:
+            raise
         except Exception as exc:
             logger.exception(
                 "RunSkillScriptTool failed for skill_name=%s script_name=%s",
@@ -197,7 +203,9 @@ class RunSkillScriptTool(BaseTool):
 
     @staticmethod
     def _format_availability_message(
-        loader: SkillLoaderProtocol, normalized_name: str
+        loader: SkillLoaderProtocol,
+        normalized_name: str,
+        script_name: str | None = None,
     ) -> str:
         """Format a message showing available skills."""
         available_names = sorted(
@@ -206,11 +214,14 @@ class RunSkillScriptTool(BaseTool):
         )
         available = ", ".join(available_names)
 
-        availability_message = (
-            f"Skill '{normalized_name}' not found."
-            if normalized_name
-            else "No skill name provided."
-        )
+        if script_name and normalized_name:
+            availability_message = (
+                f"Script '{script_name}' not found in skill '{normalized_name}'."
+            )
+        elif normalized_name:
+            availability_message = f"Skill '{normalized_name}' not found."
+        else:
+            availability_message = "No skill name provided."
 
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"

@@ -20,6 +20,8 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
 )
+from skillkit import ScriptNotFoundError
+
 from langchain_ai_skills_framework.tools.run_skill_script_tool import (
     RunSkillScriptTool,
 )
@@ -78,6 +80,15 @@ class _FailingScriptLoader(_StubSkillLoader):
             exit_code=2,
             execution_time_ms=1.0,
             success=False,
+        )
+
+
+class _ScriptNotFoundLoader(_StubSkillLoader):
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult:
+        raise ScriptNotFoundError(
+            f"Script '{script_name}' not found in skill '{skill_name}'."
         )
 
 
@@ -174,6 +185,18 @@ async def test_arun_validates_parameters(
 
     with pytest.raises(ToolException, match=message):
         await tool._arun(skill_name, script_name, arguments)
+
+
+@pytest.mark.asyncio
+async def test_arun_returns_not_found_message_when_script_missing() -> None:
+    loader = _ScriptNotFoundLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    message, output = await tool._arun("alpha", "missing.py", None)
+
+    assert "Script 'missing.py' not found in skill 'alpha'" in message
+    assert "Available skills: alpha" in message
+    assert output == ""
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

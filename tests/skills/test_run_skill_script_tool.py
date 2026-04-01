@@ -131,8 +131,10 @@ async def test_arun_returns_not_found_message_when_skill_missing() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Skill 'missing' not found"):
-        await tool._arun(skill_name="missing", script_name="analyze.py", arguments=None)
+    result = await tool._arun(
+        skill_name="missing", script_name="analyze.py", arguments=None
+    )
+    assert "Skill 'missing' not found." in result[0]
 
 
 @pytest.mark.asyncio

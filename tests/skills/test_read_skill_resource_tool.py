@@ -86,8 +86,11 @@ def test_run_returns_not_found_message_for_missing_skill() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Skill 'missing' not found"):
-        tool._run(skill_name="missing", resource_name="FORMS.md")
+    message, artifact = tool._run(skill_name="missing", resource_name="FORMS.md")
+
+    assert "not found" in message
+    assert "missing" in message
+    assert "Available skills:" in message
 
 
 def test_run_raises_tool_exception_for_empty_skill_name() -> None:

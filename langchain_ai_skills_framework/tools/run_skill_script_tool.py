@@ -167,39 +167,16 @@ class RunSkillScriptTool(BaseTool):
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult:
         """Execute the skill script and return results."""
-        normalized_name = skill_name.strip()
+        result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
+            skill_name=skill_name, script_name=script_name, arguments=arguments
+        )
 
-        if not normalized_name:
-            raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
-            )
-
-        try:
-            result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
-                skill_name=normalized_name, script_name=script_name, arguments=arguments
-            )
-
-            if result.success:
-                return result  # Script output
-            raise ToolException(
-                f"Script '{script_name}' failed in skill '{normalized_name}'. "
-                f"Exit code: {result.exit_code}. Error: {result.stderr or 'Unknown error'}"
-            )
-        except ToolException:
-            raise
-        except SkillNotFoundError:
-            raise
-        except ScriptNotFoundError:
-            raise
-        except Exception as exc:
-            logger.exception(
-                "RunSkillScriptTool failed for skill_name=%s script_name=%s",
-                normalized_name,
-                script_name,
-            )
-            raise ToolException(
-                f"Unable to run script '{script_name}' in skill '{normalized_name}' due to an internal error."
-            ) from exc
+        if result.success:
+            return result
+        raise ToolException(
+            f"Script '{script_name}' failed in skill '{skill_name}'. "
+            f"Exit code: {result.exit_code}. Error: {result.stderr or 'Unknown error'}"
+        )
 
     @staticmethod
     def _format_availability_message(

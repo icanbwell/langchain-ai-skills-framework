@@ -150,19 +150,12 @@ async def test_arun_raises_tool_exception_when_script_fails() -> None:
 @pytest.mark.parametrize(
     ("skill_name", "script_name", "arguments", "message"),
     [
-        (123, "analyze.py", None, "Skill name must be a string."),
         ("", "analyze.py", None, "No skill name provided."),
         ("alpha", 123, None, "Script name must be a string."),
         ("alpha", "", None, "No script name provided."),
-        (
-            "alpha",
-            "analyze.py",
-            "not-a-dict",
-            "Arguments must be a dict.",
-        ),
     ],
 )
-async def test_arun_validates_parameters(
+async def test_arun_validates_parameters_raises(
     skill_name: Any,
     script_name: Any,
     arguments: Any,
@@ -177,6 +170,37 @@ async def test_arun_validates_parameters(
             script_name=script_name,
             arguments=arguments,
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("skill_name", "script_name", "arguments", "message"),
+    [
+        (123, "analyze.py", None, "Skill name must be a string."),
+        (
+            "alpha",
+            "analyze.py",
+            "not-a-dict",
+            "Arguments must be a dict.",
+        ),
+    ],
+)
+async def test_arun_validates_parameters_returns_error(
+    skill_name: Any,
+    script_name: Any,
+    arguments: Any,
+    message: str,
+) -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    result, artifact = await tool._arun(
+        skill_name=skill_name,
+        script_name=script_name,
+        arguments=arguments,
+    )
+    assert result == message
+    assert artifact == ""
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

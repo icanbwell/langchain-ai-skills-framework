@@ -89,11 +89,11 @@ class ReadSkillResourceTool(BaseTool):
             )
 
         if not isinstance(resource_name, str):
-            raise ToolException("Resource name must be a string.")
+            return "Resource name must be a string.", ""
 
         normalized_resource_name = resource_name.strip()
         if not normalized_resource_name:
-            raise ToolException("No resource name provided.")
+            return "No resource name provided.", ""
 
         resource = self._load_skill_resource(
             skill_name=normalized_name, resource_name=normalized_resource_name

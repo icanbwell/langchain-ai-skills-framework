@@ -111,9 +111,9 @@ class RunSkillScriptTool(BaseTool):
     ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
         if not isinstance(skill_name, str):
-            raise ToolException("Skill name must be a string.")
+            return "Skill name must be a string.", ""
         if arguments is not None and not isinstance(arguments, dict):
-            raise ToolException("Arguments must be a dict.")
+            return "Arguments must be a dict.", ""
 
         normalized_name = skill_name.strip()
         if not normalized_name:
@@ -160,7 +160,11 @@ class RunSkillScriptTool(BaseTool):
                 )
         except ScriptNotFoundError:
             return (
-                f"Script '{normalized_script_name}' not found in skill '{normalized_name}'.",
+                self._format_availability_message(
+                    self.skill_loader,
+                    normalized_name,
+                    script_name=normalized_script_name,
+                ),
                 "",
             )
         except SkillNotFoundError:
@@ -218,7 +222,9 @@ class RunSkillScriptTool(BaseTool):
 
     @staticmethod
     def _format_availability_message(
-        loader: SkillLoaderProtocol, normalized_name: str
+        loader: SkillLoaderProtocol,
+        normalized_name: str,
+        script_name: str | None = None,
     ) -> str:
         """Format a message showing available skills."""
         available_names = sorted(
@@ -227,11 +233,14 @@ class RunSkillScriptTool(BaseTool):
         )
         available = ", ".join(available_names)
 
-        availability_message = (
-            f"Skill '{normalized_name}' not found."
-            if normalized_name
-            else "No skill name provided."
-        )
+        if script_name and normalized_name:
+            availability_message = (
+                f"Script '{script_name}' not found in skill '{normalized_name}'."
+            )
+        elif normalized_name:
+            availability_message = f"Skill '{normalized_name}' not found."
+        else:
+            availability_message = "No skill name provided."
 
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"

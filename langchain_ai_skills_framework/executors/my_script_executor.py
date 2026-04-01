@@ -183,7 +183,7 @@ class MyScriptExecutor:
                 "--no-project",  # Don't use project environment
                 "--no-config",  # Don't use any config files at all (uv.toml, pyproject.toml, etc.)
                 "--no-progress",  # Don't show progress bars (cleaner output)
-                "-v",  # Verbose to see dependency installation
+                # "-v",  # Verbose to see dependency installation
                 str(validated_script_path),
             ]
         else:
@@ -373,6 +373,9 @@ class MyScriptExecutor:
             ) as temp_file:
                 temp_file.write(script)
                 temp_script_path = Path(temp_file.name)
+
+            if not temp_script_path:
+                raise ValueError("Script content cannot be empty")
 
             try:
                 temp_script_path.chmod(0o700)

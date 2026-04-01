@@ -42,7 +42,7 @@ class RunPythonScriptInput(BaseModel):
         ),
     )
     timeout: int = Field(
-        description="Timeout for the script execution in seconds.", default=30
+        description=("Timeout for the script execution in seconds."), default=30
     )
 
 
@@ -119,13 +119,13 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
     ) -> tuple[str, str]:
         """Async execution with named parameters."""
         if not isinstance(script_name, str):
-            raise ToolException("Script name must be a string.")
+            return "Script name must be a string.", ""
         if arguments is not None and not isinstance(arguments, dict):
-            raise ToolException("Arguments must be a dict.")
+            return "Arguments must be a dict.", ""
         if not isinstance(timeout, int):
-            raise ToolException("Timeout must be an int.")
+            return "Timeout must be an int.", ""
         if not isinstance(script_name, str):
-            raise ToolException("Script name must be a string.")
+            return "Script name must be a string.", ""
 
         logger.debug(
             "RunPythonScriptTool: Running inline script script_name=%s argument_keys=%s timeout=%s",
@@ -209,5 +209,5 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         """Get the friendly name of the skill."""
-        script_name: str = str(tool_input.get("script_name") if tool_input else "")
-        return f"Python Script ({script_name})"
+        skill_name = tool_input.get("skill_name") if tool_input else None
+        return f"{skill_name}"

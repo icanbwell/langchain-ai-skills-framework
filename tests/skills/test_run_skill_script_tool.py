@@ -127,7 +127,7 @@ async def test_arun_executes_script_with_named_arguments() -> None:
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_when_skill_missing() -> None:
+async def test_arun_returns_not_found_message_when_skill_missing() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 

@@ -77,15 +77,19 @@ def test_load_skill_tool_returns_availability_when_missing() -> None:
     loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Skill 'gamma' not found"):
-        tool._load_skill("gamma")
+    result = tool._load_skill("gamma")
+
+    assert "Skill 'gamma' not found" in result
+    assert "Available skills: alpha, beta" in result
 
 
 def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
-    with pytest.raises(ToolException, match="Available skills: None configured"):
-        tool._load_skill("alpha")
+    result = tool._load_skill("alpha")
+
+    assert "Skill 'alpha' not found" in result
+    assert "Available skills: None configured" in result
 
 
 def test_load_skill_tool_returns_skill_content() -> None:

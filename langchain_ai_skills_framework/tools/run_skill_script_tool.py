@@ -8,6 +8,8 @@ from langchain_core.callbacks import (
 )
 from langchain_core.tools import BaseTool, ToolException
 from pydantic import BaseModel, ConfigDict, Field
+from skillkit import ScriptNotFoundError
+
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
@@ -156,6 +158,16 @@ class RunSkillScriptTool(BaseTool):
                     script_result.stderr or script_result.stdout or "No output",
                     script_result.stdout or "",
                 )
+        except ScriptNotFoundError:
+            return (
+                f"Script '{normalized_script_name}' not found in skill '{normalized_name}'.",
+                "",
+            )
+        except SkillNotFoundError:
+            return (
+                self._format_availability_message(self.skill_loader, normalized_name),
+                "",
+            )
         except ToolException:
             raise
         except Exception as exc:
@@ -192,10 +204,8 @@ class RunSkillScriptTool(BaseTool):
             )
         except ToolException:
             raise
-        except SkillNotFoundError as exc:
-            raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
-            ) from exc
+        except SkillNotFoundError:
+            raise
         except Exception as exc:
             logger.exception(
                 "RunSkillScriptTool failed for skill_name=%s script_name=%s",

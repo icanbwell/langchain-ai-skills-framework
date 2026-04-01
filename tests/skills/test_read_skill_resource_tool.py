@@ -82,7 +82,7 @@ def test_run_reads_named_resource() -> None:
     assert loader.calls == [("alpha", "FORMS.md")]
 
 
-def test_run_raises_tool_exception_for_missing_skill() -> None:
+def test_run_returns_not_found_message_for_missing_skill() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 

@@ -89,10 +89,8 @@ class LoadSkillTool(BaseTool):
         try:
             skill = self.skill_loader.get_skill_details(skill_name=normalized_name)
             return f"{skill.content}"
-        except SkillNotFoundError as exc:
-            raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
-            ) from exc
+        except SkillNotFoundError:
+            return self._format_availability_message(self.skill_loader, normalized_name)
         except Exception as exc:
             logger.exception("LoadSkillTool failed for skill_name=%s", normalized_name)
             raise ToolException(

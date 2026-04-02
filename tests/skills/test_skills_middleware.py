@@ -52,6 +52,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
+    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+        return []
+
 
 class _DummyModelRequest:
     def __init__(

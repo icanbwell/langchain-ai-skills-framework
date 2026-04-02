@@ -257,6 +257,14 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                 f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"
             ) from exc
 
+    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+        """Return sorted script names available in the given skill."""
+        try:
+            skill = self._manager.load_skill(skill_name)
+        except Exception:
+            return []
+        return sorted(s.name for s in skill.scripts)
+
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult:

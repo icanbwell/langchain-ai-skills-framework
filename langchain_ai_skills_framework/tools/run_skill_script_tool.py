@@ -223,18 +223,22 @@ class RunSkillScriptTool(BaseTool):
         normalized_name: str,
         script_name: str | None = None,
     ) -> str:
-        """Format a message showing available skills."""
+        """Format a message showing available skills or scripts."""
+        if script_name and normalized_name:
+            script_names = loader.list_skill_script_names(normalized_name)
+            available_scripts = ", ".join(script_names)
+            return (
+                f"Script '{script_name}' not found in skill '{normalized_name}'. "
+                f"Available scripts: {available_scripts or 'none'}"
+            )
+
         available_names = sorted(
             summary.name
             for summary in loader.list_skill_summaries(allowed_skills=set())
         )
         available = ", ".join(available_names)
 
-        if script_name and normalized_name:
-            availability_message = (
-                f"Script '{script_name}' not found in skill '{normalized_name}'."
-            )
-        elif normalized_name:
+        if normalized_name:
             availability_message = f"Skill '{normalized_name}' not found."
         else:
             availability_message = "No skill name provided."

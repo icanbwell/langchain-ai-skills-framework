@@ -57,6 +57,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
+    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+        return []
+
 
 def _make_skill(name: str) -> SkillDetails:
     source_path = Path(f"/skills/{name}/SKILL.md")

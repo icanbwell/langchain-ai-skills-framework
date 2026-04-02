@@ -10,6 +10,8 @@ from langchain_core.tools import ToolException
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from skillkit import ScriptNotFoundError
+
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -26,8 +28,13 @@ from langchain_ai_skills_framework.tools.run_skill_script_tool import (
 
 
 class _StubSkillLoader(SkillLoaderProtocol):
-    def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
+    def __init__(
+        self,
+        details_by_name: Mapping[str, SkillDetails],
+        script_names_by_skill: Mapping[str, Sequence[str]] | None = None,
+    ) -> None:
         self._details = dict(details_by_name)
+        self._script_names_by_skill = dict(script_names_by_skill or {})
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
@@ -66,6 +73,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
             success=True,
         )
 
+    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+        return self._script_names_by_skill.get(skill_name, [])
+
 
 class _FailingScriptLoader(_StubSkillLoader):
     async def run_skill_script(
@@ -79,6 +89,14 @@ class _FailingScriptLoader(_StubSkillLoader):
             execution_time_ms=1.0,
             success=False,
         )
+
+
+class _ScriptNotFoundLoader(_StubSkillLoader):
+    async def run_skill_script(
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult:
+        self.calls.append((skill_name, script_name, arguments))
+        raise ScriptNotFoundError(f"Script '{script_name}' not found")
 
 
 def _make_skill(name: str) -> SkillDetails:
@@ -204,6 +222,35 @@ async def test_arun_validates_parameters_returns_error(
     )
     assert result == message
     assert artifact == ""
+
+
+@pytest.mark.asyncio
+async def test_arun_script_not_found_lists_available_scripts() -> None:
+    loader = _ScriptNotFoundLoader(
+        {"alpha": _make_skill("alpha")},
+        script_names_by_skill={"alpha": ["analyze.py", "process.py"]},
+    )
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    result, artifact = await tool._arun(
+        skill_name="alpha", script_name="missing.py", arguments=None
+    )
+    assert "Script 'missing.py' not found in skill 'alpha'" in result
+    assert "analyze.py" in result
+    assert "process.py" in result
+    assert "Available scripts:" in result
+
+
+@pytest.mark.asyncio
+async def test_arun_script_not_found_no_scripts_shows_none() -> None:
+    loader = _ScriptNotFoundLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    result, artifact = await tool._arun(
+        skill_name="alpha", script_name="missing.py", arguments=None
+    )
+    assert "Script 'missing.py' not found in skill 'alpha'" in result
+    assert "Available scripts: none" in result
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

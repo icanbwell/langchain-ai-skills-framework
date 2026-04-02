@@ -42,7 +42,7 @@ def test_download_uses_expected_storage_options_and_cache_directory(
         return _FakeGithubFilesystem()
 
     monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.github_skill_downloader.fsspec",
+        "langchain_ai_skills_framework.loaders.github_directory_downloader.fsspec",
         SimpleNamespace(filesystem=_fake_filesystem),
     )
 
@@ -78,14 +78,14 @@ def test_download_raises_validation_error_when_fsspec_fails(
         raise RuntimeError("network error")
 
     monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.github_skill_downloader.fsspec",
+        "langchain_ai_skills_framework.loaders.github_directory_downloader.fsspec",
         SimpleNamespace(filesystem=_raise_filesystem),
     )
 
     downloader = GithubSkillDownloader()
     with pytest.raises(
         SkillValidationError,
-        match="Unable to download github:// skills directory into ./.skillkit_cache",
+        match="Unable to download github:// directory into cache",
     ):
         downloader.download(
             cache_path=tmp_path / "cache",
@@ -120,7 +120,7 @@ def test_download_omits_auth_fields_when_github_token_missing(
         return _FakeGithubFilesystem()
 
     monkeypatch.setattr(
-        "langchain_ai_skills_framework.loaders.github_skill_downloader.fsspec",
+        "langchain_ai_skills_framework.loaders.github_directory_downloader.fsspec",
         SimpleNamespace(filesystem=_fake_filesystem),
     )
 
@@ -143,15 +143,15 @@ def test_download_omits_auth_fields_when_github_token_missing(
     [
         (
             "https://github.com/my-org/private-skills",
-            "GitHub skill directory must match github://<owner>/<repo>/<path>?ref=<branch>",
+            "URI must use the github:// scheme",
         ),
         (
             "github://my-org/private-skills/skills#fragment",
-            "GitHub skill directory must not include a fragment",
+            "github:// URI must not include a fragment",
         ),
         (
             "github://my-org/private-skills/skills?x=1",
-            "GitHub skill directory supports only '?ref=' query parameter; got: x",
+            "github:// URI supports only '?ref=' query parameter; got: x",
         ),
     ],
 )

@@ -124,8 +124,6 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
             return "Arguments must be a dict.", ""
         if not isinstance(timeout, int):
             return "Timeout must be an int.", ""
-        if not isinstance(script_name, str):
-            return "Script name must be a string.", ""
 
         logger.debug(
             "RunPythonScriptTool: Running inline script script_name=%s argument_keys=%s timeout=%s",
@@ -135,18 +133,12 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         )
 
         try:
-            result = await self._run_inline_script(
+            result: MyScriptExecutionResult = await self._run_inline_script(
                 script=script,
                 script_name=script_name,
                 arguments=arguments,
                 timeout=timeout,
             )
-
-            if not result.success:
-                raise ToolException(
-                    f"Inline script failed with exit code {result.exit_code}. "
-                    f"Error: {result.stderr or 'Unknown error'}"
-                )
 
             # Create structured script_result
             script_result = RunPythonScriptOutput(

@@ -280,9 +280,13 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         """Return sorted script names available in the given skill."""
         try:
-            skill = self._manager.load_skill(skill_name)
-        except Exception:
+            details = self.get_skill_details(skill_name=skill_name)
+        except SkillNotFoundError:
+            # Return an empty list only when the skill does not exist.
             return []
+
+        # Use the normalized skill name from details when loading the skill.
+        skill = self._manager.load_skill(details.name)
         return sorted(s.name for s in skill.scripts)
 
     async def run_skill_script(

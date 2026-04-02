@@ -140,30 +140,21 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                 timeout=timeout,
             )
 
-            # Create structured script_result
-            script_result = RunPythonScriptOutput(
-                success=result.success,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                exit_code=result.exit_code,
-                error_message=None if result.success else result.stderr,
-            )
-
             logger.debug(
                 "RunPythonScriptTool: Output from Python script with arguments %s\n%s",
                 arguments,
-                script_result,
+                result,
             )
 
-            if script_result.success:
+            if result.success:
                 return (
-                    script_result.stdout or "No output",
-                    script_result.stdout or "",
+                    result.stdout or "No output",
+                    result.stdout or "",
                 )
             else:
                 return (
-                    script_result.stderr or script_result.stdout or "No output",
-                    script_result.stdout or "",
+                    result.stderr or result.stdout or "No output",
+                    result.stdout or "",
                 )
 
         except ToolException:

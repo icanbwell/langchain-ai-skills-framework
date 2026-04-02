@@ -202,8 +202,6 @@ class MyScriptExecutor:
             "LANG": os.environ.get("LANG", "en_US.UTF-8"),
             # UV isolation settings
             "UV_SYSTEM_PYTHON": "0",  # Don't use system packages
-            "UV_NO_SYNC": "1",  # Don't sync with project
-            "UV_PROJECT_ENVIRONMENT": "",  # No project environment
             # Python isolation settings
             "PYTHONNOUSERSITE": "1",  # Ignore user site-packages
             "PYTHONPATH": "",  # Clear PYTHONPATH

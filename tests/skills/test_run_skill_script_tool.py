@@ -138,12 +138,15 @@ async def test_arun_returns_not_found_message_when_skill_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_when_script_fails() -> None:
+async def test_arun_returns_error_output_when_script_fails() -> None:
     loader = _FailingScriptLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Script 'analyze.py' failed"):
-        await tool._arun(skill_name="alpha", script_name="analyze.py", arguments=None)
+    message, artifact = await tool._arun(
+        skill_name="alpha", script_name="analyze.py", arguments=None
+    )
+    assert message == "boom"
+    assert artifact == ""
 
 
 @pytest.mark.asyncio

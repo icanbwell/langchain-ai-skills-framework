@@ -200,12 +200,7 @@ class RunSkillScriptTool(BaseTool):
                 skill_name=normalized_name, script_name=script_name, arguments=arguments
             )
 
-            if result.success:
-                return result  # Script output
-            raise ToolException(
-                f"Script '{script_name}' failed in skill '{normalized_name}'. "
-                f"Exit code: {result.exit_code}. Error: {result.stderr or 'Unknown error'}"
-            )
+            return result
         except ToolException:
             raise
         except SkillNotFoundError:

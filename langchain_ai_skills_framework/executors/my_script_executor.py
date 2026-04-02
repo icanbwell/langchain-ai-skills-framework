@@ -179,7 +179,7 @@ class MyScriptExecutor:
             cmd = [
                 "uv",
                 "run",
-                "--isolated",  # Don't discover project config
+                # "--isolated",  # Don't discover project config
                 "--no-project",  # Don't use project environment
                 "--no-config",  # Don't use any config files at all (uv.toml, pyproject.toml, etc.)
                 "--no-progress",  # Don't show progress bars (cleaner output)

@@ -172,7 +172,8 @@ async def test_arun_raises_tool_exception_when_inline_script_fails(
         _FailingExecutor,
     )
 
-    with pytest.raises(ToolException, match="Inline script failed"):
-        await tool._arun(
-            script="print('fail')", script_name="inline_script.py", arguments=None
-        )
+    result = await tool._arun(
+        script="print('fail')", script_name="inline_script.py", arguments=None
+    )
+    assert result[0] == "inline boom"
+    assert result[1] == ""

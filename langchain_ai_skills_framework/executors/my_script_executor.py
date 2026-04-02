@@ -160,13 +160,30 @@ class MyScriptExecutor:
         cmd: list[str]
 
         if use_uv:
+            # https://docs.astral.sh/uv/guides/scripts/#declaring-script-dependencies
+            # https://docs.astral.sh/uv/reference/cli/#uv-run
             # Add isolation flags for maximum security
+            # uv - The main command, invoking the uv tool
+            # run - Subcommand that runs a Python script or command in an isolated environment
+            # --isolated - Don't discover project configuration
+            # Prevents uv from searching for and using project-level configuration files (like pyproject.toml or uv.toml)
+            # Ensures the command runs independently of any project settings that might exist in parent directories
+            # --no-project - Don't use project environment
+            # Prevents uv from using the project's virtual environment or dependencies
+            # Forces uv to create a completely separate, temporary environment for this execution
+            # Useful when you want to run something without interference from the current project's setup
+            # -v - Verbose output
+            # Enables verbose logging to see detailed information about what's happening
+            # Shows dependency installation progress, resolution steps, and other diagnostic information
+            # Helpful for debugging or understanding what packages are being installed
             cmd = [
                 "uv",
                 "run",
-                "--isolated",  # Don't discover project config
+                # "--isolated",  # Don't discover project config
                 "--no-project",  # Don't use project environment
-                "-v",  # Verbose to see dependency installation
+                "--no-config",  # Don't use any config files at all (uv.toml, pyproject.toml, etc.)
+                "--no-progress",  # Don't show progress bars (cleaner output)
+                # "-v",  # Verbose to see dependency installation
                 str(validated_script_path),
             ]
         else:
@@ -185,8 +202,6 @@ class MyScriptExecutor:
             "LANG": os.environ.get("LANG", "en_US.UTF-8"),
             # UV isolation settings
             "UV_SYSTEM_PYTHON": "0",  # Don't use system packages
-            "UV_NO_SYNC": "1",  # Don't sync with project
-            "UV_PROJECT_ENVIRONMENT": "",  # No project environment
             # Python isolation settings
             "PYTHONNOUSERSITE": "1",  # Ignore user site-packages
             "PYTHONPATH": "",  # Clear PYTHONPATH
@@ -356,6 +371,9 @@ class MyScriptExecutor:
             ) as temp_file:
                 temp_file.write(script)
                 temp_script_path = Path(temp_file.name)
+
+            if not temp_script_path:
+                raise ValueError("Script content cannot be empty")
 
             try:
                 temp_script_path.chmod(0o700)

@@ -49,6 +49,9 @@ class RunSkillScriptInput(BaseModel):
             For example, if the script is designed to take parameters like {"input_file": "data.csv", "threshold": 0.5}, you would provide those here."""
         ),
     )
+    timeout: int = Field(
+        description="Timeout for the script execution in seconds.", default=30
+    )
 
 
 class RunSkillScriptTool(BaseTool):
@@ -80,28 +83,37 @@ class RunSkillScriptTool(BaseTool):
 
     def _run(
         self,
+        *,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
+        timeout: int = 30,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Synchronously execute a skill script."""
         return asyncio.run(
             self._arun(
-                skill_name=skill_name, script_name=script_name, arguments=arguments
+                skill_name=skill_name,
+                script_name=script_name,
+                arguments=arguments,
+                timeout=timeout,
             )
         )
 
     async def _arun(
         self,
+        *,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
+        timeout: int = 30,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
         if not isinstance(skill_name, str):
-            raise ToolException("Skill name must be a string.")
+            return "Skill name must be a string.", ""
+        if arguments is not None and not isinstance(arguments, dict):
+            return "Arguments must be a dict.", ""
 
         normalized_name = skill_name.strip()
         if not normalized_name:
@@ -136,10 +148,23 @@ class RunSkillScriptTool(BaseTool):
                 normalized_script_name,
                 normalized_name,
             )
-            return script_result.stderr or "Success", script_result.stdout or ""
+            if script_result.success:
+                return (
+                    script_result.stdout or "No output",
+                    script_result.stdout or "",
+                )
+            else:
+                return (
+                    script_result.stderr or script_result.stdout or "No output",
+                    script_result.stdout or "",
+                )
         except ScriptNotFoundError:
             return (
-                f"Script '{normalized_script_name}' not found in skill '{normalized_name}'.",
+                self._format_availability_message(
+                    self.skill_loader,
+                    normalized_name,
+                    script_name=normalized_script_name,
+                ),
                 "",
             )
         except SkillNotFoundError:
@@ -175,15 +200,12 @@ class RunSkillScriptTool(BaseTool):
                 skill_name=normalized_name, script_name=script_name, arguments=arguments
             )
 
-            if result.success:
-                return result  # Script output
-            raise ToolException(
-                f"Script '{script_name}' failed in skill '{normalized_name}'. "
-                f"Exit code: {result.exit_code}. Error: {result.stderr or 'Unknown error'}"
-            )
+            return result
         except ToolException:
             raise
         except SkillNotFoundError:
+            raise
+        except ScriptNotFoundError:
             raise
         except Exception as exc:
             logger.exception(
@@ -197,7 +219,9 @@ class RunSkillScriptTool(BaseTool):
 
     @staticmethod
     def _format_availability_message(
-        loader: SkillLoaderProtocol, normalized_name: str
+        loader: SkillLoaderProtocol,
+        normalized_name: str,
+        script_name: str | None = None,
     ) -> str:
         """Format a message showing available skills."""
         available_names = sorted(
@@ -206,11 +230,14 @@ class RunSkillScriptTool(BaseTool):
         )
         available = ", ".join(available_names)
 
-        availability_message = (
-            f"Skill '{normalized_name}' not found."
-            if normalized_name
-            else "No skill name provided."
-        )
+        if script_name and normalized_name:
+            availability_message = (
+                f"Script '{script_name}' not found in skill '{normalized_name}'."
+            )
+        elif normalized_name:
+            availability_message = f"Skill '{normalized_name}' not found."
+        else:
+            availability_message = "No skill name provided."
 
         return (
             f"{availability_message} Available skills: {available or 'None configured'}"

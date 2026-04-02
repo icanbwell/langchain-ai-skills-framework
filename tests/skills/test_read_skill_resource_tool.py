@@ -72,11 +72,11 @@ def _make_skill(name: str) -> SkillDetails:
     )
 
 
-def test_run_uses_second_positional_arg_for_resource_name() -> None:
+def test_run_reads_named_resource() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message = tool._run("alpha", "FORMS.md")
+    message = tool._run(skill_name="alpha", resource_name="FORMS.md")
 
     assert message == ("alpha:FORMS.md", "alpha:FORMS.md")
     assert loader.calls == [("alpha", "FORMS.md")]
@@ -86,10 +86,11 @@ def test_run_returns_not_found_message_for_missing_skill() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    result = tool._run("missing", "FORMS.md")
+    message, artifact = tool._run(skill_name="missing", resource_name="FORMS.md")
 
-    assert "Resource 'FORMS.md' not found in skill 'missing'" in result[0]
-    assert "Available skills: alpha" in result[0]
+    assert "not found" in message
+    assert "missing" in message
+    assert "Available skills:" in message
 
 
 def test_run_raises_tool_exception_for_empty_skill_name() -> None:
@@ -97,7 +98,7 @@ def test_run_raises_tool_exception_for_empty_skill_name() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided"):
-        tool._run(" ", "FORMS.md")
+        tool._run(skill_name=" ", resource_name="FORMS.md")
 
 
 @pytest.mark.asyncio
@@ -106,18 +107,37 @@ def test_run_raises_tool_exception_for_empty_skill_name() -> None:
     [
         (123, "FORMS.md", "Skill name must be a string."),
         ("", "FORMS.md", "No skill name provided."),
-        ("alpha", 123, "Resource name must be a string."),
-        ("alpha", "", "No resource name provided."),
     ],
 )
-async def test_arun_validates_parameters(
+async def test_arun_validates_parameters_raises(
     skill_name: Any, resource_name: Any, message: str
 ) -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match=message):
-        await tool._arun(skill_name, resource_name)
+        await tool._arun(skill_name=skill_name, resource_name=resource_name)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("skill_name", "resource_name", "message"),
+    [
+        ("alpha", 123, "Resource name must be a string."),
+        ("alpha", "", "No resource name provided."),
+    ],
+)
+async def test_arun_validates_parameters_returns_error(
+    skill_name: Any, resource_name: Any, message: str
+) -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = ReadSkillResourceTool(skill_loader=loader)
+
+    result, artifact = await tool._arun(
+        skill_name=skill_name, resource_name=resource_name
+    )
+    assert result == message
+    assert artifact == ""
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

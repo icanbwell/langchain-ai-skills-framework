@@ -95,33 +95,33 @@ def _make_skill(name: str) -> SkillDetails:
     )
 
 
-def test_run_uses_positional_mapping_for_script_and_arguments() -> None:
+def test_run_executes_script_with_named_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
     message, output = tool._run(
-        "alpha",
-        "analyze.py",
-        {"threshold": 0.5},
+        skill_name="alpha",
+        script_name="analyze.py",
+        arguments={"threshold": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
 
 
 @pytest.mark.asyncio
-async def test_arun_uses_positional_mapping_for_script_and_arguments() -> None:
+async def test_arun_executes_script_with_named_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
     message, output = await tool._arun(
-        "alpha",
-        "analyze.py",
-        {"threshold": 0.5},
+        skill_name="alpha",
+        script_name="analyze.py",
+        arguments={"threshold": 0.5},
     )
 
-    assert message == "Success"
+    assert message == "script output"
     assert output == "script output"
     assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
 
@@ -131,39 +131,34 @@ async def test_arun_returns_not_found_message_when_skill_missing() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    message, output = await tool._arun("missing", "analyze.py", None)
-
-    assert "Skill 'missing' not found" in message
-    assert "Available skills: alpha" in message
-    assert output == ""
+    result = await tool._arun(
+        skill_name="missing", script_name="analyze.py", arguments=None
+    )
+    assert "Skill 'missing' not found." in result[0]
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_when_script_fails() -> None:
+async def test_arun_returns_error_output_when_script_fails() -> None:
     loader = _FailingScriptLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match="Script 'analyze.py' failed"):
-        await tool._arun("alpha", "analyze.py", None)
+    message, artifact = await tool._arun(
+        skill_name="alpha", script_name="analyze.py", arguments=None
+    )
+    assert message == "boom"
+    assert artifact == ""
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("skill_name", "script_name", "arguments", "message"),
     [
-        (123, "analyze.py", None, "Skill name must be a string."),
         ("", "analyze.py", None, "No skill name provided."),
         ("alpha", 123, None, "Script name must be a string."),
         ("alpha", "", None, "No script name provided."),
-        (
-            "alpha",
-            "analyze.py",
-            "not-a-dict",
-            "Script arguments must be a dictionary when provided.",
-        ),
     ],
 )
-async def test_arun_validates_parameters(
+async def test_arun_validates_parameters_raises(
     skill_name: Any,
     script_name: Any,
     arguments: Any,
@@ -173,7 +168,42 @@ async def test_arun_validates_parameters(
     tool = RunSkillScriptTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match=message):
-        await tool._arun(skill_name, script_name, arguments)
+        await tool._arun(
+            skill_name=skill_name,
+            script_name=script_name,
+            arguments=arguments,
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("skill_name", "script_name", "arguments", "message"),
+    [
+        (123, "analyze.py", None, "Skill name must be a string."),
+        (
+            "alpha",
+            "analyze.py",
+            "not-a-dict",
+            "Arguments must be a dict.",
+        ),
+    ],
+)
+async def test_arun_validates_parameters_returns_error(
+    skill_name: Any,
+    script_name: Any,
+    arguments: Any,
+    message: str,
+) -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    result, artifact = await tool._arun(
+        skill_name=skill_name,
+        script_name=script_name,
+        arguments=arguments,
+    )
+    assert result == message
+    assert artifact == ""
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

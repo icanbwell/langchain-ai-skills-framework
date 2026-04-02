@@ -229,8 +229,17 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         """Return sorted resource file names available in the given skill."""
         try:
             details = self.get_skill_details(skill_name=skill_name)
-        except Exception:
+        except SkillNotFoundError:
+            # If the skill itself does not exist, it has no resources to list.
             return []
+        except SkillValidationError:
+            # Validation failures indicate a misconfigured or unreadable skill;
+            # log and re-raise rather than silently returning no resources.
+            logger.exception(
+                "Skill validation failed while listing resources for skill '%s'.",
+                skill_name,
+            )
+            raise
         references_dir = details.source_path.parent / "references"
         if not references_dir.is_dir():
             return []

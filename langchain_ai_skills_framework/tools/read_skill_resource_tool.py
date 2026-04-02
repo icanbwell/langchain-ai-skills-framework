@@ -143,8 +143,9 @@ class ReadSkillResourceTool(BaseTool):
         if resource_name and normalized_name:
             try:
                 loader.get_skill_details(normalized_name)
-            except Exception:
-                pass  # skill doesn't exist — fall through to list skills
+            except SkillNotFoundError:
+                # Skill doesn't exist — fall through to list available skills
+                pass
             else:
                 resource_names = loader.list_skill_resource_names(normalized_name)
                 available_resources = ", ".join(resource_names)

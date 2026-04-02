@@ -225,6 +225,17 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             ),
         ]
 
+    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+        """Return sorted resource file names available in the given skill."""
+        try:
+            details = self.get_skill_details(skill_name=skill_name)
+        except Exception:
+            return []
+        references_dir = details.source_path.parent / "references"
+        if not references_dir.is_dir():
+            return []
+        return sorted(f.name for f in references_dir.iterdir() if f.is_file())
+
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         """Read a specific resource from a skill, such as a file or script."""
         details = self.get_skill_details(skill_name=skill_name)

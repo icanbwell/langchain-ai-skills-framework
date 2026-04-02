@@ -55,6 +55,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+        return []
+
 
 class _DummyModelRequest:
     def __init__(

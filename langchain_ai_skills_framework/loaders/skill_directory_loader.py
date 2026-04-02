@@ -161,6 +161,9 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+        return []
+
     # Snapshot lifecycle
     def _get_snapshot(self) -> SkillSnapshot:
         # Fast path: use the in-memory snapshot while TTL is still valid.

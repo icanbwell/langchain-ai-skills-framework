@@ -54,6 +54,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+        return []
+
 
 def _make_skill(name: str, *, content: str = "Skill content") -> SkillDetails:
     source_path = Path(f"/skills/{name}/SKILL.md")

@@ -23,8 +23,13 @@ from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
 
 
 class _StubSkillLoader(SkillLoaderProtocol):
-    def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
+    def __init__(
+        self,
+        details_by_name: Mapping[str, SkillDetails],
+        resource_names_by_skill: Mapping[str, Sequence[str]] | None = None,
+    ) -> None:
         self._details = dict(details_by_name)
+        self._resource_names_by_skill = dict(resource_names_by_skill or {})
         self.calls: list[tuple[str, str]] = []
 
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
@@ -56,6 +61,18 @@ class _StubSkillLoader(SkillLoaderProtocol):
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
+
+    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+        return []
+
+    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+        return self._resource_names_by_skill.get(skill_name, [])
+
+
+class _ResourceNotFoundLoader(_StubSkillLoader):
+    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+        self.calls.append((skill_name, resource_name))
+        raise SkillNotFoundError(f"Resource '{resource_name}' not found")
 
 
 def _make_skill(name: str) -> SkillDetails:
@@ -138,6 +155,29 @@ async def test_arun_validates_parameters_returns_error(
     )
     assert result == message
     assert artifact == ""
+
+
+def test_run_resource_not_found_lists_available_resources() -> None:
+    loader = _ResourceNotFoundLoader(
+        {"alpha": _make_skill("alpha")},
+        resource_names_by_skill={"alpha": ["FORMS.md", "REFERENCE.md"]},
+    )
+    tool = ReadSkillResourceTool(skill_loader=loader)
+
+    message, artifact = tool._run(skill_name="alpha", resource_name="MISSING.md")
+    assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
+    assert "FORMS.md" in message
+    assert "REFERENCE.md" in message
+    assert "Available resources:" in message
+
+
+def test_run_resource_not_found_no_resources_shows_none() -> None:
+    loader = _ResourceNotFoundLoader({"alpha": _make_skill("alpha")})
+    tool = ReadSkillResourceTool(skill_loader=loader)
+
+    message, artifact = tool._run(skill_name="alpha", resource_name="MISSING.md")
+    assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
+    assert "Available resources: none" in message
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

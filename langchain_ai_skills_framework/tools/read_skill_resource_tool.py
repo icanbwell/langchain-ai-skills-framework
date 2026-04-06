@@ -139,18 +139,28 @@ class ReadSkillResourceTool(BaseTool):
         normalized_name: str,
         resource_name: str | None = None,
     ) -> str:
-        """Format a message showing available skills."""
+        """Format a message showing available skills or resources."""
+        if resource_name and normalized_name:
+            try:
+                loader.get_skill_details(normalized_name)
+            except SkillNotFoundError:
+                # Skill doesn't exist — fall through to list available skills
+                pass
+            else:
+                resource_names = loader.list_skill_resource_names(normalized_name)
+                available_resources = ", ".join(resource_names)
+                return (
+                    f"Resource '{resource_name}' not found in skill '{normalized_name}'. "
+                    f"Available resources: {available_resources or 'none'}"
+                )
+
         available_names = sorted(
             summary.name
             for summary in loader.list_skill_summaries(allowed_skills=set())
         )
         available = ", ".join(available_names)
 
-        if resource_name and normalized_name:
-            availability_message = (
-                f"Resource '{resource_name}' not found in skill '{normalized_name}'."
-            )
-        elif normalized_name:
+        if normalized_name:
             availability_message = f"Skill '{normalized_name}' not found."
         else:
             availability_message = "No skill name provided."

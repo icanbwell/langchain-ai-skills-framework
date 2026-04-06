@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error import (
-    SkillValidationError,
-)
-from langchain_ai_skills_framework.loaders.github_skill_downloader import (
-    GithubSkillDownloader,
+from langchain_ai_skills_framework.loaders.github_directory_downloader import (
+    GithubDirectoryDownloader,
+    GitLocation,
 )
 
 
@@ -46,28 +43,28 @@ def test_download_uses_expected_storage_options_and_cache_directory(
         SimpleNamespace(filesystem=_fake_filesystem),
     )
 
-    downloader = GithubSkillDownloader()
+    downloader = GithubDirectoryDownloader()
     downloaded_path = downloader.download(
         cache_path=tmp_path / "cache",
-        skills_directory="github://my-org/private-skills/skills?ref=main",
+        source_uri="github://my-org/private-repo/configs?ref=main",
         github_token="token-value",
     )
 
     assert captured_storage_options == {
         "org": "my-org",
-        "repo": "private-skills",
+        "repo": "private-repo",
         "sha": "main",
         "username": "x-access-token",
         "token": "token-value",
     }
     assert len(get_calls) == 1
-    assert get_calls[0][0] == "skills"
+    assert get_calls[0][0] == "configs"
     assert get_calls[0][2] is True
-    assert downloaded_path.name.startswith("my-org-private-skills-")
+    assert downloaded_path.name.startswith("my-org-private-repo-")
     assert downloaded_path.parent == (tmp_path / "cache").resolve()
 
 
-def test_download_raises_validation_error_when_fsspec_fails(
+def test_download_raises_value_error_when_fsspec_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -82,14 +79,11 @@ def test_download_raises_validation_error_when_fsspec_fails(
         SimpleNamespace(filesystem=_raise_filesystem),
     )
 
-    downloader = GithubSkillDownloader()
-    with pytest.raises(
-        SkillValidationError,
-        match="Unable to download github:// directory into cache",
-    ):
+    downloader = GithubDirectoryDownloader()
+    with pytest.raises(ValueError, match="Unable to download github:// directory"):
         downloader.download(
             cache_path=tmp_path / "cache",
-            skills_directory="github://my-org/private-skills/skills",
+            source_uri="github://my-org/private-repo/configs",
             github_token=None,
         )
 
@@ -124,46 +118,53 @@ def test_download_omits_auth_fields_when_github_token_missing(
         SimpleNamespace(filesystem=_fake_filesystem),
     )
 
-    downloader = GithubSkillDownloader()
+    downloader = GithubDirectoryDownloader()
     downloader.download(
         cache_path=tmp_path / "cache",
-        skills_directory="github://my-org/private-skills/skills?ref=main",
+        source_uri="github://my-org/private-repo/configs?ref=main",
         github_token=None,
     )
 
     assert captured_storage_options == {
         "org": "my-org",
-        "repo": "private-skills",
+        "repo": "private-repo",
         "sha": "main",
     }
 
 
 @pytest.mark.parametrize(
-    ("skills_directory", "message"),
+    ("source_uri", "message"),
     [
         (
-            "https://github.com/my-org/private-skills",
-            "URI must use the github:// scheme",
+            "https://github.com/my-org/private-repo",
+            "must use the github:// scheme",
         ),
         (
-            "github://my-org/private-skills/skills#fragment",
-            "github:// URI must not include a fragment",
+            "github://my-org/private-repo/path#fragment",
+            "must not include a fragment",
         ),
         (
-            "github://my-org/private-skills/skills?x=1",
-            "github:// URI supports only '?ref=' query parameter; got: x",
+            "github://my-org/private-repo/path?x=1",
+            "supports only '\\?ref=' query parameter; got: x",
         ),
     ],
 )
-def test_download_validates_github_uri(
-    skills_directory: str,
+def test_parse_github_uri_validates(
+    source_uri: str,
     message: str,
-    tmp_path: Path,
 ) -> None:
-    downloader = GithubSkillDownloader()
-    with pytest.raises(SkillValidationError, match=re.escape(message)):
-        downloader.download(
-            cache_path=tmp_path / "cache",
-            skills_directory=skills_directory,
-            github_token=None,
-        )
+    with pytest.raises(ValueError, match=message):
+        GithubDirectoryDownloader.parse_github_uri(source_uri)
+
+
+def test_parse_github_uri_returns_git_location() -> None:
+    result = GithubDirectoryDownloader.parse_github_uri(
+        "github://my-org/my-repo/path/to/dir?ref=develop"
+    )
+    assert result == GitLocation(
+        repo_url="https://github.com/my-org/my-repo.git",
+        owner="my-org",
+        repository="my-repo",
+        path="path/to/dir",
+        branch="develop",
+    )

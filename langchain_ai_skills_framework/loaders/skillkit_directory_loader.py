@@ -225,6 +225,26 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             ),
         ]
 
+    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+        """Return sorted resource file names available in the given skill."""
+        try:
+            details = self.get_skill_details(skill_name=skill_name)
+        except SkillNotFoundError:
+            # If the skill itself does not exist, it has no resources to list.
+            return []
+        except SkillValidationError:
+            # Validation failures indicate a misconfigured or unreadable skill;
+            # log and re-raise rather than silently returning no resources.
+            logger.exception(
+                "Skill validation failed while listing resources for skill '%s'.",
+                skill_name,
+            )
+            raise
+        references_dir = details.source_path.parent / "references"
+        if not references_dir.is_dir():
+            return []
+        return sorted(f.name for f in references_dir.iterdir() if f.is_file())
+
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         """Read a specific resource from a skill, such as a file or script."""
         details = self.get_skill_details(skill_name=skill_name)
@@ -256,6 +276,18 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError(
                 f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"
             ) from exc
+
+    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+        """Return sorted script names available in the given skill."""
+        try:
+            details = self.get_skill_details(skill_name=skill_name)
+        except SkillNotFoundError:
+            # Return an empty list only when the skill does not exist.
+            return []
+
+        # Use the normalized skill name from details when loading the skill.
+        skill = self._manager.load_skill(details.name)
+        return sorted(s.name for s in skill.scripts)
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None

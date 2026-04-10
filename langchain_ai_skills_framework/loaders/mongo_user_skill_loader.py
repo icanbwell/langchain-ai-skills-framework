@@ -42,11 +42,11 @@ class MongoUserSkillLoader:
     def __init__(
         self,
         *,
-        collection: AsyncIOMotorCollection,  # type: ignore[type-arg]
+        collection: AsyncIOMotorCollection[MongoSkillDocument],
     ) -> None:
         if collection is None:
             raise ValueError("collection must not be None")
-        self._collection = collection
+        self._collection: AsyncIOMotorCollection[MongoSkillDocument] = collection
 
     # --- Index management ---------------------------------------------------
 

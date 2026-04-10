@@ -16,7 +16,11 @@ from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
 
 def _make_collection() -> AsyncMock:
     """Create a mock AsyncIOMotorCollection."""
-    return AsyncMock()
+    collection = AsyncMock()
+    # Motor's find() returns a cursor synchronously (not a coroutine),
+    # so it must be a regular MagicMock to support async iteration.
+    collection.find = MagicMock()
+    return collection
 
 
 def _make_raw_doc(

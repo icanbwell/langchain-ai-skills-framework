@@ -180,7 +180,7 @@ class MongoUserSkillLoader:
 
     @staticmethod
     def _normalize_skill_name(value: str) -> str:
-        normalized = value.strip().lower().replace("_", "-")
+        normalized = value.strip().lower().replace("_", "-").replace(" ", "-")
         normalized = re.sub(r"-+", "-", normalized)
         return normalized.strip("-")
 

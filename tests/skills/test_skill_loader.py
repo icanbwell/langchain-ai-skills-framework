@@ -273,6 +273,9 @@ def test_skill_loader_reads_skills_from_github_uri(
                 ),
             }
 
+        def reload(self, *, include_registries: bool = False) -> None:
+            pass
+
     downloader = GithubSkillDownloader()
     monkeypatch.setattr(downloader, "download", _fake_download)
     monkeypatch.setattr(

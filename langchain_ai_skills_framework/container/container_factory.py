@@ -13,6 +13,9 @@ from langchain_ai_skills_framework.loaders.skill_directory_loader import (
 from langchain_ai_skills_framework.persistence.mongo_database_factory import (
     MongoDatabaseFactory,
 )
+from langchain_ai_skills_framework.persistence.mongo_database_factory_impl import (
+    MongoDatabaseFactoryImpl,
+)
 from simple_container.container.simple_container import SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
 
@@ -49,6 +52,16 @@ class LangchainAISkillsFrameworkContainerFactory:
                 github_skill_downloader=c.resolve(GithubSkillDownloader),
             ),
         )
+
+        # Register the default MongoDatabaseFactory only if the consuming
+        # application has not already registered its own implementation.
+        if MongoDatabaseFactory not in container._factories:
+            container.singleton(
+                MongoDatabaseFactory,
+                lambda c: MongoDatabaseFactoryImpl(
+                    environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
+                ),
+            )
 
         container.singleton(
             MongoUserSkillLoader,

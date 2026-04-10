@@ -8,6 +8,7 @@ from types import MappingProxyType
 
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo import ReturnDocument
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -42,11 +43,11 @@ class MongoUserSkillLoader:
     def __init__(
         self,
         *,
-        collection: AsyncIOMotorCollection[MongoSkillDocument],
+        collection: AsyncIOMotorCollection,  # type: ignore[type-arg]
     ) -> None:
         if collection is None:
             raise ValueError("collection must not be None")
-        self._collection: AsyncIOMotorCollection[MongoSkillDocument] = collection
+        self._collection = collection
 
     # --- Index management ---------------------------------------------------
 
@@ -77,7 +78,7 @@ class MongoUserSkillLoader:
         description = self._extract_description(content)
         now = datetime.now(timezone.utc)
 
-        await self._collection.update_one(
+        raw = await self._collection.find_one_and_update(
             {"user_id": user_id, "skill_name": normalized_name},
             {
                 "$set": {
@@ -92,16 +93,10 @@ class MongoUserSkillLoader:
                 },
             },
             upsert=True,
+            return_document=ReturnDocument.AFTER,
         )
 
-        return MongoSkillDocument(
-            user_id=user_id,
-            skill_name=normalized_name,
-            description=description,
-            content=content,
-            created_at=now,
-            updated_at=now,
-        )
+        return MongoSkillDocument.from_mongo_dict(raw)
 
     async def delete_skill(self, *, user_id: str, skill_name: str) -> bool:
         """Delete a skill for the given user.  Returns True if a document was removed."""

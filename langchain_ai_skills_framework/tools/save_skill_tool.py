@@ -73,7 +73,8 @@ class SaveSkillTool(BaseTool):
         user_id: str,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        if not user_id:
+        stripped_user_id = user_id.strip() if user_id else ""
+        if not stripped_user_id:
             raise ToolException("user_id is required for save_skill")
         if not skill_name or not skill_name.strip():
             raise ToolException("skill_name must be a non-empty string.")
@@ -84,7 +85,7 @@ class SaveSkillTool(BaseTool):
 
         try:
             doc = await self.mongo_skill_loader.save_skill(
-                user_id=user_id,
+                user_id=stripped_user_id,
                 skill_name=skill_name,
                 content=content,
             )

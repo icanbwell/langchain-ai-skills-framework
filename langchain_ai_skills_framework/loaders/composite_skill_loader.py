@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 from types import MappingProxyType
 from typing import Any, Sequence
 
@@ -24,6 +25,13 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
 )
 from langchain_ai_skills_framework.tools.delete_skill_tool import DeleteSkillTool
+from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
+from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
+    ReadSkillResourceTool,
+)
+from langchain_ai_skills_framework.tools.run_skill_script_tool import (
+    RunSkillScriptTool,
+)
 from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -108,9 +116,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         lines: list[str] = []
         for skill in summaries:
+            escaped_name = escape(skill.name, quote=True)
+            escaped_description = escape(skill.description.strip(), quote=True)
             lines.append("<skill>")
-            lines.append(f"<name>{skill.name}</name>")
-            lines.append(f"<description>{skill.description}</description>")
+            lines.append(f"<name>{escaped_name}</name>")
+            lines.append(f"<description>{escaped_description}</description>")
             lines.append("</skill>")
         skills_list = "\n".join(lines)
 
@@ -130,11 +140,20 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         )
 
     def get_tools(self) -> list[BaseTool]:
-        """Return shared tools plus save/delete skill tools."""
-        tools = list(self._shared.get_tools())
-        tools.append(SaveSkillTool(mongo_skill_loader=self._user))
-        tools.append(DeleteSkillTool(mongo_skill_loader=self._user))
-        return tools
+        """Return tools that resolve skills through this composite loader.
+
+        Tools are constructed with ``skill_loader=self`` so that
+        ``load_skill`` and availability lists include both shared and
+        user-persisted skills, consistent with what
+        ``get_instructions_for_user`` advertises.
+        """
+        return [
+            LoadSkillTool(skill_loader=self),
+            ReadSkillResourceTool(skill_loader=self),
+            RunSkillScriptTool(skill_loader=self),
+            SaveSkillTool(mongo_skill_loader=self._user),
+            DeleteSkillTool(mongo_skill_loader=self._user),
+        ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         return self._shared.read_skill_resource(skill_name, resource_name)

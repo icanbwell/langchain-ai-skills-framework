@@ -27,6 +27,18 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
 )
 from langchain_ai_skills_framework.tools.skills_tool_manager import SkillsToolManager
 
+from typing import Any
+
+
+def _is_registered(container: SimpleContainer, service_type: type[Any]) -> bool:
+    """Check whether *service_type* already has a factory in *container*.
+
+    ``IContainer`` declares ``_factories`` on its protocol, so the
+    attribute is part of the public contract despite the underscore.
+    We isolate access here so callers don't spread the coupling.
+    """
+    return service_type in container._factories
+
 
 class LangchainAISkillsFrameworkContainerFactory:
     @staticmethod
@@ -55,7 +67,7 @@ class LangchainAISkillsFrameworkContainerFactory:
 
         # Register the default MongoDatabaseFactory only if the consuming
         # application has not already registered its own implementation.
-        if MongoDatabaseFactory not in container._factories:
+        if not _is_registered(container, MongoDatabaseFactory):
             container.singleton(
                 MongoDatabaseFactory,
                 lambda c: MongoDatabaseFactoryImpl(

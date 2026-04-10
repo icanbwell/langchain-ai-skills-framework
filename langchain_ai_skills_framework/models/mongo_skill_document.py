@@ -13,6 +13,10 @@ class MongoSkillDocument(BaseModel):
     skill_name: str = Field(description="Normalized name of the skill")
     description: str = Field(description="Short description of what the skill does")
     content: str = Field(description="Full skill content (SKILL.md body)")
+    shared: bool = Field(
+        default=False,
+        description="When True, this skill is available to all users",
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the skill was first saved",
@@ -34,6 +38,7 @@ class MongoSkillDocument(BaseModel):
             skill_name=data["skill_name"],
             description=data["description"],
             content=data["content"],
+            shared=data.get("shared", False),
             created_at=data.get("created_at", datetime.now(timezone.utc)),
             updated_at=data.get("updated_at", datetime.now(timezone.utc)),
         )

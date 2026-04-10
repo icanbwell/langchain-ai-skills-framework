@@ -10,8 +10,8 @@ from langchain_core.callbacks import (
 from langchain_core.tools import BaseTool, ToolException
 from pydantic import BaseModel, ConfigDict, Field
 
-from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
-    MongoUserSkillLoader,
+from langchain_ai_skills_framework.loaders.user_skill_store import (
+    UserSkillStore,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -49,7 +49,7 @@ class SaveSkillTool(BaseTool):
     )
     args_schema: Type[BaseModel] = SaveSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
-    mongo_skill_loader: Optional[MongoUserSkillLoader] = None
+    mongo_skill_loader: Optional[UserSkillStore] = None
 
     @override
     def _run(

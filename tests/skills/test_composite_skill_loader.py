@@ -17,8 +17,8 @@ from langchain_ai_skills_framework.loaders.composite_skill_loader import (
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
-from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
-    MongoUserSkillLoader,
+from langchain_ai_skills_framework.loaders.user_skill_store import (
+    UserSkillStore,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
@@ -82,9 +82,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
 
 def _make_user_loader_mock(
     user_skills: dict[str, SkillDetails] | None = None,
-) -> MongoUserSkillLoader:
-    """Create a mock MongoUserSkillLoader that returns a snapshot."""
-    loader = AsyncMock(spec=MongoUserSkillLoader)
+) -> UserSkillStore:
+    """Create a mock UserSkillStore that returns a snapshot."""
+    loader = AsyncMock(spec=UserSkillStore)
     skills = user_skills or {}
     snapshot = SkillSnapshot(
         details_by_name=MappingProxyType(skills),
@@ -92,7 +92,12 @@ def _make_user_loader_mock(
             sorted([d.summary for d in skills.values()], key=lambda s: s.name)
         ),
     )
+    empty_snapshot = SkillSnapshot(
+        details_by_name=MappingProxyType({}),
+        ordered_summaries=(),
+    )
     loader.load_snapshot.return_value = snapshot
+    loader.load_shared_snapshot.return_value = empty_snapshot
     loader.get_skill_details.side_effect = lambda *, user_id, skill_name: (
         skills[skill_name]
         if skill_name in skills

@@ -98,6 +98,28 @@ class MongoUserSkillLoader:
 
         return MongoSkillDocument.from_mongo_dict(raw)
 
+    async def set_skill_shared(
+        self, *, user_id: str, skill_name: str, shared: bool
+    ) -> MongoSkillDocument:
+        """Toggle the shared flag on an existing skill."""
+        if not user_id or not user_id.strip():
+            raise ValueError("user_id must be a non-empty string")
+        normalized_name = self._normalize_skill_name(skill_name)
+        if not normalized_name:
+            raise ValueError("skill_name must be a non-empty string")
+
+        now = datetime.now(timezone.utc)
+        raw = await self._collection.find_one_and_update(
+            {"user_id": user_id, "skill_name": normalized_name},
+            {"$set": {"shared": shared, "updated_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if raw is None:
+            raise SkillNotFoundError(
+                f"Skill '{skill_name}' not found for user '{user_id}'"
+            )
+        return MongoSkillDocument.from_mongo_dict(raw)
+
     async def delete_skill(self, *, user_id: str, skill_name: str) -> bool:
         """Delete a skill for the given user.  Returns True if a document was removed."""
         if not user_id or not user_id.strip():
@@ -114,19 +136,29 @@ class MongoUserSkillLoader:
         """Load all skills for a user and return an immutable snapshot."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
+        return await self._build_snapshot(
+            query={"user_id": user_id}, owner_label=user_id
+        )
 
+    async def load_shared_snapshot(self) -> SkillSnapshot:
+        """Load all skills marked as shared across all users."""
+        return await self._build_snapshot(query={"shared": True}, owner_label="shared")
+
+    async def _build_snapshot(
+        self, *, query: dict[str, object], owner_label: str
+    ) -> SkillSnapshot:
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
 
-        async for raw in self._collection.find({"user_id": user_id}):
+        async for raw in self._collection.find(query):
             doc = MongoSkillDocument.from_mongo_dict(raw)
             summary = SkillSummary(
                 name=doc.skill_name,
                 description=doc.description,
-                source_path=Path(f"mongodb://{user_id}/{doc.skill_name}"),
+                source_path=Path(f"mongodb://{owner_label}/{doc.skill_name}"),
                 license=None,
                 compatibility=None,
-                metadata={"source": "mongodb", "user_id": user_id},
+                metadata={"source": "mongodb", "user_id": doc.user_id},
                 allowed_tools=(),
             )
             detail = SkillDetails(

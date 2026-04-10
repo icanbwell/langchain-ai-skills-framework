@@ -13,8 +13,8 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
-from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
-    MongoUserSkillLoader,
+from langchain_ai_skills_framework.loaders.user_skill_store import (
+    UserSkillStore,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
@@ -33,6 +33,9 @@ from langchain_ai_skills_framework.tools.run_skill_script_tool import (
     RunSkillScriptTool,
 )
 from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
+from langchain_ai_skills_framework.tools.toggle_skill_sharing_tool import (
+    ToggleSkillSharingTool,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -54,7 +57,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self,
         *,
         shared_loader: SkillLoaderProtocol,
-        user_loader: MongoUserSkillLoader,
+        user_loader: UserSkillStore,
     ) -> None:
         if shared_loader is None:
             raise ValueError("shared_loader must not be None")
@@ -69,7 +72,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return self._shared
 
     @property
-    def user_loader(self) -> MongoUserSkillLoader:
+    def user_loader(self) -> UserSkillStore:
         return self._user
 
     # --- SkillLoaderProtocol implementation ----------------------------------
@@ -135,7 +138,8 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "3. Use `read_skill_resource` to read files referenced by the skill\n"
             "4. Use `run_skill_script` to run scripts provided by the skill\n"
             "5. Use `save_skill` to save a new or updated skill for the current user\n"
-            "6. Use `delete_skill` to remove a previously saved skill\n\n"
+            "6. Use `delete_skill` to remove a previously saved skill\n"
+            "7. Use `toggle_skill_sharing` to share a skill with all users or make it private\n\n"
             "Use progressive disclosure: load only what you need, when you need it."
         )
 
@@ -153,6 +157,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             RunSkillScriptTool(skill_loader=self),
             SaveSkillTool(mongo_skill_loader=self._user),
             DeleteSkillTool(mongo_skill_loader=self._user),
+            ToggleSkillSharingTool(mongo_skill_loader=self._user),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
@@ -172,13 +177,25 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     # --- Merging -------------------------------------------------------------
 
     async def _merged_snapshot(self, *, user_id: str) -> SkillSnapshot:
-        """Build a merged snapshot: shared + user skills (user wins on conflict)."""
+        """Build a merged snapshot with precedence: GitHub → shared DB → user DB.
+
+        GitHub/filesystem skills form the base.  Shared database skills
+        overlay next (available to all users).  The requesting user's own
+        skills win on name collision.
+        """
         details: dict[str, SkillDetails] = {}
 
+        # 1. GitHub / filesystem skills (lowest precedence)
         for summary in self._shared.list_skill_summaries(allowed_skills=set()):
             detail = self._shared.get_skill_details(summary.name)
             details[summary.name] = detail
 
+        # 2. Shared database skills (override GitHub on collision)
+        shared_snapshot = await self._user.load_shared_snapshot()
+        for name, detail in shared_snapshot.details_by_name.items():
+            details[name] = detail
+
+        # 3. User's own database skills (highest precedence)
         user_snapshot = await self._user.load_snapshot(user_id=user_id)
         for name, detail in user_snapshot.details_by_name.items():
             details[name] = detail

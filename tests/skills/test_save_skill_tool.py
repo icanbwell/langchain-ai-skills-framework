@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.tools import ToolException
 
-from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
-    MongoUserSkillLoader,
+from langchain_ai_skills_framework.loaders.user_skill_store import (
+    UserSkillStore,
 )
 from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
@@ -15,8 +15,8 @@ from langchain_ai_skills_framework.models.mongo_skill_document import (
 from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
 
 
-def _make_loader_mock() -> MongoUserSkillLoader:
-    loader = AsyncMock(spec=MongoUserSkillLoader)
+def _make_loader_mock() -> UserSkillStore:
+    loader = AsyncMock(spec=UserSkillStore)
     loader.save_skill.return_value = MongoSkillDocument(
         user_id="user-1",
         skill_name="test-skill",

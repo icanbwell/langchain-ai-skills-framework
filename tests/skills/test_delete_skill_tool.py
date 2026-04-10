@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.tools import ToolException
 
-from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
-    MongoUserSkillLoader,
+from langchain_ai_skills_framework.loaders.user_skill_store import (
+    UserSkillStore,
 )
 from langchain_ai_skills_framework.tools.delete_skill_tool import DeleteSkillTool
 
 
-def _make_loader_mock(deleted: bool = True) -> MongoUserSkillLoader:
-    loader = AsyncMock(spec=MongoUserSkillLoader)
+def _make_loader_mock(deleted: bool = True) -> UserSkillStore:
+    loader = AsyncMock(spec=UserSkillStore)
     loader.delete_skill.return_value = deleted
     return loader
 

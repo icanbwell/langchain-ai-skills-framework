@@ -38,6 +38,8 @@ aiofiles = ">=25.1.0"
 uv = ">=0.11.0"
 # anyio is needed for working with asynchronous code in a subprocess, which is used by the subprocess tool and the code execution tool
 anyio = ">=4.12.1"
+# motor is needed for working with MongoDB asynchronously, which is used by the MongoDB tool
+motor = ">=3.7.1"
 
 [dev-packages]
 # setuptools > 81 has a breaking change that causes pipenv-setup to fail, so we need to pin it to a version < 80.9.0

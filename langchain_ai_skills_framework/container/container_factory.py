@@ -1,5 +1,3 @@
-from typing import Optional
-
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
@@ -31,7 +29,7 @@ class LangchainAISkillsFrameworkContainerFactory:
     def register_services_in_container(
         *,
         container: SimpleContainer,
-        mongo_database: Optional[AsyncIOMotorDatabase] = None,  # type: ignore[type-arg]
+        mongo_database: AsyncIOMotorDatabase,  # type: ignore[type-arg]
     ) -> SimpleContainer:
 
         container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
@@ -52,33 +50,27 @@ class LangchainAISkillsFrameworkContainerFactory:
             ),
         )
 
-        if mongo_database is not None:
-            collection: AsyncIOMotorCollection = mongo_database[  # type: ignore[type-arg]
-                MongoUserSkillLoader.COLLECTION_NAME
-            ]
+        collection: AsyncIOMotorCollection = mongo_database[  # type: ignore[type-arg]
+            MongoUserSkillLoader.COLLECTION_NAME
+        ]
 
-            container.singleton(
-                MongoUserSkillLoader,
-                lambda c: MongoUserSkillLoader(collection=collection),
-            )
+        container.singleton(
+            MongoUserSkillLoader,
+            lambda c: MongoUserSkillLoader(collection=collection),
+        )
 
-            container.singleton(
-                CompositeSkillLoader,
-                lambda c: CompositeSkillLoader(
-                    shared_loader=c.resolve(SkillkitDirectoryLoader),
-                    user_loader=c.resolve(MongoUserSkillLoader),
-                ),
-            )
+        container.singleton(
+            CompositeSkillLoader,
+            lambda c: CompositeSkillLoader(
+                shared_loader=c.resolve(SkillkitDirectoryLoader),
+                user_loader=c.resolve(MongoUserSkillLoader),
+            ),
+        )
 
-            container.singleton(
-                SkillLoaderProtocol,
-                lambda c: c.resolve(CompositeSkillLoader),
-            )
-        else:
-            container.singleton(
-                SkillLoaderProtocol,
-                lambda c: c.resolve(SkillkitDirectoryLoader),
-            )
+        container.singleton(
+            SkillLoaderProtocol,
+            lambda c: c.resolve(CompositeSkillLoader),
+        )
 
         container.singleton(
             SkillsToolManager,

@@ -11,6 +11,6 @@ class MongoDatabaseFactory(Protocol):
     connections using its own configuration and credentials.
     """
 
-    def create_database(self) -> AsyncIOMotorDatabase:  # type: ignore[type-arg]
+    def create_database(self) -> AsyncIOMotorDatabase[dict[str, object]]:
         """Return an AsyncIOMotorDatabase instance."""
         ...

@@ -8,6 +8,7 @@ from langchain_core.callbacks import (
     CallbackManagerForToolRun,
 )
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.user_skill_store import (
@@ -26,9 +27,6 @@ class ToggleSkillSharingInput(BaseModel):
 
     skill_name: str = Field(
         description="Name of the skill to toggle sharing for.",
-    )
-    user_id: str = Field(
-        description="User ID of the skill owner. Required.",
     )
     shared: bool = Field(
         description="True to share the skill with all users, False to make it private.",
@@ -52,7 +50,6 @@ class ToggleSkillSharingTool(BaseTool):
         self,
         *,
         skill_name: str,
-        user_id: str,
         shared: bool,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -65,10 +62,11 @@ class ToggleSkillSharingTool(BaseTool):
         self,
         *,
         skill_name: str,
-        user_id: str,
         shared: bool,
+        runtime: ToolRuntime[dict[str, Any], Any],
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
+        user_id = (runtime.context or {}).get("user_id", "") if runtime else ""
         stripped_user_id = user_id.strip() if user_id else ""
         if not stripped_user_id:
             raise ToolException("user_id is required for toggle_skill_sharing")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -17,13 +17,22 @@ def _make_loader_mock(deleted: bool = True) -> UserSkillStore:
     return loader
 
 
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
+
+
 class TestDeleteSkillTool:
     @pytest.mark.asyncio
     async def test_deletes_skill_successfully(self) -> None:
         loader = _make_loader_mock(deleted=True)
         tool = DeleteSkillTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(skill_name="test-skill", user_id="user-1")
+        result, artifact = await tool._arun(
+            skill_name="test-skill", runtime=_make_runtime("user-1")
+        )
 
         assert "deleted successfully" in result
         loader.delete_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
@@ -35,7 +44,7 @@ class TestDeleteSkillTool:
         loader = _make_loader_mock(deleted=False)
         tool = DeleteSkillTool(mongo_skill_loader=loader)
 
-        result, _ = await tool._arun(skill_name="nope", user_id="user-1")
+        result, _ = await tool._arun(skill_name="nope", runtime=_make_runtime("user-1"))
 
         assert "not found" in result
 
@@ -44,24 +53,24 @@ class TestDeleteSkillTool:
         tool = DeleteSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(skill_name="test", user_id="")
+            await tool._arun(skill_name="test", runtime=_make_runtime(""))
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
         tool = DeleteSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(skill_name="  ", user_id="user-1")
+            await tool._arun(skill_name="  ", runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:
         tool = DeleteSkillTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(skill_name="test", user_id="user-1")
+            await tool._arun(skill_name="test", runtime=_make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = DeleteSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(skill_name="test", user_id="user-1")
+            tool._run(skill_name="test")

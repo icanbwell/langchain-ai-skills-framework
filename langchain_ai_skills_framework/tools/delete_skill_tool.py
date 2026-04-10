@@ -8,6 +8,7 @@ from langchain_core.callbacks import (
     CallbackManagerForToolRun,
 )
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.user_skill_store import (
@@ -26,9 +27,6 @@ class DeleteSkillInput(BaseModel):
 
     skill_name: str = Field(
         description="Name of the skill to delete.",
-    )
-    user_id: str = Field(
-        description="User ID associated with this skill. Required.",
     )
 
 
@@ -49,7 +47,6 @@ class DeleteSkillTool(BaseTool):
         self,
         *,
         skill_name: str,
-        user_id: str,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(
@@ -61,9 +58,10 @@ class DeleteSkillTool(BaseTool):
         self,
         *,
         skill_name: str,
-        user_id: str,
+        runtime: ToolRuntime[dict[str, Any], Any],
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
+        user_id = (runtime.context or {}).get("user_id", "") if runtime else ""
         stripped_user_id = user_id.strip() if user_id else ""
         if not stripped_user_id:
             raise ToolException("user_id is required for delete_skill")

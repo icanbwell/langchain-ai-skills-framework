@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -28,6 +28,13 @@ def _make_loader_mock() -> UserSkillStore:
     return loader
 
 
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
+
+
 class TestSaveSkillTool:
     @pytest.mark.asyncio
     async def test_saves_skill_successfully(self) -> None:
@@ -37,7 +44,7 @@ class TestSaveSkillTool:
         result, artifact = await tool._arun(
             skill_name="test-skill",
             content="# Test\nContent",
-            user_id="user-1",
+            runtime=_make_runtime("user-1"),
         )
 
         assert "saved successfully" in result
@@ -52,34 +59,47 @@ class TestSaveSkillTool:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(skill_name="test", content="content", user_id="")
+            await tool._arun(
+                skill_name="test", content="content", runtime=_make_runtime("")
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_missing_user_id_in_context(self) -> None:
+        tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
+        runtime = MagicMock()
+        runtime.context = {}
+
+        with pytest.raises(ToolException, match="user_id is required"):
+            await tool._arun(skill_name="test", content="content", runtime=runtime)
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(skill_name="", content="content", user_id="user-1")
+            await tool._arun(skill_name="", content="content", runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_empty_content(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="content must be a non-empty"):
-            await tool._arun(skill_name="test", content="", user_id="user-1")
+            await tool._arun(skill_name="test", content="", runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:
         tool = SaveSkillTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(skill_name="test", content="content", user_id="user-1")
+            await tool._arun(
+                skill_name="test", content="content", runtime=_make_runtime()
+            )
 
     def test_sync_run_raises(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(skill_name="test", content="content", user_id="user-1")
+            tool._run(skill_name="test", content="content")
 
     def test_get_friendly_name(self) -> None:
         name = SaveSkillTool.get_friendly_name(tool_input={"skill_name": "my-skill"})

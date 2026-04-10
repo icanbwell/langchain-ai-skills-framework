@@ -24,9 +24,9 @@ class MongoDatabaseFactoryImpl:
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
         self._env = environment_variables
-        self._client: AsyncIOMotorClient | None = None  # type: ignore[type-arg]
+        self._client: AsyncIOMotorClient[dict[str, object]] | None = None
 
-    def create_database(self) -> AsyncIOMotorDatabase:  # type: ignore[type-arg]
+    def create_database(self) -> AsyncIOMotorDatabase[dict[str, object]]:
         """Return an ``AsyncIOMotorDatabase`` for skills storage."""
         if self._client is None:
             connection_string = MongoUrlHelpers.add_credentials_to_mongo_url(

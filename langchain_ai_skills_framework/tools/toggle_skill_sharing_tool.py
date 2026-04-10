@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any, Literal, Optional, Tuple, Type, override
+from typing import Any, Literal, Optional, Tuple, Type, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool, InjectedToolArg, ToolException
+from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.user_skill_store import (
@@ -62,9 +63,11 @@ class ToggleSkillSharingTool(BaseTool):
         *,
         skill_name: str,
         shared: bool,
-        user_id: Annotated[str, InjectedToolArg],
+        runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
+        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+        user_id = ctx.get("user_id", "")
         stripped_user_id = user_id.strip() if user_id else ""
         if not stripped_user_id:
             raise ToolException("user_id is required for toggle_skill_sharing")

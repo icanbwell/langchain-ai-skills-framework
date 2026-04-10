@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -37,6 +37,13 @@ def _make_loader_mock(shared: bool = True) -> UserSkillStore:
     return loader
 
 
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
+
+
 class TestToggleSkillSharingTool:
     @pytest.mark.asyncio
     async def test_shares_skill_successfully(self) -> None:
@@ -44,7 +51,7 @@ class TestToggleSkillSharingTool:
         tool = ToggleSkillSharingTool(mongo_skill_loader=loader)
 
         result, artifact = await tool._arun(
-            skill_name="test-skill", shared=True, user_id="user-1"
+            skill_name="test-skill", shared=True, runtime=_make_runtime("user-1")
         )
 
         assert "shared" in result
@@ -58,7 +65,7 @@ class TestToggleSkillSharingTool:
         tool = ToggleSkillSharingTool(mongo_skill_loader=loader)
 
         result, _ = await tool._arun(
-            skill_name="test-skill", shared=False, user_id="user-1"
+            skill_name="test-skill", shared=False, runtime=_make_runtime("user-1")
         )
 
         assert "private" in result
@@ -68,21 +75,21 @@ class TestToggleSkillSharingTool:
         tool = ToggleSkillSharingTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(skill_name="test", shared=True, user_id="")
+            await tool._arun(skill_name="test", shared=True, runtime=_make_runtime(""))
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
         tool = ToggleSkillSharingTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(skill_name="  ", shared=True, user_id="user-1")
+            await tool._arun(skill_name="  ", shared=True, runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:
         tool = ToggleSkillSharingTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(skill_name="test", shared=True, user_id="user-1")
+            await tool._arun(skill_name="test", shared=True, runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_wraps_unexpected_exception(self) -> None:
@@ -91,7 +98,7 @@ class TestToggleSkillSharingTool:
         tool = ToggleSkillSharingTool(mongo_skill_loader=loader)
 
         with pytest.raises(ToolException, match="Unable to update sharing"):
-            await tool._arun(skill_name="test", shared=True, user_id="user-1")
+            await tool._arun(skill_name="test", shared=True, runtime=_make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = ToggleSkillSharingTool(mongo_skill_loader=_make_loader_mock())

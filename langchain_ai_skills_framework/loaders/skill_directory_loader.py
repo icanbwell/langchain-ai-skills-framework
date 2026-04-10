@@ -256,13 +256,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
                 or self._snapshot is None
                 or not self._is_snapshot_valid_unlocked()
             ):
-                reload_method = getattr(self._skills_toolset, "reload", None)
-                if callable(reload_method):
-                    # Keep remote registries fresh on TTL refresh.
-                    reload_method(include_registries=True)
-                else:
-                    # Backward-compatible fallback for older pydantic-ai-skills builds.
-                    self._skills_toolset = self._create_toolset()
+                self._skills_toolset.reload(include_registries=True)
         except (
             PydanticSkillValidationError,
             PydanticSkillRegistryError,
@@ -305,9 +299,7 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
     ) -> float | None:
         """Resolve loader TTL from environment, defaulting to one hour."""
 
-        configured = getattr(
-            environment_variables, "skills_cache_timeout_seconds", 3600
-        )
+        configured = environment_variables.skills_cache_timeout_seconds
         if isinstance(configured, bool):
             return 3600.0
         if not isinstance(configured, (int, float)):

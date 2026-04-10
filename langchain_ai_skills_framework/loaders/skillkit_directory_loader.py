@@ -485,9 +485,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     ) -> float | None:
         """Resolve loader TTL from environment, defaulting to one hour."""
 
-        configured = getattr(
-            environment_variables, "skills_cache_timeout_seconds", 3600
-        )
+        configured = environment_variables.skills_cache_timeout_seconds
         if isinstance(configured, bool):
             return 3600.0
         if not isinstance(configured, (int, float)):

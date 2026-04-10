@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, Optional, Tuple, Type, override
+from typing import Annotated, Any, Literal, Optional, Tuple, Type, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
-from langchain_core.tools import BaseTool, ToolException
-from langgraph.prebuilt.tool_node import ToolRuntime
+from langchain_core.tools import BaseTool, InjectedToolArg, ToolException
 from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.user_skill_store import (
@@ -67,10 +66,9 @@ class SaveSkillTool(BaseTool):
         *,
         skill_name: str,
         content: str,
-        runtime: ToolRuntime[dict[str, Any], Any],
+        user_id: Annotated[str, InjectedToolArg],
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        user_id = (runtime.context or {}).get("user_id", "") if runtime else ""
         stripped_user_id = user_id.strip() if user_id else ""
         if not stripped_user_id:
             raise ToolException("user_id is required for save_skill")

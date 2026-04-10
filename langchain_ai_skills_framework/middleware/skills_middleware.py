@@ -76,10 +76,7 @@ class SkillMiddleware(AgentMiddleware):
     def _extract_user_id(request: ModelRequest[Any]) -> str | None:
         """Extract user_id from the LangGraph runtime context."""
         try:
-            runtime = getattr(request, "runtime", None)
-            if runtime is None:
-                return None
-            context = getattr(runtime, "context", None)
+            context = request.runtime.context
             if context is None:
                 return None
             user_id = context.get("user_id")

@@ -26,7 +26,7 @@ class TestDeleteSkillTool:
         result, artifact = await tool._arun(skill_name="test-skill", user_id="user-1")
 
         assert "deleted successfully" in result
-        loader.delete_skill.assert_awaited_once_with(
+        loader.delete_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
             user_id="user-1", skill_name="test-skill"
         )
 

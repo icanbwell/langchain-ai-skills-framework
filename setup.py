@@ -70,7 +70,7 @@ setup(
         "aiofiles>=25.1.0",
         "uv>=0.11.0",
         "anyio>=4.12.1",
-        "motor>=3.6.0",
+        "motor>=3.7.1",
     ],
     classifiers=[
         "Development Status :: 4 - Beta",

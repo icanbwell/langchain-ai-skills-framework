@@ -41,7 +41,7 @@ class TestSaveSkillTool:
         )
 
         assert "saved successfully" in result
-        loader.save_skill.assert_awaited_once_with(
+        loader.save_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
             user_id="user-1",
             skill_name="test-skill",
             content="# Test\nContent",

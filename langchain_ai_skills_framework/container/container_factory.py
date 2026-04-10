@@ -1,5 +1,3 @@
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
-
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
 )
@@ -11,6 +9,9 @@ from langchain_ai_skills_framework.loaders.mongo_user_skill_loader import (
 )
 from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
+)
+from langchain_ai_skills_framework.persistence.mongo_database_factory import (
+    MongoDatabaseFactory,
 )
 from simple_container.container.simple_container import SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
@@ -29,7 +30,6 @@ class LangchainAISkillsFrameworkContainerFactory:
     def register_services_in_container(
         *,
         container: SimpleContainer,
-        mongo_database: AsyncIOMotorDatabase,  # type: ignore[type-arg]
     ) -> SimpleContainer:
 
         container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
@@ -50,13 +50,13 @@ class LangchainAISkillsFrameworkContainerFactory:
             ),
         )
 
-        collection: AsyncIOMotorCollection = mongo_database[  # type: ignore[type-arg]
-            MongoUserSkillLoader.COLLECTION_NAME
-        ]
-
         container.singleton(
             MongoUserSkillLoader,
-            lambda c: MongoUserSkillLoader(collection=collection),
+            lambda c: MongoUserSkillLoader(
+                collection=c.resolve(MongoDatabaseFactory).create_database()[
+                    MongoUserSkillLoader.COLLECTION_NAME
+                ]
+            ),
         )
 
         container.singleton(

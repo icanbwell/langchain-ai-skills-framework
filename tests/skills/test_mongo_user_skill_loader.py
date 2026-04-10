@@ -50,6 +50,12 @@ class TestSaveSkill:
     @pytest.mark.asyncio
     async def test_upserts_document(self) -> None:
         collection = _make_collection()
+        collection.find_one_and_update.return_value = _make_raw_doc(
+            user_id="user-1",
+            skill_name="my-skill",
+            description="Test skill",
+            content="---\ndescription: Test skill\n---\n# Content",
+        )
         loader = MongoUserSkillLoader(collection=collection)
 
         doc = await loader.save_skill(
@@ -61,8 +67,8 @@ class TestSaveSkill:
         assert doc.user_id == "user-1"
         assert doc.skill_name == "my-skill"
         assert doc.description == "Test skill"
-        collection.update_one.assert_awaited_once()
-        call_args = collection.update_one.call_args
+        collection.find_one_and_update.assert_awaited_once()
+        call_args = collection.find_one_and_update.call_args
         assert call_args[0][0] == {"user_id": "user-1", "skill_name": "my-skill"}
         assert call_args[1]["upsert"] is True
 
@@ -71,6 +77,12 @@ class TestSaveSkill:
         self,
     ) -> None:
         collection = _make_collection()
+        collection.find_one_and_update.return_value = _make_raw_doc(
+            user_id="user-1",
+            skill_name="test",
+            description="Hello World",
+            content="# Hello World\nBody here",
+        )
         loader = MongoUserSkillLoader(collection=collection)
 
         doc = await loader.save_skill(

@@ -23,11 +23,12 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class DeleteSkillInput(BaseModel):
     """Input schema for the delete_skill tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     skill_name: str = Field(
         description="Name of the skill to delete.",
     )
+    runtime: ToolRuntime = Field(exclude=True)
 
 
 class DeleteSkillTool(BaseTool):

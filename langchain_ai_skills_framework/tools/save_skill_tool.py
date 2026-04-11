@@ -23,7 +23,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class SaveSkillInput(BaseModel):
     """Input schema for the save_skill tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     skill_name: str = Field(
         description="Name of the skill to save (e.g., 'my-custom-skill').",
@@ -34,6 +34,7 @@ class SaveSkillInput(BaseModel):
             "May include YAML frontmatter with description and metadata."
         ),
     )
+    runtime: ToolRuntime = Field(exclude=True)
 
 
 class SaveSkillTool(BaseTool):

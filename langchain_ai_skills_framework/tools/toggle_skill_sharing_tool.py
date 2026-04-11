@@ -23,7 +23,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class ToggleSkillSharingInput(BaseModel):
     """Input schema for the toggle_skill_sharing tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     skill_name: str = Field(
         description="Name of the skill to toggle sharing for.",
@@ -31,6 +31,7 @@ class ToggleSkillSharingInput(BaseModel):
     shared: bool = Field(
         description="True to share the skill with all users, False to make it private.",
     )
+    runtime: ToolRuntime = Field(exclude=True)
 
 
 class ToggleSkillSharingTool(BaseTool):

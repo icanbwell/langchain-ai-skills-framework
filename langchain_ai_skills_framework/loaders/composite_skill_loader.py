@@ -198,6 +198,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 user_id=user_id, skill_name=normalized, resource_name=resource_name
             )
         except SkillNotFoundError:
+            logger.debug(
+                f"Resource '{resource_name}' not found in user skill '{normalized}' for user '{user_id}', trying shared skills"
+            )
             pass
 
         # Check shared DB skills

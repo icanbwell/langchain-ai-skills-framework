@@ -133,7 +133,7 @@ class ReadSkillResourceTool(BaseTool):
             if stripped_user_id and hasattr(
                 self.skill_loader, "read_skill_resource_for_user"
             ):
-                resource = await self.skill_loader.read_skill_resource_for_user(
+                resource: str = await self.skill_loader.read_skill_resource_for_user(
                     user_id=stripped_user_id,
                     skill_name=normalized_name,
                     resource_name=resource_name,

@@ -204,7 +204,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         shared_snapshot = await self._user.load_shared_snapshot()
         if normalized in shared_snapshot.details_by_name:
             shared_detail = shared_snapshot.details_by_name[normalized]
-            owner_user_id = (
+            owner_user_id = str(
                 shared_detail.summary.metadata.get("user_id", "")
                 if shared_detail.summary.metadata
                 else ""
@@ -259,7 +259,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         shared_snapshot = await self._user.load_shared_snapshot()
         if normalized in shared_snapshot.details_by_name:
             shared_detail = shared_snapshot.details_by_name[normalized]
-            owner_user_id = (
+            owner_user_id = str(
                 shared_detail.summary.metadata.get("user_id", "")
                 if shared_detail.summary.metadata
                 else ""

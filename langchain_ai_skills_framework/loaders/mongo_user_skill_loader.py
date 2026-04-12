@@ -239,7 +239,7 @@ class MongoUserSkillLoader:
             raise SkillNotFoundError(
                 f"Resource '{resource_name}' not found in skill '{skill_name}' for user '{user_id}'"
             )
-        return raw["content"]
+        return str(raw["content"])
 
     async def list_resource_names(
         self, *, user_id: str, skill_name: str
@@ -328,7 +328,7 @@ class MongoUserSkillLoader:
             raise SkillNotFoundError(
                 f"Script '{script_name}' not found in skill '{skill_name}' for user '{user_id}'"
             )
-        return raw["content"]
+        return str(raw["content"])
 
     async def list_script_names(
         self, *, user_id: str, skill_name: str

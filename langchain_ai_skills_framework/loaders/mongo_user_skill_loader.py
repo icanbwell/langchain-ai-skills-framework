@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
@@ -49,12 +51,14 @@ class MongoUserSkillLoader:
     RESOURCE_INDEX_NAME = "ux_user_skill_resource"
     SCRIPT_INDEX_NAME = "ux_user_skill_script"
     USAGE_INDEX_NAME = "ix_skill_usage_lookup"
+    SNAPSHOT_TTL_SECONDS = 30.0
 
     def __init__(
         self,
         *,
         collection: AsyncIOMotorCollection,  # type: ignore[type-arg]
         database: AsyncIOMotorDatabase | None = None,  # type: ignore[type-arg]
+        snapshot_ttl_seconds: float | None = None,
     ) -> None:
         if collection is None:
             raise ValueError("collection must not be None")
@@ -69,6 +73,16 @@ class MongoUserSkillLoader:
         self._usage_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
             self.USAGE_COLLECTION_NAME
         ]
+
+        # --- TTL snapshot cache ---
+        self._snapshot_ttl = (
+            snapshot_ttl_seconds
+            if snapshot_ttl_seconds is not None
+            else self.SNAPSHOT_TTL_SECONDS
+        )
+        self._user_snapshot_cache: dict[str, tuple[SkillSnapshot, float]] = {}
+        self._shared_snapshot_cache: tuple[SkillSnapshot, float] | None = None
+        self._cache_lock = asyncio.Lock()
 
     # --- Index management ---------------------------------------------------
 
@@ -138,6 +152,7 @@ class MongoUserSkillLoader:
             return_document=ReturnDocument.AFTER,
         )
 
+        self.invalidate_cache(user_id=user_id)
         return MongoSkillDocument.from_mongo_dict(raw)
 
     async def set_skill_shared(
@@ -160,6 +175,7 @@ class MongoUserSkillLoader:
             raise SkillNotFoundError(
                 f"Skill '{skill_name}' not found for user '{user_id}'"
             )
+        self.invalidate_cache(user_id=user_id)
         return MongoSkillDocument.from_mongo_dict(raw)
 
     async def delete_skill(self, *, user_id: str, skill_name: str) -> bool:
@@ -182,6 +198,7 @@ class MongoUserSkillLoader:
         result = await self._collection.delete_one(
             {"user_id": user_id, "skill_name": normalized_name}
         )
+        self.invalidate_cache(user_id=user_id)
         return result.deleted_count > 0
 
     async def skill_exists(self, *, user_id: str, skill_name: str) -> bool:
@@ -425,16 +442,53 @@ class MongoUserSkillLoader:
     # --- Skill read operations -----------------------------------------------
 
     async def load_snapshot(self, *, user_id: str) -> SkillSnapshot:
-        """Load all skills for a user and return an immutable snapshot."""
+        """Load all skills for a user, with TTL caching."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
-        return await self._build_snapshot(
-            query={"user_id": user_id}, owner_label=user_id
-        )
+        now = time.monotonic()
+        cached = self._user_snapshot_cache.get(user_id)
+        if cached is not None:
+            snapshot, loaded_at = cached
+            if (now - loaded_at) < self._snapshot_ttl:
+                return snapshot
+
+        async with self._cache_lock:
+            # Double-check after acquiring lock
+            cached = self._user_snapshot_cache.get(user_id)
+            if cached is not None:
+                snapshot, loaded_at = cached
+                if (now - loaded_at) < self._snapshot_ttl:
+                    return snapshot
+            snapshot = await self._build_snapshot(
+                query={"user_id": user_id}, owner_label=user_id
+            )
+            self._user_snapshot_cache[user_id] = (snapshot, time.monotonic())
+            return snapshot
 
     async def load_shared_snapshot(self) -> SkillSnapshot:
-        """Load all skills marked as shared across all users."""
-        return await self._build_snapshot(query={"shared": True}, owner_label="shared")
+        """Load all shared skills, with TTL caching."""
+        now = time.monotonic()
+        if self._shared_snapshot_cache is not None:
+            snapshot, loaded_at = self._shared_snapshot_cache
+            if (now - loaded_at) < self._snapshot_ttl:
+                return snapshot
+
+        async with self._cache_lock:
+            if self._shared_snapshot_cache is not None:
+                snapshot, loaded_at = self._shared_snapshot_cache
+                if (now - loaded_at) < self._snapshot_ttl:
+                    return snapshot
+            snapshot = await self._build_snapshot(
+                query={"shared": True}, owner_label="shared"
+            )
+            self._shared_snapshot_cache = (snapshot, time.monotonic())
+            return snapshot
+
+    def invalidate_cache(self, *, user_id: str | None = None) -> None:
+        """Invalidate cached snapshots after a write operation."""
+        if user_id:
+            self._user_snapshot_cache.pop(user_id, None)
+        self._shared_snapshot_cache = None
 
     async def _build_snapshot(
         self, *, query: dict[str, object], owner_label: str
@@ -539,3 +593,18 @@ class MongoUserSkillLoader:
         return int(
             await self._usage_collection.count_documents({"skill_name": skill_name})
         )
+
+    async def get_skill_usage_counts(
+        self, *, skill_names: Sequence[str]
+    ) -> Mapping[str, int]:
+        """Return usage counts for multiple skills in a single aggregation query."""
+        if not skill_names:
+            return {}
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"skill_name": {"$in": list(skill_names)}}},
+            {"$group": {"_id": "$skill_name", "count": {"$sum": 1}}},
+        ]
+        counts: dict[str, int] = {name: 0 for name in skill_names}
+        async for doc in self._usage_collection.aggregate(pipeline):
+            counts[doc["_id"]] = int(doc["count"])
+        return counts

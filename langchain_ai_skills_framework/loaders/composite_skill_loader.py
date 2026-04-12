@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from html import escape
 from types import MappingProxyType
@@ -135,6 +136,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         if not summaries:
             return await self._shared.get_instructions()
 
+        # Batch fetch all usage counts in one aggregation query
+        skill_names = [s.name for s in summaries]
+        usage_counts = await self._user.get_skill_usage_counts(skill_names=skill_names)
+
         lines: list[str] = []
         for skill in summaries:
             escaped_name = escape(skill.name, quote=True)
@@ -142,8 +147,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             lines.append("<skill>")
             lines.append(f"<name>{escaped_name}</name>")
             lines.append(f"<description>{escaped_description}</description>")
-            usage_count = await self._user.get_skill_usage_count(skill_name=skill.name)
-            lines.append(f"<usage_count>{usage_count}</usage_count>")
+            lines.append(
+                f"<usage_count>{usage_counts.get(skill.name, 0)}</usage_count>"
+            )
             author = skill.metadata.get("user_id") if skill.metadata else None
             if author:
                 escaped_author = escape(str(author), quote=True)
@@ -357,18 +363,22 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """
         details: dict[str, SkillDetails] = {}
 
-        # 1. GitHub / filesystem skills (lowest precedence)
+        # 1. GitHub / filesystem skills (lowest precedence, sync + cached)
         for summary in self._shared.list_skill_summaries(allowed_skills=set()):
             detail = self._shared.get_skill_details(summary.name)
             details[summary.name] = detail
 
-        # 2. Shared database skills (override GitHub on collision)
-        shared_snapshot = await self._user.load_shared_snapshot()
+        # 2+3. Load shared and user snapshots concurrently
+        shared_snapshot, user_snapshot = await asyncio.gather(
+            self._user.load_shared_snapshot(),
+            self._user.load_snapshot(user_id=user_id),
+        )
+
+        # Shared database skills (override GitHub on collision)
         for name, detail in shared_snapshot.details_by_name.items():
             details[name] = detail
 
-        # 3. User's own database skills (highest precedence)
-        user_snapshot = await self._user.load_snapshot(user_id=user_id)
+        # User's own database skills (highest precedence)
         for name, detail in user_snapshot.details_by_name.items():
             details[name] = detail
 

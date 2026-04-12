@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, Sequence, runtime_checkable
+from typing import Mapping, Protocol, Sequence, runtime_checkable
 
 from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
@@ -114,3 +114,7 @@ class UserSkillStore(Protocol):
     ) -> MongoSkillUsageDocument: ...
 
     async def get_skill_usage_count(self, *, skill_name: str) -> int: ...
+
+    async def get_skill_usage_counts(
+        self, *, skill_names: Sequence[str]
+    ) -> Mapping[str, int]: ...

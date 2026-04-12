@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Mapping, Sequence
 from types import MappingProxyType
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -151,3 +151,8 @@ class NullUserSkillStore:
 
     async def get_skill_usage_count(self, *, skill_name: str) -> int:
         return 0
+
+    async def get_skill_usage_counts(
+        self, *, skill_names: Sequence[str]
+    ) -> Mapping[str, int]:
+        return {name: 0 for name in skill_names}

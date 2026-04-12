@@ -56,7 +56,7 @@ class MongoUserSkillLoader:
         if collection is None:
             raise ValueError("collection must not be None")
         self._collection = collection
-        self._database = database or collection.database
+        self._database = database if database is not None else collection.database
         self._resources_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
             self.RESOURCES_COLLECTION_NAME
         ]

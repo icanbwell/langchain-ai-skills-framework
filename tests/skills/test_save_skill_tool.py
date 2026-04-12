@@ -99,7 +99,7 @@ class TestSaveSkillTool:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(skill_name="test", content="content")
+            tool._run(skill_name="test", content="content", runtime=_make_runtime())
 
     def test_get_friendly_name(self) -> None:
         name = SaveSkillTool.get_friendly_name(tool_input={"skill_name": "my-skill"})

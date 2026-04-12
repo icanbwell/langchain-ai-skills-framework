@@ -104,7 +104,7 @@ class TestToggleSkillSharingTool:
         tool = ToggleSkillSharingTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(skill_name="test", shared=True)
+            tool._run(skill_name="test", shared=True, runtime=_make_runtime())
 
     def test_get_friendly_name(self) -> None:
         name = ToggleSkillSharingTool.get_friendly_name(

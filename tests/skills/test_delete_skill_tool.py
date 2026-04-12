@@ -73,4 +73,4 @@ class TestDeleteSkillTool:
         tool = DeleteSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(skill_name="test")
+            tool._run(skill_name="test", runtime=_make_runtime())

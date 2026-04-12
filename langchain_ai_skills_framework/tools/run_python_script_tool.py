@@ -22,7 +22,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class RunPythonScriptInput(BaseModel):
     """Input schema for the run_python_script tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     script: str = Field(
         description=(
@@ -45,7 +45,7 @@ class RunPythonScriptInput(BaseModel):
     timeout: int = Field(
         description="Timeout for the script execution in seconds.", default=30
     )
-    runtime: ToolRuntime
+    runtime: ToolRuntime = Field(exclude=True)
 
 
 class RunPythonScriptOutput(BaseModel):

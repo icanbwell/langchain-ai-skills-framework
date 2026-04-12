@@ -279,7 +279,7 @@ def test_sync_run_raises() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     with pytest.raises(NotImplementedError):
-        tool._run(skill_name="alpha", script_name="analyze.py")
+        tool._run(skill_name="alpha", script_name="analyze.py", runtime=_make_runtime())
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

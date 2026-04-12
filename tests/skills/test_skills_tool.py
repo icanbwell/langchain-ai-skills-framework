@@ -154,7 +154,7 @@ def test_sync_run_raises() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
     with pytest.raises(NotImplementedError):
-        tool._run(skill_name="test")
+        tool._run(skill_name="test", runtime=_make_runtime())
 
 
 def test_get_friendly_name_casts_skill_name_to_string() -> None:

@@ -225,7 +225,7 @@ def test_sync_run_raises() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     with pytest.raises(NotImplementedError):
-        tool._run(skill_name="alpha", resource_name="FORMS.md")
+        tool._run(skill_name="alpha", resource_name="FORMS.md", runtime=_make_runtime())
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

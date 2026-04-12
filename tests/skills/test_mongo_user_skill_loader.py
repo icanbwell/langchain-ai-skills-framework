@@ -28,6 +28,7 @@ def _make_database(
     skills_collection: AsyncMock | None = None,
     resources_collection: AsyncMock | None = None,
     scripts_collection: AsyncMock | None = None,
+    usage_collection: AsyncMock | None = None,
 ) -> MagicMock:
     """Create a mock AsyncIOMotorDatabase with configurable collections."""
     db = MagicMock()
@@ -35,6 +36,8 @@ def _make_database(
         MongoUserSkillLoader.RESOURCES_COLLECTION_NAME: resources_collection
         or _make_collection(),
         MongoUserSkillLoader.SCRIPTS_COLLECTION_NAME: scripts_collection
+        or _make_collection(),
+        MongoUserSkillLoader.USAGE_COLLECTION_NAME: usage_collection
         or _make_collection(),
     }
     db.__getitem__ = MagicMock(
@@ -105,6 +108,7 @@ def _make_loader(
     collection: AsyncMock | None = None,
     resources_collection: AsyncMock | None = None,
     scripts_collection: AsyncMock | None = None,
+    usage_collection: AsyncMock | None = None,
 ) -> MongoUserSkillLoader:
     """Create a MongoUserSkillLoader with mock collections."""
     coll = collection or _make_collection()
@@ -112,6 +116,7 @@ def _make_loader(
         skills_collection=coll,
         resources_collection=resources_collection,
         scripts_collection=scripts_collection,
+        usage_collection=usage_collection,
     )
     return MongoUserSkillLoader(collection=coll, database=db)
 
@@ -732,6 +737,47 @@ class TestScriptExists:
         )
 
         assert result is False
+
+
+# --- Usage tracking tests ----------------------------------------------------
+
+
+class TestRecordSkillUsage:
+    @pytest.mark.asyncio
+    async def test_inserts_usage_document(self) -> None:
+        usage_collection = _make_collection()
+        loader = _make_loader(usage_collection=usage_collection)
+
+        doc = await loader.record_skill_usage(skill_name="my-skill", user_id="user-1")
+
+        assert doc.skill_name == "my-skill"
+        assert doc.user_id == "user-1"
+        usage_collection.insert_one.assert_awaited_once()
+
+
+class TestGetSkillUsageCount:
+    @pytest.mark.asyncio
+    async def test_returns_count(self) -> None:
+        usage_collection = _make_collection()
+        usage_collection.count_documents.return_value = 42
+        loader = _make_loader(usage_collection=usage_collection)
+
+        count = await loader.get_skill_usage_count(skill_name="my-skill")
+
+        assert count == 42
+        usage_collection.count_documents.assert_awaited_once_with(
+            {"skill_name": "my-skill"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_for_unused_skill(self) -> None:
+        usage_collection = _make_collection()
+        usage_collection.count_documents.return_value = 0
+        loader = _make_loader(usage_collection=usage_collection)
+
+        count = await loader.get_skill_usage_count(skill_name="never-used")
+
+        assert count == 0
 
 
 class AsyncIterator:

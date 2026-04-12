@@ -15,6 +15,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 from langchain_ai_skills_framework.utilities.text_humanizer import Humanizer
 
@@ -44,6 +45,7 @@ class LoadSkillTool(BaseTool):
     args_schema: Type[BaseModel] = LoadSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
+    user_skill_store: UserSkillStore | None = None
 
     def _run(
         self,
@@ -83,6 +85,19 @@ class LoadSkillTool(BaseTool):
             normalized_name, user_id=stripped_user_id, runtime=runtime
         )
         logger.debug("LoadSkillTool (async): loaded skill_name=%s", normalized_name)
+
+        if self.user_skill_store and stripped_user_id:
+            try:
+                await self.user_skill_store.record_skill_usage(
+                    skill_name=normalized_name, user_id=stripped_user_id
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to record skill usage for skill_name=%s",
+                    normalized_name,
+                    exc_info=True,
+                )
+
         return skill, skill
 
     async def _load_skill(

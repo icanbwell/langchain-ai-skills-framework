@@ -178,7 +178,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         ``get_instructions_for_user`` advertises.
         """
         return [
-            LoadSkillTool(skill_loader=self),
+            LoadSkillTool(skill_loader=self, user_skill_store=self._user),
             ReadSkillResourceTool(skill_loader=self),
             RunSkillScriptTool(skill_loader=self),
             SaveSkillTool(mongo_skill_loader=self._user),

@@ -112,6 +112,7 @@ def _make_user_loader_mock(
     )
     loader.load_snapshot.return_value = snapshot
     loader.load_shared_snapshot.return_value = shared_snapshot
+    loader.get_skill_usage_count.return_value = 0
     loader.get_skill_details.side_effect = lambda *, user_id, skill_name: (
         skills[skill_name]
         if skill_name in skills
@@ -271,4 +272,5 @@ class TestGetInstructionsForUser:
         assert "<available_skills>" in instructions
         assert "alpha" in instructions
         assert "beta" in instructions
+        assert "<usage_count>" in instructions
         assert "save_skill" in instructions

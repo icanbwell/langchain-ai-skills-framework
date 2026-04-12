@@ -39,7 +39,7 @@ class ReadSkillResourceInput(BaseModel):
             Must match exactly - do not infer or guess."""
         ),
     )
-    runtime: ToolRuntime = Field(exclude=True)
+    runtime: ToolRuntime
 
 
 class ReadSkillResourceTool(BaseTool):
@@ -65,6 +65,7 @@ class ReadSkillResourceTool(BaseTool):
         *,
         skill_name: str,
         resource_name: str,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(

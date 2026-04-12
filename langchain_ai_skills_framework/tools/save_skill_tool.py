@@ -34,7 +34,7 @@ class SaveSkillInput(BaseModel):
             "May include YAML frontmatter with description and metadata."
         ),
     )
-    runtime: ToolRuntime = Field(exclude=True)
+    runtime: ToolRuntime
 
 
 class SaveSkillTool(BaseTool):
@@ -56,6 +56,7 @@ class SaveSkillTool(BaseTool):
         *,
         skill_name: str,
         content: str,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(

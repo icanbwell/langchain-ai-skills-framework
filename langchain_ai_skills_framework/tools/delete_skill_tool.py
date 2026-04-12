@@ -48,6 +48,7 @@ class DeleteSkillTool(BaseTool):
         self,
         *,
         skill_name: str,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(

@@ -30,7 +30,7 @@ class LoadSkillInput(BaseModel):
     skill_name: str = Field(
         description="Name of the skill to load (e.g., 'sales_analytics').",
     )
-    runtime: ToolRuntime = Field(exclude=True)
+    runtime: ToolRuntime
 
 
 class LoadSkillTool(BaseTool):
@@ -49,6 +49,7 @@ class LoadSkillTool(BaseTool):
         self,
         *,
         skill_name: str,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(

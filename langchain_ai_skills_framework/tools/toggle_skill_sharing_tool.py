@@ -52,6 +52,7 @@ class ToggleSkillSharingTool(BaseTool):
         *,
         skill_name: str,
         shared: bool,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(

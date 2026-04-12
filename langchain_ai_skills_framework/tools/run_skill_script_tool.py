@@ -52,7 +52,7 @@ class RunSkillScriptInput(BaseModel):
     timeout: int = Field(
         description="Timeout for the script execution in seconds.", default=30
     )
-    runtime: ToolRuntime = Field(exclude=True)
+    runtime: ToolRuntime
 
 
 class RunSkillScriptTool(BaseTool):
@@ -89,6 +89,7 @@ class RunSkillScriptTool(BaseTool):
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError(

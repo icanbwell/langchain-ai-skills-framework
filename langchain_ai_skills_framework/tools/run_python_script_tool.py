@@ -7,6 +7,7 @@ from langchain_core.callbacks import (
     CallbackManagerForToolRun,
 )
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -42,8 +43,9 @@ class RunPythonScriptInput(BaseModel):
         ),
     )
     timeout: int = Field(
-        description=("Timeout for the script execution in seconds."), default=30
+        description="Timeout for the script execution in seconds.", default=30
     )
+    runtime: ToolRuntime
 
 
 class RunPythonScriptOutput(BaseModel):
@@ -96,6 +98,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Synchronous execution with named parameters."""
@@ -105,6 +108,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                 arguments=arguments,
                 timeout=timeout,
                 script_name=script_name,
+                runtime=runtime,
             )
         )
 
@@ -115,6 +119,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Async execution with named parameters."""

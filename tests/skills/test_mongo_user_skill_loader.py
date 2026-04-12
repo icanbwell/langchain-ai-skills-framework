@@ -23,6 +23,26 @@ def _make_collection() -> AsyncMock:
     return collection
 
 
+def _make_database(
+    *,
+    skills_collection: AsyncMock | None = None,
+    resources_collection: AsyncMock | None = None,
+    scripts_collection: AsyncMock | None = None,
+) -> MagicMock:
+    """Create a mock AsyncIOMotorDatabase with configurable collections."""
+    db = MagicMock()
+    collections = {
+        MongoUserSkillLoader.RESOURCES_COLLECTION_NAME: resources_collection
+        or _make_collection(),
+        MongoUserSkillLoader.SCRIPTS_COLLECTION_NAME: scripts_collection
+        or _make_collection(),
+    }
+    db.__getitem__ = MagicMock(
+        side_effect=lambda name: collections.get(name, _make_collection())
+    )
+    return db
+
+
 def _make_raw_doc(
     user_id: str = "user-1",
     skill_name: str = "my-skill",
@@ -35,9 +55,59 @@ def _make_raw_doc(
         "skill_name": skill_name,
         "description": description,
         "content": content,
-        "created_at": now,
-        "updated_at": now,
+        "date_created": now,
+        "date_modified": now,
     }
+
+
+def _make_raw_resource_doc(
+    user_id: str = "user-1",
+    skill_name: str = "my-skill",
+    resource_name: str = "FORMS.md",
+    content: str = "# Forms\nSome content",
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    return {
+        "user_id": user_id,
+        "skill_name": skill_name,
+        "resource_name": resource_name,
+        "content": content,
+        "date_created": now,
+        "date_modified": now,
+    }
+
+
+def _make_raw_script_doc(
+    user_id: str = "user-1",
+    skill_name: str = "my-skill",
+    script_name: str = "analyze.py",
+    content: str = "print('hello')",
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    return {
+        "user_id": user_id,
+        "skill_name": skill_name,
+        "script_name": script_name,
+        "content": content,
+        "date_created": now,
+        "date_modified": now,
+    }
+
+
+def _make_loader(
+    *,
+    collection: AsyncMock | None = None,
+    resources_collection: AsyncMock | None = None,
+    scripts_collection: AsyncMock | None = None,
+) -> MongoUserSkillLoader:
+    """Create a MongoUserSkillLoader with mock collections."""
+    coll = collection or _make_collection()
+    db = _make_database(
+        skills_collection=coll,
+        resources_collection=resources_collection,
+        scripts_collection=scripts_collection,
+    )
+    return MongoUserSkillLoader(collection=coll, database=db)
 
 
 class TestMongoUserSkillLoaderInit:
@@ -56,7 +126,7 @@ class TestSaveSkill:
             description="Test skill",
             content="---\ndescription: Test skill\n---\n# Content",
         )
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         doc = await loader.save_skill(
             user_id="user-1",
@@ -73,6 +143,19 @@ class TestSaveSkill:
         assert call_args[1]["upsert"] is True
 
     @pytest.mark.asyncio
+    async def test_uses_date_created_and_date_modified(self) -> None:
+        collection = _make_collection()
+        collection.find_one_and_update.return_value = _make_raw_doc()
+        loader = _make_loader(collection=collection)
+
+        await loader.save_skill(user_id="user-1", skill_name="test", content="content")
+
+        call_args = collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert "date_modified" in update_doc["$set"]
+        assert "date_created" in update_doc["$setOnInsert"]
+
+    @pytest.mark.asyncio
     async def test_extracts_description_from_first_line_when_no_frontmatter(
         self,
     ) -> None:
@@ -83,7 +166,7 @@ class TestSaveSkill:
             description="Hello World",
             content="# Hello World\nBody here",
         )
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         doc = await loader.save_skill(
             user_id="user-1",
@@ -99,8 +182,7 @@ class TestSaveSkill:
         ["", "   "],
     )
     async def test_rejects_empty_user_id(self, user_id: str) -> None:
-        collection = _make_collection()
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader()
 
         with pytest.raises(ValueError, match="user_id must be a non-empty string"):
             await loader.save_skill(
@@ -109,8 +191,7 @@ class TestSaveSkill:
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
-        collection = _make_collection()
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader()
 
         with pytest.raises(ValueError, match="skill_name must be a non-empty string"):
             await loader.save_skill(user_id="user-1", skill_name="", content="content")
@@ -121,7 +202,13 @@ class TestDeleteSkill:
     async def test_returns_true_when_deleted(self) -> None:
         collection = _make_collection()
         collection.delete_one.return_value = MagicMock(deleted_count=1)
-        loader = MongoUserSkillLoader(collection=collection)
+        resources_collection = _make_collection()
+        scripts_collection = _make_collection()
+        loader = _make_loader(
+            collection=collection,
+            resources_collection=resources_collection,
+            scripts_collection=scripts_collection,
+        )
 
         result = await loader.delete_skill(user_id="user-1", skill_name="my-skill")
 
@@ -129,12 +216,19 @@ class TestDeleteSkill:
         collection.delete_one.assert_awaited_once_with(
             {"user_id": "user-1", "skill_name": "my-skill"}
         )
+        # Also deletes associated resources and scripts
+        resources_collection.delete_many.assert_awaited_once_with(
+            {"user_id": "user-1", "skill_name": "my-skill"}
+        )
+        scripts_collection.delete_many.assert_awaited_once_with(
+            {"user_id": "user-1", "skill_name": "my-skill"}
+        )
 
     @pytest.mark.asyncio
     async def test_returns_false_when_not_found(self) -> None:
         collection = _make_collection()
         collection.delete_one.return_value = MagicMock(deleted_count=0)
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         result = await loader.delete_skill(user_id="user-1", skill_name="nope")
 
@@ -150,7 +244,7 @@ class TestLoadSnapshot:
         ]
         collection = _make_collection()
         collection.find.return_value = AsyncIterator(raw_docs)
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         snapshot = await loader.load_snapshot(user_id="user-1")
 
@@ -162,7 +256,7 @@ class TestLoadSnapshot:
     async def test_returns_empty_snapshot_for_no_skills(self) -> None:
         collection = _make_collection()
         collection.find.return_value = AsyncIterator([])
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         snapshot = await loader.load_snapshot(user_id="user-1")
 
@@ -171,8 +265,7 @@ class TestLoadSnapshot:
 
     @pytest.mark.asyncio
     async def test_rejects_empty_user_id(self) -> None:
-        collection = _make_collection()
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader()
 
         with pytest.raises(ValueError, match="user_id must be a non-empty string"):
             await loader.load_snapshot(user_id="")
@@ -184,7 +277,7 @@ class TestGetSkillDetails:
         raw = _make_raw_doc(skill_name="my-skill", content="The content")
         collection = _make_collection()
         collection.find_one.return_value = raw
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         detail = await loader.get_skill_details(user_id="user-1", skill_name="my-skill")
 
@@ -195,7 +288,7 @@ class TestGetSkillDetails:
     async def test_raises_not_found_for_missing_skill(self) -> None:
         collection = _make_collection()
         collection.find_one.return_value = None
-        loader = MongoUserSkillLoader(collection=collection)
+        loader = _make_loader(collection=collection)
 
         with pytest.raises(SkillNotFoundError):
             await loader.get_skill_details(user_id="user-1", skill_name="nonexistent")
@@ -226,6 +319,270 @@ class TestExtractDescription:
 
     def test_fallback_when_empty(self) -> None:
         assert MongoUserSkillLoader._extract_description("") == "User-saved skill"
+
+
+# --- Resource tests ----------------------------------------------------------
+
+
+class TestSaveResource:
+    @pytest.mark.asyncio
+    async def test_upserts_resource(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.find_one_and_update.return_value = _make_raw_resource_doc()
+        loader = _make_loader(resources_collection=resources_collection)
+
+        doc = await loader.save_resource(
+            user_id="user-1",
+            skill_name="my-skill",
+            resource_name="FORMS.md",
+            content="# Forms\nSome content",
+        )
+
+        assert doc.resource_name == "FORMS.md"
+        assert doc.skill_name == "my-skill"
+        resources_collection.find_one_and_update.assert_awaited_once()
+        call_args = resources_collection.find_one_and_update.call_args
+        assert call_args[0][0] == {
+            "user_id": "user-1",
+            "skill_name": "my-skill",
+            "resource_name": "FORMS.md",
+        }
+        assert call_args[1]["upsert"] is True
+
+    @pytest.mark.asyncio
+    async def test_stores_date_created_and_date_modified(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.find_one_and_update.return_value = _make_raw_resource_doc()
+        loader = _make_loader(resources_collection=resources_collection)
+
+        await loader.save_resource(
+            user_id="user-1",
+            skill_name="my-skill",
+            resource_name="FORMS.md",
+            content="content",
+        )
+
+        call_args = resources_collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert "date_modified" in update_doc["$set"]
+        assert "date_created" in update_doc["$setOnInsert"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("user_id", ["", "   "])
+    async def test_rejects_empty_user_id(self, user_id: str) -> None:
+        loader = _make_loader()
+
+        with pytest.raises(ValueError, match="user_id must be a non-empty string"):
+            await loader.save_resource(
+                user_id=user_id,
+                skill_name="test",
+                resource_name="r.md",
+                content="x",
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_resource_name(self) -> None:
+        loader = _make_loader()
+
+        with pytest.raises(
+            ValueError, match="resource_name must be a non-empty string"
+        ):
+            await loader.save_resource(
+                user_id="user-1",
+                skill_name="test",
+                resource_name="",
+                content="x",
+            )
+
+
+class TestReadResource:
+    @pytest.mark.asyncio
+    async def test_returns_content(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.find_one.return_value = _make_raw_resource_doc(
+            content="Resource content here"
+        )
+        loader = _make_loader(resources_collection=resources_collection)
+
+        content = await loader.read_resource(
+            user_id="user-1", skill_name="my-skill", resource_name="FORMS.md"
+        )
+
+        assert content == "Resource content here"
+
+    @pytest.mark.asyncio
+    async def test_raises_not_found(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.find_one.return_value = None
+        loader = _make_loader(resources_collection=resources_collection)
+
+        with pytest.raises(SkillNotFoundError):
+            await loader.read_resource(
+                user_id="user-1", skill_name="my-skill", resource_name="nope.md"
+            )
+
+
+class TestListResourceNames:
+    @pytest.mark.asyncio
+    async def test_returns_sorted_names(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.find.return_value = AsyncIterator(
+            [
+                {"resource_name": "ZEBRA.md"},
+                {"resource_name": "ALPHA.md"},
+            ]
+        )
+        loader = _make_loader(resources_collection=resources_collection)
+
+        names = await loader.list_resource_names(
+            user_id="user-1", skill_name="my-skill"
+        )
+
+        assert list(names) == ["ALPHA.md", "ZEBRA.md"]
+
+
+class TestDeleteResource:
+    @pytest.mark.asyncio
+    async def test_returns_true_when_deleted(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.delete_one.return_value = MagicMock(deleted_count=1)
+        loader = _make_loader(resources_collection=resources_collection)
+
+        result = await loader.delete_resource(
+            user_id="user-1", skill_name="my-skill", resource_name="FORMS.md"
+        )
+
+        assert result is True
+
+
+# --- Script tests ------------------------------------------------------------
+
+
+class TestSaveScript:
+    @pytest.mark.asyncio
+    async def test_upserts_script(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.find_one_and_update.return_value = _make_raw_script_doc()
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        doc = await loader.save_script(
+            user_id="user-1",
+            skill_name="my-skill",
+            script_name="analyze.py",
+            content="print('hello')",
+        )
+
+        assert doc.script_name == "analyze.py"
+        assert doc.skill_name == "my-skill"
+        scripts_collection.find_one_and_update.assert_awaited_once()
+        call_args = scripts_collection.find_one_and_update.call_args
+        assert call_args[0][0] == {
+            "user_id": "user-1",
+            "skill_name": "my-skill",
+            "script_name": "analyze.py",
+        }
+        assert call_args[1]["upsert"] is True
+
+    @pytest.mark.asyncio
+    async def test_stores_date_created_and_date_modified(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.find_one_and_update.return_value = _make_raw_script_doc()
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        await loader.save_script(
+            user_id="user-1",
+            skill_name="my-skill",
+            script_name="analyze.py",
+            content="print('hello')",
+        )
+
+        call_args = scripts_collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert "date_modified" in update_doc["$set"]
+        assert "date_created" in update_doc["$setOnInsert"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("user_id", ["", "   "])
+    async def test_rejects_empty_user_id(self, user_id: str) -> None:
+        loader = _make_loader()
+
+        with pytest.raises(ValueError, match="user_id must be a non-empty string"):
+            await loader.save_script(
+                user_id=user_id,
+                skill_name="test",
+                script_name="s.py",
+                content="x",
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_script_name(self) -> None:
+        loader = _make_loader()
+
+        with pytest.raises(ValueError, match="script_name must be a non-empty string"):
+            await loader.save_script(
+                user_id="user-1",
+                skill_name="test",
+                script_name="",
+                content="x",
+            )
+
+
+class TestReadScript:
+    @pytest.mark.asyncio
+    async def test_returns_content(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.find_one.return_value = _make_raw_script_doc(
+            content="import sys\nprint(sys.argv)"
+        )
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        content = await loader.read_script(
+            user_id="user-1", skill_name="my-skill", script_name="analyze.py"
+        )
+
+        assert content == "import sys\nprint(sys.argv)"
+
+    @pytest.mark.asyncio
+    async def test_raises_not_found(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.find_one.return_value = None
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        with pytest.raises(SkillNotFoundError):
+            await loader.read_script(
+                user_id="user-1", skill_name="my-skill", script_name="nope.py"
+            )
+
+
+class TestListScriptNames:
+    @pytest.mark.asyncio
+    async def test_returns_sorted_names(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.find.return_value = AsyncIterator(
+            [
+                {"script_name": "z_script.py"},
+                {"script_name": "a_script.py"},
+            ]
+        )
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        names = await loader.list_script_names(user_id="user-1", skill_name="my-skill")
+
+        assert list(names) == ["a_script.py", "z_script.py"]
+
+
+class TestDeleteScript:
+    @pytest.mark.asyncio
+    async def test_returns_true_when_deleted(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.delete_one.return_value = MagicMock(deleted_count=1)
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        result = await loader.delete_script(
+            user_id="user-1", skill_name="my-skill", script_name="analyze.py"
+        )
+
+        assert result is True
 
 
 class AsyncIterator:

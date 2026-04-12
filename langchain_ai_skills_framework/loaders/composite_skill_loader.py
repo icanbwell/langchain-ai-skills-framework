@@ -33,6 +33,12 @@ from langchain_ai_skills_framework.tools.run_skill_script_tool import (
     RunSkillScriptTool,
 )
 from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
+from langchain_ai_skills_framework.tools.save_skill_resource_tool import (
+    SaveSkillResourceTool,
+)
+from langchain_ai_skills_framework.tools.save_skill_script_tool import (
+    SaveSkillScriptTool,
+)
 from langchain_ai_skills_framework.tools.toggle_skill_sharing_tool import (
     ToggleSkillSharingTool,
 )
@@ -47,7 +53,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     The *shared_loader* handles filesystem / GitHub skills (with scripts
     and resources).  The *user_loader* handles MongoDB-persisted skills
-    (content only — no scripts or resources).
+    including their resources and scripts.
 
     This class is a **singleton**.  Per-user context (``user_id``) is
     provided on each call that needs it, not at construction time.
@@ -151,8 +157,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "3. Use `read_skill_resource` to read files referenced by the skill\n"
             "4. Use `run_skill_script` to run scripts provided by the skill\n"
             "5. Use `save_skill` to save a new or updated skill for the current user\n"
-            "6. Use `delete_skill` to remove a previously saved skill\n"
-            "7. Use `toggle_skill_sharing` to share a skill with all users or make it private\n\n"
+            "6. Use `save_skill_resource` to save a resource file for a skill\n"
+            "7. Use `save_skill_script` to save a script file for a skill\n"
+            "8. Use `delete_skill` to remove a previously saved skill\n"
+            "9. Use `toggle_skill_sharing` to share a skill with all users or make it private\n\n"
             "Use progressive disclosure: load only what you need, when you need it."
         )
 
@@ -169,6 +177,8 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             ReadSkillResourceTool(skill_loader=self),
             RunSkillScriptTool(skill_loader=self),
             SaveSkillTool(mongo_skill_loader=self._user),
+            SaveSkillResourceTool(mongo_skill_loader=self._user),
+            SaveSkillScriptTool(mongo_skill_loader=self._user),
             DeleteSkillTool(mongo_skill_loader=self._user),
             ToggleSkillSharingTool(mongo_skill_loader=self._user),
         ]
@@ -176,21 +186,162 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         return self._shared.read_skill_resource(skill_name, resource_name)
 
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        """Read a resource, checking user's MongoDB skills first, then shared loader."""
+        normalized = skill_name.strip().lower().replace("_", "-")
+
+        # Check user's own skills first
+        try:
+            return await self._user.read_resource(
+                user_id=user_id, skill_name=normalized, resource_name=resource_name
+            )
+        except SkillNotFoundError:
+            pass
+
+        # Check shared DB skills
+        shared_snapshot = await self._user.load_shared_snapshot()
+        if normalized in shared_snapshot.details_by_name:
+            shared_detail = shared_snapshot.details_by_name[normalized]
+            owner_user_id = (
+                shared_detail.summary.metadata.get("user_id", "")
+                if shared_detail.summary.metadata
+                else ""
+            )
+            if owner_user_id:
+                try:
+                    return await self._user.read_resource(
+                        user_id=owner_user_id,
+                        skill_name=normalized,
+                        resource_name=resource_name,
+                    )
+                except SkillNotFoundError:
+                    pass
+
+        # Fall back to shared filesystem loader
+        return self._shared.read_skill_resource(normalized, resource_name)
+
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult:
         return await self._shared.run_skill_script(skill_name, script_name, arguments)
 
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        """Run a script, checking user's MongoDB skills first, then shared loader.
+
+        MongoDB-stored scripts are executed in a subprocess with the script
+        content written to a temporary file.
+        """
+        normalized = skill_name.strip().lower().replace("_", "-")
+
+        # Check user's own scripts first
+        try:
+            script_content = await self._user.read_script(
+                user_id=user_id, skill_name=normalized, script_name=script_name
+            )
+            return await self._execute_script_content(
+                script_content=script_content,
+                script_name=script_name,
+                arguments=arguments,
+            )
+        except SkillNotFoundError:
+            pass
+
+        # Check shared DB skills
+        shared_snapshot = await self._user.load_shared_snapshot()
+        if normalized in shared_snapshot.details_by_name:
+            shared_detail = shared_snapshot.details_by_name[normalized]
+            owner_user_id = (
+                shared_detail.summary.metadata.get("user_id", "")
+                if shared_detail.summary.metadata
+                else ""
+            )
+            if owner_user_id:
+                try:
+                    script_content = await self._user.read_script(
+                        user_id=owner_user_id,
+                        skill_name=normalized,
+                        script_name=script_name,
+                    )
+                    return await self._execute_script_content(
+                        script_content=script_content,
+                        script_name=script_name,
+                        arguments=arguments,
+                    )
+                except SkillNotFoundError:
+                    pass
+
+        # Fall back to shared filesystem loader
+        return await self._shared.run_skill_script(normalized, script_name, arguments)
+
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return self._shared.list_skill_script_names(skill_name)
+
+    async def list_skill_script_names_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> Sequence[str]:
+        """List scripts, merging user MongoDB scripts with shared loader scripts."""
+        normalized = skill_name.strip().lower().replace("_", "-")
+        names: set[str] = set()
+
+        # User's own scripts
+        try:
+            user_scripts = await self._user.list_script_names(
+                user_id=user_id, skill_name=normalized
+            )
+            names.update(user_scripts)
+        except (SkillNotFoundError, ValueError):
+            pass
+
+        # Shared loader scripts
+        try:
+            shared_scripts = self._shared.list_skill_script_names(normalized)
+            names.update(shared_scripts)
+        except SkillNotFoundError:
+            pass
+
+        return sorted(names)
 
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return self._shared.list_skill_resource_names(skill_name)
 
+    async def list_skill_resource_names_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> Sequence[str]:
+        """List resources, merging user MongoDB resources with shared loader resources."""
+        normalized = skill_name.strip().lower().replace("_", "-")
+        names: set[str] = set()
+
+        # User's own resources
+        try:
+            user_resources = await self._user.list_resource_names(
+                user_id=user_id, skill_name=normalized
+            )
+            names.update(user_resources)
+        except (SkillNotFoundError, ValueError):
+            pass
+
+        # Shared loader resources
+        try:
+            shared_resources = self._shared.list_skill_resource_names(normalized)
+            names.update(shared_resources)
+        except SkillNotFoundError:
+            pass
+
+        return sorted(names)
+
     # --- Merging -------------------------------------------------------------
 
     async def _merged_snapshot(self, *, user_id: str) -> SkillSnapshot:
-        """Build a merged snapshot with precedence: GitHub → shared DB → user DB.
+        """Build a merged snapshot with precedence: GitHub -> shared DB -> user DB.
 
         GitHub/filesystem skills form the base.  Shared database skills
         overlay next (available to all users).  The requesting user's own
@@ -218,3 +369,64 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             details_by_name=MappingProxyType(details),
             ordered_summaries=tuple(d.summary for d in ordered),
         )
+
+    # --- Script execution ----------------------------------------------------
+
+    @staticmethod
+    async def _execute_script_content(
+        *,
+        script_content: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        """Execute a script stored as content in MongoDB via a temporary file."""
+        import asyncio
+        import json
+        import tempfile
+        import time
+        from pathlib import Path
+
+        suffix = Path(script_name).suffix or ".py"
+        start = time.monotonic()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as tmp:
+            tmp.write(script_content)
+            tmp_path = tmp.name
+
+        try:
+            cmd = ["python", tmp_path]
+            if arguments:
+                # Pass arguments as JSON via stdin
+                input_data = json.dumps(arguments).encode()
+            else:
+                input_data = None
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE if input_data else None,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(input=input_data), timeout=30
+            )
+            elapsed_ms = (time.monotonic() - start) * 1000
+
+            return MyScriptExecutionResult(
+                stdout=stdout_bytes.decode(errors="replace") if stdout_bytes else None,
+                stderr=stderr_bytes.decode(errors="replace") if stderr_bytes else None,
+                exit_code=proc.returncode or 0,
+                execution_time_ms=elapsed_ms,
+                success=proc.returncode == 0,
+            )
+        except asyncio.TimeoutError:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            return MyScriptExecutionResult(
+                stdout=None,
+                stderr=f"Script '{script_name}' timed out after 30 seconds",
+                exit_code=-1,
+                execution_time_ms=elapsed_ms,
+                success=False,
+            )
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)

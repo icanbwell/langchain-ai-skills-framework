@@ -125,9 +125,23 @@ class ReadSkillResourceTool(BaseTool):
             )
 
         try:
-            resource = self.skill_loader.read_skill_resource(
-                skill_name=normalized_name, resource_name=resource_name
-            )
+            # Use user-aware method if available (CompositeSkillLoader)
+            ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+            user_id = ctx.get("user_id", "")
+            stripped_user_id = user_id.strip() if user_id else ""
+
+            if stripped_user_id and hasattr(
+                self.skill_loader, "read_skill_resource_for_user"
+            ):
+                resource = await self.skill_loader.read_skill_resource_for_user(
+                    user_id=stripped_user_id,
+                    skill_name=normalized_name,
+                    resource_name=resource_name,
+                )
+            else:
+                resource = self.skill_loader.read_skill_resource(
+                    skill_name=normalized_name, resource_name=resource_name
+                )
             return resource
         except SkillNotFoundError:
             return await self._format_availability_message(

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable
 
 from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
+    MongoSkillResourceDocument,
+    MongoSkillScriptDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -20,6 +22,8 @@ class UserSkillStore(Protocol):
     """
 
     async def ensure_indexes(self) -> None: ...
+
+    # --- Skill operations ---
 
     async def save_skill(
         self, *, user_id: str, skill_name: str, content: str
@@ -38,3 +42,39 @@ class UserSkillStore(Protocol):
     async def get_skill_details(
         self, *, user_id: str, skill_name: str
     ) -> SkillDetails: ...
+
+    # --- Resource operations ---
+
+    async def save_resource(
+        self, *, user_id: str, skill_name: str, resource_name: str, content: str
+    ) -> MongoSkillResourceDocument: ...
+
+    async def delete_resource(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> bool: ...
+
+    async def read_resource(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str: ...
+
+    async def list_resource_names(
+        self, *, user_id: str, skill_name: str
+    ) -> Sequence[str]: ...
+
+    # --- Script operations ---
+
+    async def save_script(
+        self, *, user_id: str, skill_name: str, script_name: str, content: str
+    ) -> MongoSkillScriptDocument: ...
+
+    async def delete_script(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> bool: ...
+
+    async def read_script(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> str: ...
+
+    async def list_script_names(
+        self, *, user_id: str, skill_name: str
+    ) -> Sequence[str]: ...

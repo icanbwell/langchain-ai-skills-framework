@@ -141,6 +141,7 @@ class RunSkillScriptTool(BaseTool):
                 skill_name=normalized_name,
                 script_name=normalized_script_name,
                 arguments=arguments,
+                runtime=runtime,
             )
             logger.debug(
                 "RunSkillScriptTool: Script completed script_name=%s skill_name=%s",
@@ -187,7 +188,11 @@ class RunSkillScriptTool(BaseTool):
             ) from exc
 
     async def _run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+        runtime: ToolRuntime | None = None,
     ) -> MyScriptExecutionResult:
         """Execute the skill script and return results."""
         normalized_name = skill_name.strip()
@@ -196,9 +201,28 @@ class RunSkillScriptTool(BaseTool):
             raise ToolException("Skill name must not be empty.")
 
         try:
-            result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
-                skill_name=normalized_name, script_name=script_name, arguments=arguments
-            )
+            # Use user-aware method if available (CompositeSkillLoader)
+            ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+            user_id = ctx.get("user_id", "")
+            stripped_user_id = user_id.strip() if user_id else ""
+
+            if stripped_user_id and hasattr(
+                self.skill_loader, "run_skill_script_for_user"
+            ):
+                result: MyScriptExecutionResult = (
+                    await self.skill_loader.run_skill_script_for_user(
+                        user_id=stripped_user_id,
+                        skill_name=normalized_name,
+                        script_name=script_name,
+                        arguments=arguments,
+                    )
+                )
+            else:
+                result = await self.skill_loader.run_skill_script(
+                    skill_name=normalized_name,
+                    script_name=script_name,
+                    arguments=arguments,
+                )
 
             return result
         except ToolException:

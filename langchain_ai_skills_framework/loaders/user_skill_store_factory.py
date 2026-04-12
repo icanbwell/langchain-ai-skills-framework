@@ -23,9 +23,9 @@ class UserSkillStoreFactory:
     def create(self) -> UserSkillStore:
         """Return a MongoDB-backed store when configured, otherwise a null store."""
         if os.environ.get("MONGO_SKILLS_URI") or os.environ.get("MONGO_URL"):
+            database = self._mongo_database_factory.create_database()
             return MongoUserSkillLoader(
-                collection=self._mongo_database_factory.create_database()[
-                    MongoUserSkillLoader.COLLECTION_NAME
-                ],
+                collection=database[MongoUserSkillLoader.COLLECTION_NAME],
+                database=database,
             )
         return NullUserSkillStore()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Sequence
 from types import MappingProxyType
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -7,6 +8,8 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 )
 from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
+    MongoSkillResourceDocument,
+    MongoSkillScriptDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -34,6 +37,8 @@ class NullUserSkillStore:
     async def ensure_indexes(self) -> None:
         return
 
+    # --- Skill operations ---
+
     async def save_skill(
         self, *, user_id: str, skill_name: str, content: str
     ) -> MongoSkillDocument:
@@ -57,3 +62,51 @@ class NullUserSkillStore:
         raise SkillNotFoundError(
             f"Skill '{skill_name}' not found — user skill storage is not configured."
         )
+
+    # --- Resource operations ---
+
+    async def save_resource(
+        self, *, user_id: str, skill_name: str, resource_name: str, content: str
+    ) -> MongoSkillResourceDocument:
+        raise RuntimeError(_NOT_CONFIGURED_MSG)
+
+    async def delete_resource(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> bool:
+        raise RuntimeError(_NOT_CONFIGURED_MSG)
+
+    async def read_resource(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        raise SkillNotFoundError(
+            f"Resource '{resource_name}' not found — user skill storage is not configured."
+        )
+
+    async def list_resource_names(
+        self, *, user_id: str, skill_name: str
+    ) -> Sequence[str]:
+        return ()
+
+    # --- Script operations ---
+
+    async def save_script(
+        self, *, user_id: str, skill_name: str, script_name: str, content: str
+    ) -> MongoSkillScriptDocument:
+        raise RuntimeError(_NOT_CONFIGURED_MSG)
+
+    async def delete_script(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> bool:
+        raise RuntimeError(_NOT_CONFIGURED_MSG)
+
+    async def read_script(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> str:
+        raise SkillNotFoundError(
+            f"Script '{script_name}' not found — user skill storage is not configured."
+        )
+
+    async def list_script_names(
+        self, *, user_id: str, skill_name: str
+    ) -> Sequence[str]:
+        return ()

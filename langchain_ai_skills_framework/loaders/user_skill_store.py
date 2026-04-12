@@ -6,6 +6,7 @@ from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
     MongoSkillResourceDocument,
     MongoSkillScriptDocument,
+    MongoSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -105,3 +106,11 @@ class UserSkillStore(Protocol):
     async def script_exists(
         self, *, user_id: str, skill_name: str, script_name: str
     ) -> bool: ...
+
+    # --- Usage tracking ---
+
+    async def record_skill_usage(
+        self, *, skill_name: str, user_id: str
+    ) -> MongoSkillUsageDocument: ...
+
+    async def get_skill_usage_count(self, *, skill_name: str) -> int: ...

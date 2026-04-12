@@ -10,6 +10,7 @@ from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
     MongoSkillResourceDocument,
     MongoSkillScriptDocument,
+    MongoSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -140,3 +141,13 @@ class NullUserSkillStore:
         self, *, user_id: str, skill_name: str, script_name: str
     ) -> bool:
         return False
+
+    # --- Usage tracking ---
+
+    async def record_skill_usage(
+        self, *, skill_name: str, user_id: str
+    ) -> MongoSkillUsageDocument:
+        raise RuntimeError(_NOT_CONFIGURED_MSG)
+
+    async def get_skill_usage_count(self, *, skill_name: str) -> int:
+        return 0

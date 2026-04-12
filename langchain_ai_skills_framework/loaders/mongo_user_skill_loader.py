@@ -18,6 +18,7 @@ from langchain_ai_skills_framework.models.mongo_skill_document import (
     MongoSkillDocument,
     MongoSkillResourceDocument,
     MongoSkillScriptDocument,
+    MongoSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -43,9 +44,11 @@ class MongoUserSkillLoader:
     COLLECTION_NAME = "user_skills"
     RESOURCES_COLLECTION_NAME = "user_skill_resources"
     SCRIPTS_COLLECTION_NAME = "user_skill_scripts"
+    USAGE_COLLECTION_NAME = "user_skill_usage"
     INDEX_NAME = "ux_user_skill"
     RESOURCE_INDEX_NAME = "ux_user_skill_resource"
     SCRIPT_INDEX_NAME = "ux_user_skill_script"
+    USAGE_INDEX_NAME = "ix_skill_usage_lookup"
 
     def __init__(
         self,
@@ -62,6 +65,9 @@ class MongoUserSkillLoader:
         ]
         self._scripts_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
             self.SCRIPTS_COLLECTION_NAME
+        ]
+        self._usage_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
+            self.USAGE_COLLECTION_NAME
         ]
 
     # --- Index management ---------------------------------------------------
@@ -82,6 +88,10 @@ class MongoUserSkillLoader:
             [("user_id", 1), ("skill_name", 1), ("script_name", 1)],
             unique=True,
             name=self.SCRIPT_INDEX_NAME,
+        )
+        await self._usage_collection.create_index(
+            [("skill_name", 1), ("user_id", 1), ("date_used", -1)],
+            name=self.USAGE_INDEX_NAME,
         )
 
     # --- Skill write operations ----------------------------------------------
@@ -513,3 +523,19 @@ class MongoUserSkillLoader:
                 return stripped[:200]
 
         return "User-saved skill"
+
+    # --- Usage tracking -------------------------------------------------------
+
+    async def record_skill_usage(
+        self, *, skill_name: str, user_id: str
+    ) -> MongoSkillUsageDocument:
+        """Record a skill usage event."""
+        doc = MongoSkillUsageDocument(skill_name=skill_name, user_id=user_id)
+        await self._usage_collection.insert_one(doc.to_mongo_dict())
+        return doc
+
+    async def get_skill_usage_count(self, *, skill_name: str) -> int:
+        """Return the total number of times a skill has been used."""
+        return int(
+            await self._usage_collection.count_documents({"skill_name": skill_name})
+        )

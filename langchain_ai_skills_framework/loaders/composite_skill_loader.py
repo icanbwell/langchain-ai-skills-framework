@@ -139,6 +139,8 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             lines.append("<skill>")
             lines.append(f"<name>{escaped_name}</name>")
             lines.append(f"<description>{escaped_description}</description>")
+            usage_count = await self._user.get_skill_usage_count(skill_name=skill.name)
+            lines.append(f"<usage_count>{usage_count}</usage_count>")
             author = skill.metadata.get("user_id") if skill.metadata else None
             if author:
                 escaped_author = escape(str(author), quote=True)

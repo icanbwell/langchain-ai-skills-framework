@@ -4,6 +4,32 @@ from typing import Any, Mapping
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class MongoSkillUsageDocument(BaseModel):
+    """Represents a single usage event for a skill."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    skill_name: str = Field(description="Name of the skill that was used")
+    user_id: str = Field(description="ID of the user who used the skill")
+    date_used: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When the skill was used",
+    )
+
+    def to_mongo_dict(self) -> dict[str, Any]:
+        """Return a dict suitable for MongoDB insertion."""
+        return self.model_dump()
+
+    @classmethod
+    def from_mongo_dict(cls, data: Mapping[str, Any]) -> "MongoSkillUsageDocument":
+        """Construct from a MongoDB document."""
+        return cls(
+            skill_name=data["skill_name"],
+            user_id=data["user_id"],
+            date_used=data.get("date_used", datetime.now(timezone.utc)),
+        )
+
+
 class MongoSkillResourceDocument(BaseModel):
     """Represents a resource file belonging to a skill stored in MongoDB."""
 

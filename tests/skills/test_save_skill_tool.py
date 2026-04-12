@@ -14,6 +14,10 @@ from langchain_ai_skills_framework.models.mongo_skill_document import (
 )
 from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
 
+VALID_SKILL_CONTENT = (
+    "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
+)
+
 
 def _make_loader_mock() -> UserSkillStore:
     loader = AsyncMock(spec=UserSkillStore)
@@ -21,7 +25,7 @@ def _make_loader_mock() -> UserSkillStore:
         user_id="user-1",
         skill_name="test-skill",
         description="A test",
-        content="# Test\nContent",
+        content=VALID_SKILL_CONTENT,
         modified_by="user-1",
         date_created=datetime.now(timezone.utc),
         date_modified=datetime.now(timezone.utc),
@@ -44,7 +48,7 @@ class TestSaveSkillTool:
 
         result, artifact = await tool._arun(
             skill_name="test-skill",
-            content="# Test\nContent",
+            content=VALID_SKILL_CONTENT,
             runtime=_make_runtime("user-1"),
         )
 
@@ -52,7 +56,7 @@ class TestSaveSkillTool:
         loader.save_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
             user_id="user-1",
             skill_name="test-skill",
-            content="# Test\nContent",
+            content=VALID_SKILL_CONTENT,
             modified_by="user-1",
         )
 
@@ -87,6 +91,30 @@ class TestSaveSkillTool:
 
         with pytest.raises(ToolException, match="content must be a non-empty"):
             await tool._arun(skill_name="test", content="", runtime=_make_runtime())
+
+    @pytest.mark.asyncio
+    async def test_returns_error_for_invalid_frontmatter(self) -> None:
+        tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
+
+        result, artifact = await tool._arun(
+            skill_name="test",
+            content="# No frontmatter here",
+            runtime=_make_runtime(),
+        )
+
+        assert "Skill validation failed" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_error_for_invalid_metadata(self) -> None:
+        tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
+
+        result, artifact = await tool._arun(
+            skill_name="test",
+            content="---\ninvalid_field: true\n---\n# Missing required fields",
+            runtime=_make_runtime(),
+        )
+
+        assert "Skill validation failed" in result
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:

@@ -11,6 +11,10 @@ from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
+from skills_ref.errors import ParseError
+from skills_ref.parser import parse_frontmatter
+from skills_ref.validator import validate_metadata
+
 from langchain_ai_skills_framework.loaders.user_skill_store import (
     UserSkillStore,
 )
@@ -84,6 +88,19 @@ class SaveSkillTool(BaseTool):
             raise ToolException("content must be a non-empty string.")
         if self.mongo_skill_loader is None:
             raise ToolException("mongo_skill_loader is not configured.")
+
+        # Validate skill content using skills_ref
+        try:
+            metadata, _ = parse_frontmatter(content)
+        except ParseError as exc:
+            message = f"Skill validation failed: {exc}"
+            return message, message
+
+        validation_errors = validate_metadata(metadata)
+        if validation_errors:
+            error_details = "; ".join(validation_errors)
+            message = f"Skill validation failed ({len(validation_errors)} error(s)): {error_details}"
+            return message, message
 
         try:
             doc = await self.mongo_skill_loader.save_skill(

@@ -87,7 +87,12 @@ class MongoUserSkillLoader:
     # --- Skill write operations ----------------------------------------------
 
     async def save_skill(
-        self, *, user_id: str, skill_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillDocument:
         """Upsert a skill for the given user.
 
@@ -102,6 +107,7 @@ class MongoUserSkillLoader:
 
         description = self._extract_description(content)
         now = datetime.now(timezone.utc)
+        effective_modified_by = modified_by or user_id
 
         raw = await self._collection.find_one_and_update(
             {"user_id": user_id, "skill_name": normalized_name},
@@ -109,6 +115,7 @@ class MongoUserSkillLoader:
                 "$set": {
                     "content": content,
                     "description": description,
+                    "modified_by": effective_modified_by,
                     "date_modified": now,
                 },
                 "$setOnInsert": {
@@ -167,10 +174,26 @@ class MongoUserSkillLoader:
         )
         return result.deleted_count > 0
 
+    async def skill_exists(self, *, user_id: str, skill_name: str) -> bool:
+        """Return True if the skill exists for the given user."""
+        if not user_id or not user_id.strip():
+            raise ValueError("user_id must be a non-empty string")
+        normalized_name = self._normalize_skill_name(skill_name)
+        count = await self._collection.count_documents(
+            {"user_id": user_id, "skill_name": normalized_name}, limit=1
+        )
+        return count > 0
+
     # --- Resource write operations -------------------------------------------
 
     async def save_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        resource_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillResourceDocument:
         """Upsert a resource for a user's skill."""
         if not user_id or not user_id.strip():
@@ -182,6 +205,7 @@ class MongoUserSkillLoader:
             raise ValueError("resource_name must be a non-empty string")
 
         now = datetime.now(timezone.utc)
+        effective_modified_by = modified_by or user_id
         raw = await self._resources_collection.find_one_and_update(
             {
                 "user_id": user_id,
@@ -191,6 +215,7 @@ class MongoUserSkillLoader:
             {
                 "$set": {
                     "content": content,
+                    "modified_by": effective_modified_by,
                     "date_modified": now,
                 },
                 "$setOnInsert": {
@@ -256,10 +281,33 @@ class MongoUserSkillLoader:
             names.append(raw["resource_name"])
         return sorted(names)
 
+    async def resource_exists(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> bool:
+        """Return True if the resource exists."""
+        if not user_id or not user_id.strip():
+            raise ValueError("user_id must be a non-empty string")
+        normalized_skill = self._normalize_skill_name(skill_name)
+        count = await self._resources_collection.count_documents(
+            {
+                "user_id": user_id,
+                "skill_name": normalized_skill,
+                "resource_name": resource_name.strip(),
+            },
+            limit=1,
+        )
+        return count > 0
+
     # --- Script write operations ---------------------------------------------
 
     async def save_script(
-        self, *, user_id: str, skill_name: str, script_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillScriptDocument:
         """Upsert a script for a user's skill."""
         if not user_id or not user_id.strip():
@@ -271,6 +319,7 @@ class MongoUserSkillLoader:
             raise ValueError("script_name must be a non-empty string")
 
         now = datetime.now(timezone.utc)
+        effective_modified_by = modified_by or user_id
         raw = await self._scripts_collection.find_one_and_update(
             {
                 "user_id": user_id,
@@ -280,6 +329,7 @@ class MongoUserSkillLoader:
             {
                 "$set": {
                     "content": content,
+                    "modified_by": effective_modified_by,
                     "date_modified": now,
                 },
                 "$setOnInsert": {
@@ -344,6 +394,23 @@ class MongoUserSkillLoader:
         ):
             names.append(raw["script_name"])
         return sorted(names)
+
+    async def script_exists(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> bool:
+        """Return True if the script exists."""
+        if not user_id or not user_id.strip():
+            raise ValueError("user_id must be a non-empty string")
+        normalized_skill = self._normalize_skill_name(skill_name)
+        count = await self._scripts_collection.count_documents(
+            {
+                "user_id": user_id,
+                "skill_name": normalized_skill,
+                "script_name": script_name.strip(),
+            },
+            limit=1,
+        )
+        return count > 0
 
     # --- Skill read operations -----------------------------------------------
 

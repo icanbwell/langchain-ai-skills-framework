@@ -42,9 +42,10 @@ class SaveSkillScriptTool(BaseTool):
 
     name: str = "save_skill_script"
     description: str = (
-        "Save a script file for a skill. Scripts are executable programs that "
+        "Create or update a script file for a skill. Scripts are executable programs that "
         "perform actions (API calls, file operations), process data, or generate "
-        "outputs. The script will be associated with the specified skill for the current user."
+        "outputs. If a script with the same name already exists, its content will be replaced. "
+        "The script will be associated with the specified skill for the current user."
     )
     args_schema: Type[BaseModel] = SaveSkillScriptInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
@@ -94,6 +95,7 @@ class SaveSkillScriptTool(BaseTool):
                 skill_name=skill_name,
                 script_name=script_name,
                 content=content,
+                modified_by=stripped_user_id,
             )
             message = f"Script '{doc.script_name}' saved for skill '{doc.skill_name}'."
             logger.info("SaveSkillScriptTool: %s (user=%s)", message, user_id)

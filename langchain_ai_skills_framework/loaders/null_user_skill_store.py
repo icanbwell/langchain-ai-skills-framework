@@ -40,7 +40,12 @@ class NullUserSkillStore:
     # --- Skill operations ---
 
     async def save_skill(
-        self, *, user_id: str, skill_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -63,10 +68,19 @@ class NullUserSkillStore:
             f"Skill '{skill_name}' not found — user skill storage is not configured."
         )
 
+    async def skill_exists(self, *, user_id: str, skill_name: str) -> bool:
+        return False
+
     # --- Resource operations ---
 
     async def save_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        resource_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillResourceDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -87,10 +101,21 @@ class NullUserSkillStore:
     ) -> Sequence[str]:
         return ()
 
+    async def resource_exists(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> bool:
+        return False
+
     # --- Script operations ---
 
     async def save_script(
-        self, *, user_id: str, skill_name: str, script_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillScriptDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -110,3 +135,8 @@ class NullUserSkillStore:
         self, *, user_id: str, skill_name: str
     ) -> Sequence[str]:
         return ()
+
+    async def script_exists(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> bool:
+        return False

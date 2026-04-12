@@ -7,6 +7,7 @@ from langchain_ai_skills_framework.loaders.github_skill_downloader import (
 from langchain_ai_skills_framework.loaders.skill_directory_loader import (
     SkillDirectoryLoader,
 )
+from langchain_ai_skills_framework.loaders.skill_sync import SkillSync
 from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
 from langchain_ai_skills_framework.loaders.user_skill_store_factory import (
     UserSkillStoreFactory,
@@ -91,6 +92,14 @@ class LangchainAISkillsFrameworkContainerFactory:
             SkillsToolManager,
             lambda c: SkillsToolManager(
                 skill_loader=c.resolve(SkillLoaderProtocol),
+            ),
+        )
+
+        container.singleton(
+            SkillSync,
+            lambda c: SkillSync(
+                shared_loader=c.resolve(SkillkitDirectoryLoader),
+                user_store=c.resolve(UserSkillStore),
             ),
         )
 

@@ -48,6 +48,7 @@ def _make_raw_doc(
     skill_name: str = "my-skill",
     description: str = "A test skill",
     content: str = "# My Skill\nDo the thing.",
+    modified_by: str = "user-1",
 ) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return {
@@ -55,6 +56,7 @@ def _make_raw_doc(
         "skill_name": skill_name,
         "description": description,
         "content": content,
+        "modified_by": modified_by,
         "date_created": now,
         "date_modified": now,
     }
@@ -65,6 +67,7 @@ def _make_raw_resource_doc(
     skill_name: str = "my-skill",
     resource_name: str = "FORMS.md",
     content: str = "# Forms\nSome content",
+    modified_by: str = "user-1",
 ) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return {
@@ -72,6 +75,7 @@ def _make_raw_resource_doc(
         "skill_name": skill_name,
         "resource_name": resource_name,
         "content": content,
+        "modified_by": modified_by,
         "date_created": now,
         "date_modified": now,
     }
@@ -82,6 +86,7 @@ def _make_raw_script_doc(
     skill_name: str = "my-skill",
     script_name: str = "analyze.py",
     content: str = "print('hello')",
+    modified_by: str = "user-1",
 ) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return {
@@ -89,6 +94,7 @@ def _make_raw_script_doc(
         "skill_name": skill_name,
         "script_name": script_name,
         "content": content,
+        "modified_by": modified_by,
         "date_created": now,
         "date_modified": now,
     }
@@ -154,6 +160,35 @@ class TestSaveSkill:
         update_doc = call_args[0][1]
         assert "date_modified" in update_doc["$set"]
         assert "date_created" in update_doc["$setOnInsert"]
+
+    @pytest.mark.asyncio
+    async def test_stores_modified_by_defaults_to_user_id(self) -> None:
+        collection = _make_collection()
+        collection.find_one_and_update.return_value = _make_raw_doc()
+        loader = _make_loader(collection=collection)
+
+        await loader.save_skill(user_id="user-1", skill_name="test", content="content")
+
+        call_args = collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert update_doc["$set"]["modified_by"] == "user-1"
+
+    @pytest.mark.asyncio
+    async def test_stores_explicit_modified_by(self) -> None:
+        collection = _make_collection()
+        collection.find_one_and_update.return_value = _make_raw_doc(modified_by="admin")
+        loader = _make_loader(collection=collection)
+
+        await loader.save_skill(
+            user_id="user-1",
+            skill_name="test",
+            content="content",
+            modified_by="admin",
+        )
+
+        call_args = collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert update_doc["$set"]["modified_by"] == "admin"
 
     @pytest.mark.asyncio
     async def test_extracts_description_from_first_line_when_no_frontmatter(
@@ -231,6 +266,28 @@ class TestDeleteSkill:
         loader = _make_loader(collection=collection)
 
         result = await loader.delete_skill(user_id="user-1", skill_name="nope")
+
+        assert result is False
+
+
+class TestSkillExists:
+    @pytest.mark.asyncio
+    async def test_returns_true_when_exists(self) -> None:
+        collection = _make_collection()
+        collection.count_documents.return_value = 1
+        loader = _make_loader(collection=collection)
+
+        result = await loader.skill_exists(user_id="user-1", skill_name="my-skill")
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_missing(self) -> None:
+        collection = _make_collection()
+        collection.count_documents.return_value = 0
+        loader = _make_loader(collection=collection)
+
+        result = await loader.skill_exists(user_id="user-1", skill_name="nope")
 
         assert result is False
 
@@ -368,6 +425,26 @@ class TestSaveResource:
         assert "date_created" in update_doc["$setOnInsert"]
 
     @pytest.mark.asyncio
+    async def test_stores_modified_by(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.find_one_and_update.return_value = _make_raw_resource_doc(
+            modified_by="system"
+        )
+        loader = _make_loader(resources_collection=resources_collection)
+
+        await loader.save_resource(
+            user_id="user-1",
+            skill_name="my-skill",
+            resource_name="FORMS.md",
+            content="content",
+            modified_by="system",
+        )
+
+        call_args = resources_collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert update_doc["$set"]["modified_by"] == "system"
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("user_id", ["", "   "])
     async def test_rejects_empty_user_id(self, user_id: str) -> None:
         loader = _make_loader()
@@ -455,6 +532,32 @@ class TestDeleteResource:
         assert result is True
 
 
+class TestResourceExists:
+    @pytest.mark.asyncio
+    async def test_returns_true_when_exists(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.count_documents.return_value = 1
+        loader = _make_loader(resources_collection=resources_collection)
+
+        result = await loader.resource_exists(
+            user_id="user-1", skill_name="my-skill", resource_name="FORMS.md"
+        )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_missing(self) -> None:
+        resources_collection = _make_collection()
+        resources_collection.count_documents.return_value = 0
+        loader = _make_loader(resources_collection=resources_collection)
+
+        result = await loader.resource_exists(
+            user_id="user-1", skill_name="my-skill", resource_name="nope.md"
+        )
+
+        assert result is False
+
+
 # --- Script tests ------------------------------------------------------------
 
 
@@ -500,6 +603,26 @@ class TestSaveScript:
         update_doc = call_args[0][1]
         assert "date_modified" in update_doc["$set"]
         assert "date_created" in update_doc["$setOnInsert"]
+
+    @pytest.mark.asyncio
+    async def test_stores_modified_by(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.find_one_and_update.return_value = _make_raw_script_doc(
+            modified_by="system"
+        )
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        await loader.save_script(
+            user_id="user-1",
+            skill_name="my-skill",
+            script_name="analyze.py",
+            content="print('hello')",
+            modified_by="system",
+        )
+
+        call_args = scripts_collection.find_one_and_update.call_args
+        update_doc = call_args[0][1]
+        assert update_doc["$set"]["modified_by"] == "system"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("user_id", ["", "   "])
@@ -583,6 +706,32 @@ class TestDeleteScript:
         )
 
         assert result is True
+
+
+class TestScriptExists:
+    @pytest.mark.asyncio
+    async def test_returns_true_when_exists(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.count_documents.return_value = 1
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        result = await loader.script_exists(
+            user_id="user-1", skill_name="my-skill", script_name="analyze.py"
+        )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_missing(self) -> None:
+        scripts_collection = _make_collection()
+        scripts_collection.count_documents.return_value = 0
+        loader = _make_loader(scripts_collection=scripts_collection)
+
+        result = await loader.script_exists(
+            user_id="user-1", skill_name="my-skill", script_name="nope.py"
+        )
+
+        assert result is False
 
 
 class AsyncIterator:

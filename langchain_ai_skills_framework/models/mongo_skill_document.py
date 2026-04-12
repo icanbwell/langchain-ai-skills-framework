@@ -13,6 +13,10 @@ class MongoSkillResourceDocument(BaseModel):
     skill_name: str = Field(description="Normalized name of the parent skill")
     resource_name: str = Field(description="Name of the resource file")
     content: str = Field(description="Content of the resource file")
+    modified_by: str = Field(
+        default="",
+        description="ID of the user who last modified this resource",
+    )
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the resource was first saved",
@@ -28,12 +32,13 @@ class MongoSkillResourceDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> "MongoSkillResourceDocument":
-        """Construct from a MongoDB document, tolerating missing timestamps."""
+        """Construct from a MongoDB document, tolerating missing fields."""
         return cls(
             user_id=data["user_id"],
             skill_name=data["skill_name"],
             resource_name=data["resource_name"],
             content=data["content"],
+            modified_by=data.get("modified_by", ""),
             date_created=data.get("date_created", datetime.now(timezone.utc)),
             date_modified=data.get("date_modified", datetime.now(timezone.utc)),
         )
@@ -48,6 +53,10 @@ class MongoSkillScriptDocument(BaseModel):
     skill_name: str = Field(description="Normalized name of the parent skill")
     script_name: str = Field(description="Name of the script file")
     content: str = Field(description="Content of the script file")
+    modified_by: str = Field(
+        default="",
+        description="ID of the user who last modified this script",
+    )
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the script was first saved",
@@ -63,12 +72,13 @@ class MongoSkillScriptDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> "MongoSkillScriptDocument":
-        """Construct from a MongoDB document, tolerating missing timestamps."""
+        """Construct from a MongoDB document, tolerating missing fields."""
         return cls(
             user_id=data["user_id"],
             skill_name=data["skill_name"],
             script_name=data["script_name"],
             content=data["content"],
+            modified_by=data.get("modified_by", ""),
             date_created=data.get("date_created", datetime.now(timezone.utc)),
             date_modified=data.get("date_modified", datetime.now(timezone.utc)),
         )
@@ -87,6 +97,10 @@ class MongoSkillDocument(BaseModel):
         default=False,
         description="When True, this skill is available to all users",
     )
+    modified_by: str = Field(
+        default="",
+        description="ID of the user who last modified this skill",
+    )
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the skill was first saved",
@@ -102,13 +116,14 @@ class MongoSkillDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> "MongoSkillDocument":
-        """Construct from a MongoDB document, tolerating missing timestamps."""
+        """Construct from a MongoDB document, tolerating missing fields."""
         return cls(
             user_id=data["user_id"],
             skill_name=data["skill_name"],
             description=data["description"],
             content=data["content"],
             shared=data.get("shared", False),
+            modified_by=data.get("modified_by", ""),
             date_created=data.get(
                 "date_created", data.get("created_at", datetime.now(timezone.utc))
             ),

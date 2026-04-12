@@ -26,7 +26,12 @@ class UserSkillStore(Protocol):
     # --- Skill operations ---
 
     async def save_skill(
-        self, *, user_id: str, skill_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillDocument: ...
 
     async def set_skill_shared(
@@ -43,10 +48,18 @@ class UserSkillStore(Protocol):
         self, *, user_id: str, skill_name: str
     ) -> SkillDetails: ...
 
+    async def skill_exists(self, *, user_id: str, skill_name: str) -> bool: ...
+
     # --- Resource operations ---
 
     async def save_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        resource_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillResourceDocument: ...
 
     async def delete_resource(
@@ -61,10 +74,20 @@ class UserSkillStore(Protocol):
         self, *, user_id: str, skill_name: str
     ) -> Sequence[str]: ...
 
+    async def resource_exists(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> bool: ...
+
     # --- Script operations ---
 
     async def save_script(
-        self, *, user_id: str, skill_name: str, script_name: str, content: str
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        content: str,
+        modified_by: str = "",
     ) -> MongoSkillScriptDocument: ...
 
     async def delete_script(
@@ -78,3 +101,7 @@ class UserSkillStore(Protocol):
     async def list_script_names(
         self, *, user_id: str, skill_name: str
     ) -> Sequence[str]: ...
+
+    async def script_exists(
+        self, *, user_id: str, skill_name: str, script_name: str
+    ) -> bool: ...

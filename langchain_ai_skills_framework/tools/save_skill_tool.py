@@ -42,8 +42,9 @@ class SaveSkillTool(BaseTool):
 
     name: str = "save_skill"
     description: str = (
-        "Save a new skill or update an existing one for the current user. "
-        "The skill will only be available to the user who saved it. "
+        "Create a new skill or update an existing one for the current user. "
+        "If a skill with the same name already exists, its content will be replaced. "
+        "The skill will only be available to the user who saved it unless shared. "
         "Content should follow the SKILL.md format with optional YAML frontmatter."
     )
     args_schema: Type[BaseModel] = SaveSkillInput
@@ -89,6 +90,7 @@ class SaveSkillTool(BaseTool):
                 user_id=stripped_user_id,
                 skill_name=skill_name,
                 content=content,
+                modified_by=stripped_user_id,
             )
             message = f"Skill '{doc.skill_name}' saved successfully."
             logger.info("SaveSkillTool: %s (user=%s)", message, user_id)

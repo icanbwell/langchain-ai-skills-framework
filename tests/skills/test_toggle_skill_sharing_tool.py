@@ -26,6 +26,7 @@ def _make_doc(
         description="A test",
         content="# Test\nContent",
         shared=shared,
+        modified_by="user-1",
         date_created=datetime.now(timezone.utc),
         date_modified=datetime.now(timezone.utc),
     )

@@ -42,8 +42,9 @@ class SaveSkillResourceTool(BaseTool):
 
     name: str = "save_skill_resource"
     description: str = (
-        "Save a resource file for a skill. Resources are supplementary files "
+        "Create or update a resource file for a skill. Resources are supplementary files "
         "like documentation, templates, or schemas that support skill execution. "
+        "If a resource with the same name already exists, its content will be replaced. "
         "The resource will be associated with the specified skill for the current user."
     )
     args_schema: Type[BaseModel] = SaveSkillResourceInput
@@ -94,6 +95,7 @@ class SaveSkillResourceTool(BaseTool):
                 skill_name=skill_name,
                 resource_name=resource_name,
                 content=content,
+                modified_by=stripped_user_id,
             )
             message = (
                 f"Resource '{doc.resource_name}' saved for skill '{doc.skill_name}'."

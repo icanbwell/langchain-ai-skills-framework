@@ -105,6 +105,13 @@ class LoadSkillTool(BaseTool):
                 )
             else:
                 skill = self.skill_loader.get_skill_details(skill_name=normalized_name)
+            author = (
+                skill.summary.metadata.get("user_id")
+                if skill.summary.metadata
+                else None
+            )
+            if author:
+                return f"Author: {author}\n\n{skill.content}"
             return f"{skill.content}"
         except SkillNotFoundError:
             return await self._format_availability_message(

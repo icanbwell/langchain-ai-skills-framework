@@ -95,14 +95,23 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     async def get_skill_details_for_user(
         self, *, user_id: str, skill_name: str
     ) -> SkillDetails:
-        """Get skill details checking user skills first, then shared."""
+        """Get skill details checking user skills first, then shared DB, then GitHub."""
         normalized = skill_name.strip().lower().replace("_", "-")
+        # 1. User's own skills (highest precedence)
         try:
             return await self._user.get_skill_details(
                 user_id=user_id, skill_name=normalized
             )
         except SkillNotFoundError:
-            return self._shared.get_skill_details(normalized)
+            pass
+
+        # 2. Shared DB skills from other users
+        shared_snapshot = await self._user.load_shared_snapshot()
+        if normalized in shared_snapshot.details_by_name:
+            return shared_snapshot.details_by_name[normalized]
+
+        # 3. GitHub/filesystem skills (lowest precedence)
+        return self._shared.get_skill_details(normalized)
 
     def refresh(self) -> None:
         self._shared.refresh()
@@ -124,6 +133,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             lines.append("<skill>")
             lines.append(f"<name>{escaped_name}</name>")
             lines.append(f"<description>{escaped_description}</description>")
+            author = skill.metadata.get("user_id") if skill.metadata else None
+            if author:
+                escaped_author = escape(str(author), quote=True)
+                lines.append(f"<author>{escaped_author}</author>")
             lines.append("</skill>")
         skills_list = "\n".join(lines)
 

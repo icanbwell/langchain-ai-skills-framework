@@ -92,22 +92,26 @@ class _StubSharedLoader(SkillLoaderProtocol):
 
 def _make_user_loader_mock(
     user_skills: dict[str, SkillDetails] | None = None,
+    shared_skills: dict[str, SkillDetails] | None = None,
 ) -> UserSkillStore:
     """Create a mock UserSkillStore that returns a snapshot."""
     loader = AsyncMock(spec=UserSkillStore)
     skills = user_skills or {}
+    shared = shared_skills or {}
     snapshot = SkillSnapshot(
         details_by_name=MappingProxyType(skills),
         ordered_summaries=tuple(
             sorted([d.summary for d in skills.values()], key=lambda s: s.name)
         ),
     )
-    empty_snapshot = SkillSnapshot(
-        details_by_name=MappingProxyType({}),
-        ordered_summaries=(),
+    shared_snapshot = SkillSnapshot(
+        details_by_name=MappingProxyType(shared),
+        ordered_summaries=tuple(
+            sorted([d.summary for d in shared.values()], key=lambda s: s.name)
+        ),
     )
     loader.load_snapshot.return_value = snapshot
-    loader.load_shared_snapshot.return_value = empty_snapshot
+    loader.load_shared_snapshot.return_value = shared_snapshot
     loader.get_skill_details.side_effect = lambda *, user_id, skill_name: (
         skills[skill_name]
         if skill_name in skills
@@ -190,6 +194,42 @@ class TestGetSkillDetailsForUser:
         )
 
         assert detail.content == "shared version"
+
+    @pytest.mark.asyncio
+    async def test_returns_shared_db_skill_from_another_user(self) -> None:
+        shared_db_skill = _make_skill(
+            "health-news-monitor", content="shared db version", source="mongodb"
+        )
+        shared = _StubSharedLoader({})
+        user_loader = _make_user_loader_mock(
+            user_skills={}, shared_skills={"health-news-monitor": shared_db_skill}
+        )
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        detail = await composite.get_skill_details_for_user(
+            user_id="different-user", skill_name="health-news-monitor"
+        )
+
+        assert detail.content == "shared db version"
+
+    @pytest.mark.asyncio
+    async def test_user_skill_takes_precedence_over_shared_db_skill(self) -> None:
+        shared_db_skill = _make_skill(
+            "my-skill", content="shared db version", source="mongodb"
+        )
+        user_skill = _make_skill("my-skill", content="user version", source="mongodb")
+        shared = _StubSharedLoader({})
+        user_loader = _make_user_loader_mock(
+            user_skills={"my-skill": user_skill},
+            shared_skills={"my-skill": shared_db_skill},
+        )
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        detail = await composite.get_skill_details_for_user(
+            user_id="user-1", skill_name="my-skill"
+        )
+
+        assert detail.content == "user version"
 
     @pytest.mark.asyncio
     async def test_raises_not_found_when_neither_has_skill(self) -> None:

@@ -10,6 +10,9 @@ from langchain_core.tools import BaseTool
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.executors.my_script_executor import (
+    MyScriptExecutor,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -377,61 +380,19 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Script execution ----------------------------------------------------
 
-    @staticmethod
+    _script_executor = MyScriptExecutor()
+
+    @classmethod
     async def _execute_script_content(
+        cls,
         *,
         script_content: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
-        """Execute a script stored as content in MongoDB via a temporary file."""
-        import asyncio
-        import json
-        import tempfile
-        import time
-        from pathlib import Path
-
-        suffix = Path(script_name).suffix or ".py"
-        start = time.monotonic()
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as tmp:
-            tmp.write(script_content)
-            tmp_path = tmp.name
-
-        try:
-            cmd = ["python", tmp_path]
-            if arguments:
-                # Pass arguments as JSON via stdin
-                input_data = json.dumps(arguments).encode()
-            else:
-                input_data = None
-
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE if input_data else None,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(input=input_data), timeout=30
-            )
-            elapsed_ms = (time.monotonic() - start) * 1000
-
-            return MyScriptExecutionResult(
-                stdout=stdout_bytes.decode(errors="replace") if stdout_bytes else None,
-                stderr=stderr_bytes.decode(errors="replace") if stderr_bytes else None,
-                exit_code=proc.returncode or 0,
-                execution_time_ms=elapsed_ms,
-                success=proc.returncode == 0,
-            )
-        except asyncio.TimeoutError:
-            elapsed_ms = (time.monotonic() - start) * 1000
-            return MyScriptExecutionResult(
-                stdout=None,
-                stderr=f"Script '{script_name}' timed out after 30 seconds",
-                exit_code=-1,
-                execution_time_ms=elapsed_ms,
-                success=False,
-            )
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
+        """Execute a script stored as content in MongoDB."""
+        return await cls._script_executor.execute_inline_script(
+            script_name=script_name,
+            script=script_content,
+            arguments=arguments or {},
+        )

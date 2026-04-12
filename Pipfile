@@ -40,7 +40,7 @@ uv = ">=0.11.0"
 anyio = ">=4.12.1"
 # motor is needed for working with MongoDB asynchronously, which is used by the MongoDB tool
 motor = ">=3.7.1"
-# skills_ref is needed for working with skills in skillkit
+# skills_ref is needed for working with skills in skillkit. https://github.com/agentskills/agentskills/tree/main/skills-ref
 skills_ref = ">=0.1.1"
 
 [dev-packages]

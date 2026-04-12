@@ -31,7 +31,7 @@ class ToggleSkillSharingInput(BaseModel):
     shared: bool = Field(
         description="True to share the skill with all users, False to make it private.",
     )
-    runtime: ToolRuntime = Field(exclude=True)
+    runtime: ToolRuntime
 
 
 class ToggleSkillSharingTool(BaseTool):

@@ -131,6 +131,18 @@ class SkillDirectoryLoader(SkillLoaderProtocol):
             )
             raise SkillNotFoundError(f"Skill '{skill_name}' not found") from exc
 
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.list_skill_summaries(allowed_skills)
+
+    async def get_skill_details_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> SkillDetails:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.get_skill_details(skill_name)
+
     def refresh(self) -> None:
         """Force an immediate reload regardless of TTL."""
 

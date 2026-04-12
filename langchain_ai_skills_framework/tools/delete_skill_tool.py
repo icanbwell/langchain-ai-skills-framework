@@ -28,7 +28,7 @@ class DeleteSkillInput(BaseModel):
     skill_name: str = Field(
         description="Name of the skill to delete.",
     )
-    runtime: ToolRuntime = Field(exclude=True)
+    runtime: ToolRuntime
 
 
 class DeleteSkillTool(BaseTool):

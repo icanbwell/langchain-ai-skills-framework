@@ -27,9 +27,19 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return self._summaries
 
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
+        return self.list_skill_summaries(allowed_skills)
+
     def get_skill_details(self, skill_name: str) -> SkillDetails:  # pragma: no cover
         del skill_name
         raise NotImplementedError
+
+    async def get_skill_details_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> SkillDetails:
+        return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:  # pragma: no cover
         return None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.tools import BaseTool
@@ -27,6 +28,13 @@ from langchain_ai_skills_framework.tools.run_skill_script_tool import (
 )
 
 
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
+
+
 class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(
         self,
@@ -41,11 +49,21 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return [detail.summary for detail in self._details.values()]
 
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
+        return self.list_skill_summaries(allowed_skills)
+
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError from exc
+
+    async def get_skill_details_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> SkillDetails:
+        return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
         return None
@@ -116,21 +134,6 @@ def _make_skill(name: str) -> SkillDetails:
     )
 
 
-def test_run_executes_script_with_named_arguments() -> None:
-    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunSkillScriptTool(skill_loader=loader)
-
-    message, output = tool._run(
-        skill_name="alpha",
-        script_name="analyze.py",
-        arguments={"threshold": 0.5},
-    )
-
-    assert message == "script output"
-    assert output == "script output"
-    assert loader.calls == [("alpha", "analyze.py", {"threshold": 0.5})]
-
-
 @pytest.mark.asyncio
 async def test_arun_executes_script_with_named_arguments() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
@@ -140,6 +143,7 @@ async def test_arun_executes_script_with_named_arguments() -> None:
         skill_name="alpha",
         script_name="analyze.py",
         arguments={"threshold": 0.5},
+        runtime=_make_runtime(),
     )
 
     assert message == "script output"
@@ -153,7 +157,10 @@ async def test_arun_returns_not_found_message_when_skill_missing() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     result = await tool._arun(
-        skill_name="missing", script_name="analyze.py", arguments=None
+        skill_name="missing",
+        script_name="analyze.py",
+        arguments=None,
+        runtime=_make_runtime(),
     )
     assert "Skill 'missing' not found." in result[0]
 
@@ -164,7 +171,10 @@ async def test_arun_returns_error_output_when_script_fails() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     message, artifact = await tool._arun(
-        skill_name="alpha", script_name="analyze.py", arguments=None
+        skill_name="alpha",
+        script_name="analyze.py",
+        arguments=None,
+        runtime=_make_runtime(),
     )
     assert message == "boom"
     assert artifact == ""
@@ -193,6 +203,7 @@ async def test_arun_validates_parameters_raises(
             skill_name=skill_name,
             script_name=script_name,
             arguments=arguments,
+            runtime=_make_runtime(),
         )
 
 
@@ -222,6 +233,7 @@ async def test_arun_validates_parameters_returns_error(
         skill_name=skill_name,
         script_name=script_name,
         arguments=arguments,
+        runtime=_make_runtime(),
     )
     assert result == message
     assert artifact == ""
@@ -236,7 +248,10 @@ async def test_arun_script_not_found_lists_available_scripts() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     result, artifact = await tool._arun(
-        skill_name="alpha", script_name="missing.py", arguments=None
+        skill_name="alpha",
+        script_name="missing.py",
+        arguments=None,
+        runtime=_make_runtime(),
     )
     assert "Script 'missing.py' not found in skill 'alpha'" in result
     assert "analyze.py" in result
@@ -250,10 +265,21 @@ async def test_arun_script_not_found_no_scripts_shows_none() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     result, artifact = await tool._arun(
-        skill_name="alpha", script_name="missing.py", arguments=None
+        skill_name="alpha",
+        script_name="missing.py",
+        arguments=None,
+        runtime=_make_runtime(),
     )
     assert "Script 'missing.py' not found in skill 'alpha'" in result
     assert "Available scripts: none" in result
+
+
+def test_sync_run_raises() -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = RunSkillScriptTool(skill_loader=loader)
+
+    with pytest.raises(NotImplementedError):
+        tool._run(skill_name="alpha", script_name="analyze.py")
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

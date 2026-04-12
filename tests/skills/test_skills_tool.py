@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Mapping, Sequence, Any
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.tools import BaseTool
@@ -20,6 +21,13 @@ from langchain_ai_skills_framework.models.skills_model import SkillDetails, Skil
 from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
 
 
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
+
+
 class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(self, details_by_name: Mapping[str, SkillDetails]) -> None:
         self._details = dict(details_by_name)
@@ -28,11 +36,21 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return [detail.summary for detail in self._details.values()]
 
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
+        return self.list_skill_summaries(allowed_skills)
+
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError from exc
+
+    async def get_skill_details_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> SkillDetails:
+        return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
         return None
@@ -68,61 +86,75 @@ def _make_skill(name: str, *, content: str = "Skill content") -> SkillDetails:
     return SkillDetails(summary=summary, content=content, source_path=source_path)
 
 
-def test_load_skill_tool_returns_availability_for_empty_name() -> None:
+@pytest.mark.asyncio
+async def test_load_skill_tool_returns_availability_for_empty_name() -> None:
     details = _make_skill("alpha")
     loader = _StubSkillLoader({"alpha": details})
     tool = LoadSkillTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided"):
-        tool._load_skill("")
+        await tool._arun(skill_name="", runtime=_make_runtime())
 
 
-def test_load_skill_tool_returns_availability_when_missing() -> None:
+@pytest.mark.asyncio
+async def test_load_skill_tool_returns_availability_when_missing() -> None:
     details_alpha = _make_skill("alpha")
     details_beta = _make_skill("beta")
     loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    result = tool._load_skill("gamma")
+    result, _ = await tool._arun(skill_name="gamma", runtime=_make_runtime())
 
     assert "Skill 'gamma' not found" in result
     assert "Available skills: alpha, beta" in result
 
 
-def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
+@pytest.mark.asyncio
+async def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
-    result = tool._load_skill("alpha")
+    result, _ = await tool._arun(skill_name="alpha", runtime=_make_runtime())
 
     assert "Skill 'alpha' not found" in result
     assert "Available skills: None configured" in result
 
 
-def test_load_skill_tool_returns_skill_content() -> None:
+@pytest.mark.asyncio
+async def test_load_skill_tool_returns_skill_content() -> None:
     details = _make_skill("alpha", content="Body for alpha")
     loader = _StubSkillLoader({"alpha": details})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message = tool._load_skill(" alpha ")
+    message, _ = await tool._arun(skill_name=" alpha ", runtime=_make_runtime())
 
     assert message == "Body for alpha"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("skill_name", "message"),
-    [
-        (123, "Skill name must be a string."),
-        ("", "No skill name provided."),
-    ],
-)
-async def test_arun_validates_skill_name(skill_name: Any, message: str) -> None:
+async def test_arun_validates_non_string_skill_name() -> None:
     details = _make_skill("alpha", content="Body for alpha")
     loader = _StubSkillLoader({"alpha": details})
     tool = LoadSkillTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match=message):
-        await tool._arun(skill_name=skill_name)
+    with pytest.raises(ToolException, match="Skill name must be a string."):
+        await tool._arun(skill_name=123, runtime=_make_runtime())  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_arun_validates_empty_skill_name() -> None:
+    details = _make_skill("alpha", content="Body for alpha")
+    loader = _StubSkillLoader({"alpha": details})
+    tool = LoadSkillTool(skill_loader=loader)
+
+    with pytest.raises(ToolException, match="No skill name provided."):
+        await tool._arun(skill_name="", runtime=_make_runtime())
+
+
+def test_sync_run_raises() -> None:
+    tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
+
+    with pytest.raises(NotImplementedError):
+        tool._run(skill_name="test")
 
 
 def test_get_friendly_name_casts_skill_name_to_string() -> None:

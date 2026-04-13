@@ -66,9 +66,6 @@ class LoadSkillTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously load a skill by name."""
-        if not isinstance(skill_name, str):
-            raise ToolException("Skill name must be a string.")
-
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(

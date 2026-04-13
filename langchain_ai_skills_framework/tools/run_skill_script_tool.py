@@ -107,11 +107,6 @@ class RunSkillScriptTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
-        if not isinstance(skill_name, str):
-            return "Skill name must be a string.", ""
-        if arguments is not None and not isinstance(arguments, dict):
-            return "Arguments must be a dict.", ""
-
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
@@ -120,15 +115,9 @@ class RunSkillScriptTool(BaseTool):
                 )
             )
 
-        if not isinstance(script_name, str):
-            raise ToolException("Script name must be a string.")
-
         normalized_script_name = script_name.strip()
         if not normalized_script_name:
             raise ToolException("No script name provided.")
-
-        if arguments is not None and not isinstance(arguments, dict):
-            raise ToolException("Script arguments must be a dictionary when provided.")
 
         logger.debug(
             "RunSkillScriptTool: Running script_name=%s skill_name=%s argument_keys=%s",
@@ -206,9 +195,7 @@ class RunSkillScriptTool(BaseTool):
             user_id = ctx.get("user_id", "")
             stripped_user_id = user_id.strip() if user_id else ""
 
-            if stripped_user_id and hasattr(
-                self.skill_loader, "run_skill_script_for_user"
-            ):
+            if stripped_user_id:
                 result: MyScriptExecutionResult = (
                     await self.skill_loader.run_skill_script_for_user(
                         user_id=stripped_user_id,

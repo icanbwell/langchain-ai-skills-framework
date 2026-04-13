@@ -48,27 +48,7 @@ class RunPythonScriptInput(BaseModel):
     runtime: ToolRuntime = Field(exclude=True)
 
 
-class RunPythonScriptOutput(BaseModel):
-    """Structured output schema for the run_python_script tool."""
-
-    model_config = ConfigDict(extra="allow")
-
-    success: bool = Field(description="Whether the script executed successfully")
-    stdout: str | None = Field(
-        default=None, description="Standard output from the script"
-    )
-    stderr: str | None = Field(
-        default=None, description="Standard error from the script"
-    )
-    exit_code: int | None = Field(
-        default=None, description="Exit code from the script execution"
-    )
-    error_message: str | None = Field(
-        default=None, description="Human-readable error message if failed"
-    )
-
-
-class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
+class RunPythonScriptTool(BaseTool):
     """LangChain tool that executes inline Python script content within a runtime context."""
 
     name: str = "run_python_script"
@@ -123,13 +103,6 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Async execution with named parameters."""
-        if not isinstance(script_name, str):
-            return "Script name must be a string.", ""
-        if arguments is not None and not isinstance(arguments, dict):
-            return "Arguments must be a dict.", ""
-        if not isinstance(timeout, int):
-            return "Timeout must be an int.", ""
-
         logger.debug(
             "RunPythonScriptTool: Running inline script script_name=%s argument_keys=%s timeout=%s",
             script_name,

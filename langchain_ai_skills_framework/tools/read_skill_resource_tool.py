@@ -81,9 +81,6 @@ class ReadSkillResourceTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously load a skill resource."""
-        if not isinstance(skill_name, str):
-            raise ToolException("Skill name must be a string.")
-
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
@@ -91,9 +88,6 @@ class ReadSkillResourceTool(BaseTool):
                     self.skill_loader, normalized_name, runtime=runtime
                 )
             )
-
-        if not isinstance(resource_name, str):
-            return "Resource name must be a string.", ""
 
         normalized_resource_name = resource_name.strip()
         if not normalized_resource_name:
@@ -130,9 +124,7 @@ class ReadSkillResourceTool(BaseTool):
             user_id = ctx.get("user_id", "")
             stripped_user_id = user_id.strip() if user_id else ""
 
-            if stripped_user_id and hasattr(
-                self.skill_loader, "read_skill_resource_for_user"
-            ):
+            if stripped_user_id:
                 resource: str = await self.skill_loader.read_skill_resource_for_user(
                     user_id=stripped_user_id,
                     skill_name=normalized_name,

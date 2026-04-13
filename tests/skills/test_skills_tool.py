@@ -64,10 +64,25 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         raise NotImplementedError()
 
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        return self.read_skill_resource(skill_name, resource_name)
+
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
+
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        return await self.run_skill_script(skill_name, script_name, arguments)
 
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
@@ -128,16 +143,6 @@ async def test_load_skill_tool_returns_skill_content() -> None:
     message, _ = await tool._arun(skill_name=" alpha ", runtime=_make_runtime())
 
     assert message == "Body for alpha"
-
-
-@pytest.mark.asyncio
-async def test_arun_validates_non_string_skill_name() -> None:
-    details = _make_skill("alpha", content="Body for alpha")
-    loader = _StubSkillLoader({"alpha": details})
-    tool = LoadSkillTool(skill_loader=loader)
-
-    with pytest.raises(ToolException, match="Skill name must be a string."):
-        await tool._arun(skill_name=123, runtime=_make_runtime())  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

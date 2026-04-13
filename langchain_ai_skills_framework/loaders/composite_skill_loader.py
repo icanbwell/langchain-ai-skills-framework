@@ -17,6 +17,9 @@ from langchain_ai_skills_framework.executors.my_script_executor import (
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
+from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
+    normalize_skill_name,
+)
 from langchain_ai_skills_framework.loaders.user_skill_store import (
     UserSkillStore,
 )
@@ -106,7 +109,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self, *, user_id: str, skill_name: str
     ) -> SkillDetails:
         """Get skill details checking user skills first, then shared DB, then GitHub."""
-        normalized = skill_name.strip().lower().replace("_", "-")
+        normalized = normalize_skill_name(skill_name)
         # 1. User's own skills (highest precedence)
         try:
             return await self._user.get_skill_details(
@@ -201,7 +204,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self, *, user_id: str, skill_name: str, resource_name: str
     ) -> str:
         """Read a resource, checking user's MongoDB skills first, then shared loader."""
-        normalized = skill_name.strip().lower().replace("_", "-")
+        normalized = normalize_skill_name(skill_name)
 
         # Check user's own skills first
         try:
@@ -210,9 +213,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             )
         except SkillNotFoundError:
             logger.debug(
-                f"Resource '{resource_name}' not found in user skill '{normalized}' for user '{user_id}', trying shared skills"
+                "Resource '%s' not found in user skill '%s' for user '%s', trying shared skills",
+                resource_name,
+                normalized,
+                user_id,
             )
-            pass
 
         # Check shared DB skills
         shared_snapshot = await self._user.load_shared_snapshot()
@@ -254,7 +259,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         MongoDB-stored scripts are executed in a subprocess with the script
         content written to a temporary file.
         """
-        normalized = skill_name.strip().lower().replace("_", "-")
+        normalized = normalize_skill_name(skill_name)
 
         # Check user's own scripts first
         try:
@@ -303,7 +308,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self, *, user_id: str, skill_name: str
     ) -> Sequence[str]:
         """List scripts, merging user MongoDB scripts with shared loader scripts."""
-        normalized = skill_name.strip().lower().replace("_", "-")
+        normalized = normalize_skill_name(skill_name)
         names: set[str] = set()
 
         # User's own scripts
@@ -331,7 +336,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self, *, user_id: str, skill_name: str
     ) -> Sequence[str]:
         """List resources, merging user MongoDB resources with shared loader resources."""
-        normalized = skill_name.strip().lower().replace("_", "-")
+        normalized = normalize_skill_name(skill_name)
         names: set[str] = set()
 
         # User's own resources
@@ -390,18 +395,16 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Script execution ----------------------------------------------------
 
-    _script_executor = MyScriptExecutor()
-
-    @classmethod
+    @staticmethod
     async def _execute_script_content(
-        cls,
         *,
         script_content: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         """Execute a script stored as content in MongoDB."""
-        return await cls._script_executor.execute_inline_script(
+        executor = MyScriptExecutor()
+        return await executor.execute_inline_script(
             script_name=script_name,
             script=script_content,
             arguments=arguments or {},

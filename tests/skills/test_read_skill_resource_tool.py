@@ -83,6 +83,21 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        return self.read_skill_resource(skill_name, resource_name)
+
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        return await self.run_skill_script(skill_name, script_name, arguments)
+
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return self._resource_names_by_skill.get(skill_name, [])
 
@@ -147,47 +162,29 @@ async def test_run_raises_tool_exception_for_empty_skill_name() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("skill_name", "resource_name", "message"),
-    [
-        (123, "FORMS.md", "Skill name must be a string."),
-        ("", "FORMS.md", "No skill name provided."),
-    ],
-)
-async def test_arun_validates_parameters_raises(
-    skill_name: Any, resource_name: Any, message: str
-) -> None:
+async def test_arun_validates_empty_skill_name_raises() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match=message):
+    with pytest.raises(ToolException, match="No skill name provided."):
         await tool._arun(
-            skill_name=skill_name,
-            resource_name=resource_name,
+            skill_name="",
+            resource_name="FORMS.md",
             runtime=_make_runtime(),
         )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("skill_name", "resource_name", "message"),
-    [
-        ("alpha", 123, "Resource name must be a string."),
-        ("alpha", "", "No resource name provided."),
-    ],
-)
-async def test_arun_validates_parameters_returns_error(
-    skill_name: Any, resource_name: Any, message: str
-) -> None:
+async def test_arun_validates_empty_resource_name_returns_error() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     result, artifact = await tool._arun(
-        skill_name=skill_name,
-        resource_name=resource_name,
+        skill_name="alpha",
+        resource_name="",
         runtime=_make_runtime(),
     )
-    assert result == message
+    assert result == "No resource name provided."
     assert artifact == ""
 
 

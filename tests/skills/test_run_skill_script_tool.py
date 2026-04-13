@@ -91,6 +91,21 @@ class _StubSkillLoader(SkillLoaderProtocol):
             success=True,
         )
 
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        return self.read_skill_resource(skill_name, resource_name)
+
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        return await self.run_skill_script(skill_name, script_name, arguments)
+
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return self._script_names_by_skill.get(skill_name, [])
 
@@ -185,7 +200,6 @@ async def test_arun_returns_error_output_when_script_fails() -> None:
     ("skill_name", "script_name", "arguments", "message"),
     [
         ("", "analyze.py", None, "No skill name provided."),
-        ("alpha", 123, None, "Script name must be a string."),
         ("alpha", "", None, "No script name provided."),
     ],
 )
@@ -205,38 +219,6 @@ async def test_arun_validates_parameters_raises(
             arguments=arguments,
             runtime=_make_runtime(),
         )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("skill_name", "script_name", "arguments", "message"),
-    [
-        (123, "analyze.py", None, "Skill name must be a string."),
-        (
-            "alpha",
-            "analyze.py",
-            "not-a-dict",
-            "Arguments must be a dict.",
-        ),
-    ],
-)
-async def test_arun_validates_parameters_returns_error(
-    skill_name: Any,
-    script_name: Any,
-    arguments: Any,
-    message: str,
-) -> None:
-    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
-    tool = RunSkillScriptTool(skill_loader=loader)
-
-    result, artifact = await tool._arun(
-        skill_name=skill_name,
-        script_name=script_name,
-        arguments=arguments,
-        runtime=_make_runtime(),
-    )
-    assert result == message
-    assert artifact == ""
 
 
 @pytest.mark.asyncio

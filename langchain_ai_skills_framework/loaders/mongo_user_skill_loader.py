@@ -28,6 +28,9 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
+    normalize_skill_name,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -553,9 +556,7 @@ class MongoUserSkillLoader:
 
     @staticmethod
     def _normalize_skill_name(value: str) -> str:
-        normalized = value.strip().lower().replace("_", "-").replace(" ", "-")
-        normalized = re.sub(r"-+", "-", normalized)
-        return normalized.strip("-")
+        return normalize_skill_name(value)
 
     @staticmethod
     def _extract_description(content: str) -> str:

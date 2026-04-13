@@ -4,9 +4,6 @@ from langchain_ai_skills_framework.loaders.composite_skill_loader import (
 from langchain_ai_skills_framework.loaders.github_skill_downloader import (
     GithubSkillDownloader,
 )
-from langchain_ai_skills_framework.loaders.skill_directory_loader import (
-    SkillDirectoryLoader,
-)
 from langchain_ai_skills_framework.loaders.skill_sync import SkillSync
 from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
 from langchain_ai_skills_framework.loaders.user_skill_store_factory import (
@@ -27,7 +24,6 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )
-from langchain_ai_skills_framework.tools.skills_tool_manager import SkillsToolManager
 
 
 class LangchainAISkillsFrameworkContainerFactory:
@@ -38,14 +34,6 @@ class LangchainAISkillsFrameworkContainerFactory:
     ) -> SimpleContainer:
 
         container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
-
-        container.singleton(
-            SkillDirectoryLoader,
-            lambda c: SkillDirectoryLoader(
-                environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
-                github_skill_downloader=c.resolve(GithubSkillDownloader),
-            ),
-        )
 
         # GitHub/filesystem skills are always loaded first.
         container.singleton(
@@ -86,13 +74,6 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillLoaderProtocol,
             lambda c: c.resolve(CompositeSkillLoader),
-        )
-
-        container.singleton(
-            SkillsToolManager,
-            lambda c: SkillsToolManager(
-                skill_loader=c.resolve(SkillLoaderProtocol),
-            ),
         )
 
         container.singleton(

@@ -32,8 +32,21 @@ class SkillLoaderProtocol(Protocol):
 
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str: ...
 
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str: ...
+
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+    ) -> MyScriptExecutionResult: ...
+
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult: ...
 
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]: ...

@@ -50,7 +50,9 @@ class GithubDirectoryDownloader:
             f"{git_location.owner}-{git_location.repository}"
             f"-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
         )
-        target_dir = cache_root / cache_dir_name
+        target_dir = (cache_root / cache_dir_name).resolve()
+        if not str(target_dir).startswith(str(cache_root)):
+            raise ValueError(f"Path traversal detected in github:// URI: {source_uri}")
 
         # Serialise concurrent workers (Gunicorn forks) so that only one
         # process performs the rmtree + download at a time.
@@ -58,43 +60,57 @@ class GithubDirectoryDownloader:
         lock_fd = open(lock_path, "w")
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
-
-            if target_dir.exists():
-                shutil.rmtree(target_dir)
-            target_dir.mkdir(parents=True, exist_ok=True)
-
-            try:
-                storage_options: dict[str, object] = {
-                    "org": git_location.owner,
-                    "repo": git_location.repository,
-                }
-                if git_location.branch:
-                    storage_options["sha"] = git_location.branch
-                if github_token:
-                    storage_options["username"] = self._github_token_username
-                    storage_options["token"] = github_token
-
-                filesystem = fsspec.filesystem("github", **storage_options)
-                if source_path:
-                    filesystem.get(source_path, str(target_dir), recursive=True)
-                else:
-                    for remote_item in filesystem.ls("", detail=False):
-                        item_path = str(remote_item)
-                        if item_path in {".git", ".github"}:
-                            continue
-                        destination = target_dir / Path(item_path).name
-                        filesystem.get(item_path, str(destination), recursive=True)
-            except ValueError:
-                raise
-            except Exception as exc:
-                raise ValueError(
-                    "Unable to download github:// directory into cache"
-                ) from exc
-
+            self._fetch_to_directory(
+                git_location=git_location,
+                source_path=source_path,
+                github_token=github_token,
+                target_dir=target_dir,
+            )
             return target_dir.resolve()
         finally:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
+
+    def _fetch_to_directory(
+        self,
+        *,
+        git_location: GitLocation,
+        source_path: str,
+        github_token: str | None,
+        target_dir: Path,
+    ) -> None:
+        """Clear *target_dir* and download the remote content into it."""
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            storage_options: dict[str, object] = {
+                "org": git_location.owner,
+                "repo": git_location.repository,
+            }
+            if git_location.branch:
+                storage_options["sha"] = git_location.branch
+            if github_token:
+                storage_options["username"] = self._github_token_username
+                storage_options["token"] = github_token
+
+            filesystem = fsspec.filesystem("github", **storage_options)
+            if source_path:
+                filesystem.get(source_path, str(target_dir), recursive=True)
+            else:
+                for remote_item in filesystem.ls("", detail=False):
+                    item_path = str(remote_item)
+                    if item_path in {".git", ".github"}:
+                        continue
+                    destination = target_dir / Path(item_path).name
+                    filesystem.get(item_path, str(destination), recursive=True)
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError(
+                "Unable to download github:// directory into cache"
+            ) from exc
 
     @classmethod
     def parse_github_uri(cls, source_uri: str) -> GitLocation:

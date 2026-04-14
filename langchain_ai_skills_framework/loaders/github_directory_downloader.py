@@ -137,7 +137,7 @@ class GithubDirectoryDownloader:
                     )
                     time.sleep(delay)
         raise ValueError(
-            f"Download failed after {self._MAX_RETRIES} attempts"
+            f"Download failed after {self._MAX_RETRIES} attempts: {last_exc}"
         ) from last_exc
 
     def _fetch_to_directory(

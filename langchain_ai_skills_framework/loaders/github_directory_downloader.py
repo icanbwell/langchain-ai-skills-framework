@@ -1,3 +1,4 @@
+import fcntl
 import shutil
 from dataclasses import dataclass
 from hashlib import sha256
@@ -51,39 +52,49 @@ class GithubDirectoryDownloader:
         )
         target_dir = cache_root / cache_dir_name
 
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
+        # Serialise concurrent workers (Gunicorn forks) so that only one
+        # process performs the rmtree + download at a time.
+        lock_path = cache_root / (cache_dir_name + ".lock")
+        lock_fd = open(lock_path, "w")
         try:
-            storage_options: dict[str, object] = {
-                "org": git_location.owner,
-                "repo": git_location.repository,
-            }
-            if git_location.branch:
-                storage_options["sha"] = git_location.branch
-            if github_token:
-                storage_options["username"] = self._github_token_username
-                storage_options["token"] = github_token
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-            filesystem = fsspec.filesystem("github", **storage_options)
-            if source_path:
-                filesystem.get(source_path, str(target_dir), recursive=True)
-            else:
-                for remote_item in filesystem.ls("", detail=False):
-                    item_path = str(remote_item)
-                    if item_path in {".git", ".github"}:
-                        continue
-                    destination = target_dir / Path(item_path).name
-                    filesystem.get(item_path, str(destination), recursive=True)
-        except ValueError:
-            raise
-        except Exception as exc:
-            raise ValueError(
-                "Unable to download github:// directory into cache"
-            ) from exc
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            target_dir.mkdir(parents=True, exist_ok=True)
 
-        return target_dir.resolve()
+            try:
+                storage_options: dict[str, object] = {
+                    "org": git_location.owner,
+                    "repo": git_location.repository,
+                }
+                if git_location.branch:
+                    storage_options["sha"] = git_location.branch
+                if github_token:
+                    storage_options["username"] = self._github_token_username
+                    storage_options["token"] = github_token
+
+                filesystem = fsspec.filesystem("github", **storage_options)
+                if source_path:
+                    filesystem.get(source_path, str(target_dir), recursive=True)
+                else:
+                    for remote_item in filesystem.ls("", detail=False):
+                        item_path = str(remote_item)
+                        if item_path in {".git", ".github"}:
+                            continue
+                        destination = target_dir / Path(item_path).name
+                        filesystem.get(item_path, str(destination), recursive=True)
+            except ValueError:
+                raise
+            except Exception as exc:
+                raise ValueError(
+                    "Unable to download github:// directory into cache"
+                ) from exc
+
+            return target_dir.resolve()
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
 
     @classmethod
     def parse_github_uri(cls, source_uri: str) -> GitLocation:

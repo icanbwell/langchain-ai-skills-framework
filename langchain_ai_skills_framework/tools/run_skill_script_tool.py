@@ -1,6 +1,7 @@
 from __future__ import annotations
-import logging
+
 from typing import Any, Type, Literal, Tuple
+
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
@@ -8,22 +9,13 @@ from langchain_core.callbacks import (
 from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
-from skillkit import ScriptNotFoundError
 
-from langchain_ai_skills_framework.executors.my_script_execution_result import (
-    MyScriptExecutionResult,
-)
-from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
-    SkillNotFoundError,
-)
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.services.run_skill_script_service import RunSkillScriptService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.text_humanizer import Humanizer
-
-logger = logging.getLogger(__name__)
-logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class RunSkillScriptInput(BaseModel):
@@ -102,165 +94,23 @@ class RunSkillScriptTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        """Asynchronously execute a skill script."""
-        normalized_name = skill_name.strip()
-        if not normalized_name:
-            raise ToolException(
-                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
-            )
-
-        normalized_script_name = script_name.strip()
-        if not normalized_script_name:
-            raise ToolException("No script name provided.")
-
-        logger.debug(
-            "RunSkillScriptTool: Running script_name=%s skill_name=%s argument_keys=%s",
-            normalized_script_name,
-            normalized_name,
-            sorted((arguments or {}).keys()),
-        )
-        try:
-            script_result: MyScriptExecutionResult = await self._run_skill_script(
-                skill_name=normalized_name,
-                script_name=normalized_script_name,
-                arguments=arguments,
-                runtime=runtime,
-            )
-            logger.debug(
-                "RunSkillScriptTool: Script completed script_name=%s skill_name=%s",
-                normalized_script_name,
-                normalized_name,
-            )
-            if script_result.success:
-                return (
-                    script_result.stdout or "No output",
-                    script_result.stdout or "",
-                )
-            else:
-                return (
-                    script_result.stderr or script_result.stdout or "No output",
-                    script_result.stdout or "",
-                )
-        except ScriptNotFoundError:
-            return (
-                await self._format_availability_message(
-                    self.skill_loader,
-                    normalized_name,
-                    script_name=normalized_script_name,
-                    runtime=runtime,
-                ),
-                "",
-            )
-        except SkillNotFoundError:
-            return (
-                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime),
-                "",
-            )
-        except ToolException:
-            raise
-        except Exception as exc:
-            logger.exception(
-                "RunSkillScriptTool unexpected failure script_name=%s skill_name=%s",
-                normalized_script_name,
-                normalized_name,
-            )
-            raise ToolException(
-                f"Unable to run script '{normalized_script_name}' in skill '{normalized_name}' due to an internal error."
-            ) from exc
-
-    async def _run_skill_script(
-        self,
-        skill_name: str,
-        script_name: str,
-        arguments: dict[str, Any] | None,
-        runtime: ToolRuntime | None = None,
-    ) -> MyScriptExecutionResult:
-        """Execute the skill script and return results."""
-        normalized_name = skill_name.strip()
-
-        if not normalized_name:
-            raise ToolException("Skill name must not be empty.")
-
-        try:
-            # Use user-aware method if available (CompositeSkillLoader)
-            ctx: dict[str, Any] = runtime.context or {} if runtime else {}
-            user_id = ctx.get("user_id", "")
-            stripped_user_id = user_id.strip() if user_id else ""
-
-            if stripped_user_id:
-                result: MyScriptExecutionResult = await self.skill_loader.run_skill_script_for_user(
-                    user_id=stripped_user_id,
-                    skill_name=normalized_name,
-                    script_name=script_name,
-                    arguments=arguments,
-                )
-            else:
-                result = await self.skill_loader.run_skill_script(
-                    skill_name=normalized_name,
-                    script_name=script_name,
-                    arguments=arguments,
-                )
-
-            return result
-        except ToolException:
-            raise
-        except SkillNotFoundError:
-            raise
-        except ScriptNotFoundError:
-            raise
-        except Exception as exc:
-            logger.exception(
-                "RunSkillScriptTool failed for skill_name=%s script_name=%s",
-                normalized_name,
-                script_name,
-            )
-            raise ToolException(
-                f"Unable to run script '{script_name}' in skill '{normalized_name}' due to an internal error."
-            ) from exc
-
-    @staticmethod
-    async def _format_availability_message(
-        loader: SkillLoaderProtocol,
-        normalized_name: str,
-        script_name: str | None = None,
-        *,
-        runtime: ToolRuntime,
-    ) -> str:
-        """Format a message showing available skills or scripts."""
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
-        user_id = ctx.get("user_id", "")
-        stripped_user_id = user_id.strip() if user_id else ""
+        user_id = (ctx.get("user_id", "") or "").strip()
 
-        if script_name and normalized_name:
-            if stripped_user_id:
-                script_names = await loader.list_skill_script_names_for_user(
-                    user_id=stripped_user_id, skill_name=normalized_name
-                )
-            else:
-                script_names = loader.list_skill_script_names(normalized_name)
-            available_scripts = ", ".join(script_names)
-            return (
-                f"Script '{script_name}' not found in skill '{normalized_name}'. "
-                f"Available scripts: {available_scripts or 'none'}"
+        service = RunSkillScriptService(skill_loader=self.skill_loader)
+        try:
+            return await service.execute(
+                user_id=user_id,
+                skill_name=skill_name,
+                script_name=script_name,
+                arguments=arguments,
+                timeout=timeout,
             )
-
-        if stripped_user_id:
-            summaries = await loader.list_all_summaries(user_id=stripped_user_id, allowed_skills=set())
-            available_names = sorted(s.name for s in summaries)
-        else:
-            available_names = sorted(summary.name for summary in loader.list_skill_summaries(allowed_skills=set()))
-        available = ", ".join(available_names)
-
-        if normalized_name:
-            availability_message = f"Skill '{normalized_name}' not found."
-        else:
-            availability_message = "No skill name provided."
-
-        return f"{availability_message} Available skills: {available or 'None configured'}"
+        except SkillOperationError as exc:
+            raise ToolException(str(exc)) from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
-        """Get the friendly name of the skill."""
         skill_name: str = str(tool_input.get("skill_name") if tool_input else "")
         script_name: str = str(tool_input.get("script_name") if tool_input else "")
         return f"{Humanizer.humanize_tool_name(key=skill_name)} ({script_name})"

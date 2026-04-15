@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Literal, Optional, Tuple, Type, override
 
 from langchain_core.callbacks import (
@@ -14,10 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.loaders.user_skill_store import (
     UserSkillStore,
 )
-from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
-
-logger = logging.getLogger(__name__)
-logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+from langchain_ai_skills_framework.services.delete_skill_service import DeleteSkillService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 
 class DeleteSkillInput(BaseModel):
@@ -61,33 +58,14 @@ class DeleteSkillTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
-        user_id = ctx.get("user_id", "")
-        stripped_user_id = user_id.strip() if user_id else ""
-        if not stripped_user_id:
-            raise ToolException("user_id is required for delete_skill")
-        if not skill_name or not skill_name.strip():
-            raise ToolException("skill_name must be a non-empty string.")
-        if self.mongo_skill_loader is None:
-            raise ToolException("mongo_skill_loader is not configured.")
+        user_id = (ctx.get("user_id", "") or "").strip()
 
+        service = DeleteSkillService(mongo_skill_loader=self.mongo_skill_loader)
         try:
-            deleted = await self.mongo_skill_loader.delete_skill(
-                user_id=stripped_user_id,
-                skill_name=skill_name,
-            )
-            if deleted:
-                message = f"Skill '{skill_name}' deleted successfully."
-            else:
-                message = f"Skill '{skill_name}' not found — nothing to delete."
-            logger.info("DeleteSkillTool: %s (user=%s)", message, user_id)
+            message = await service.execute(user_id=user_id, skill_name=skill_name)
             return message, message
-        except Exception as exc:
-            logger.exception(
-                "DeleteSkillTool failed for skill_name=%s user=%s",
-                skill_name,
-                user_id,
-            )
-            raise ToolException(f"Unable to delete skill '{skill_name}' due to an internal error.") from exc
+        except SkillOperationError as exc:
+            raise ToolException(str(exc)) from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

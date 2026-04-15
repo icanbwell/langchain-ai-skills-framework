@@ -17,7 +17,7 @@ from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
 VALID_SKILL_CONTENT = "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
 
 
-def _make_loader_mock() -> UserSkillStore:
+def _make_loader_mock() -> AsyncMock:
     loader = AsyncMock(spec=UserSkillStore)
     loader.save_skill.return_value = MongoSkillDocument(
         user_id="user-1",
@@ -51,7 +51,7 @@ class TestSaveSkillTool:
         )
 
         assert "saved successfully" in result
-        loader.save_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
+        loader.save_skill.assert_awaited_once_with(
             user_id="user-1",
             skill_name="test-skill",
             content=VALID_SKILL_CONTENT,

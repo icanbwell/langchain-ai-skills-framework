@@ -30,7 +30,7 @@ def _make_doc(skill_name: str = "test-skill", shared: bool = True) -> MongoSkill
     )
 
 
-def _make_loader_mock(shared: bool = True) -> UserSkillStore:
+def _make_loader_mock(shared: bool = True) -> AsyncMock:
     loader = AsyncMock(spec=UserSkillStore)
     loader.set_skill_shared.return_value = _make_doc(shared=shared)
     return loader
@@ -52,9 +52,7 @@ class TestToggleSkillSharingTool:
         result, artifact = await tool._arun(skill_name="test-skill", shared=True, runtime=_make_runtime("user-1"))
 
         assert "shared" in result
-        loader.set_skill_shared.assert_awaited_once_with(  # type: ignore[attr-defined]
-            user_id="user-1", skill_name="test-skill", shared=True
-        )
+        loader.set_skill_shared.assert_awaited_once_with(user_id="user-1", skill_name="test-skill", shared=True)
 
     @pytest.mark.asyncio
     async def test_makes_skill_private(self) -> None:

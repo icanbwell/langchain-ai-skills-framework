@@ -59,23 +59,21 @@ class MongoUserSkillLoader:
     def __init__(
         self,
         *,
-        collection: AsyncIOMotorCollection,  # type: ignore[type-arg]
-        database: AsyncIOMotorDatabase | None = None,  # type: ignore[type-arg]
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        database: AsyncIOMotorDatabase[dict[str, object]] | None = None,
         snapshot_ttl_seconds: float | None = None,
     ) -> None:
         if collection is None:
             raise ValueError("collection must not be None")
         self._collection = collection
         self._database = database if database is not None else collection.database
-        self._resources_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
+        self._resources_collection: AsyncIOMotorCollection[dict[str, object]] = self._database[
             self.RESOURCES_COLLECTION_NAME
         ]
-        self._scripts_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
+        self._scripts_collection: AsyncIOMotorCollection[dict[str, object]] = self._database[
             self.SCRIPTS_COLLECTION_NAME
         ]
-        self._usage_collection: AsyncIOMotorCollection = self._database[  # type: ignore[type-arg]
-            self.USAGE_COLLECTION_NAME
-        ]
+        self._usage_collection: AsyncIOMotorCollection[dict[str, object]] = self._database[self.USAGE_COLLECTION_NAME]
 
         # --- TTL snapshot cache ---
         self._snapshot_ttl = snapshot_ttl_seconds if snapshot_ttl_seconds is not None else self.SNAPSHOT_TTL_SECONDS

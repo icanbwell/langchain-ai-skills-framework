@@ -29,9 +29,9 @@ COPY pyproject.toml uv.lock* /usr/src/langchain_ai_skills_framework/
 # If RUN_UV_LOCK is true, it regenerates the uv.lock file with the latest versions of dependencies
 RUN if [ "$RUN_UV_LOCK" = "true" ]; then echo "Locking dependencies" && rm -f uv.lock && uv lock --verbose; fi
 
-# Install all dependencies using the locked versions in uv.lock
+# Install all dependencies using the locked versions in uv.lock (skip building the project itself)
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache \
-    uv sync --frozen --all-extras --verbose
+    uv sync --frozen --all-extras --no-install-project --verbose
 
 # Copy lock file for retrieval
 RUN cp -f uv.lock /tmp/uv.lock

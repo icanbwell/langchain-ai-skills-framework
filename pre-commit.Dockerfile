@@ -11,7 +11,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy pyproject.toml and uv.lock
 COPY pyproject.toml uv.lock* ./
 
-# Install dependencies using uv (locked versions, skip building project itself)
+# Install all dependencies using the locked versions in uv.lock (skip building the project itself)
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache \
     uv sync --frozen --all-extras --no-install-project --verbose
 

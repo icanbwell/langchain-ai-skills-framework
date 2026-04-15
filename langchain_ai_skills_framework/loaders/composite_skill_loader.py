@@ -110,7 +110,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         try:
             return await self._user.get_skill_details(user_id=user_id, skill_name=normalized)
         except SkillNotFoundError:
-            pass
+            logger.debug(
+                "Skill '%s' not found in user skills for user '%s', trying shared skills",
+                normalized,
+                user_id,
+            )
 
         # 2. Shared DB skills from other users
         shared_snapshot = await self._user.load_shared_snapshot()

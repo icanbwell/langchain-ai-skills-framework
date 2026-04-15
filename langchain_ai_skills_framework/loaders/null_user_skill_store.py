@@ -22,10 +22,7 @@ _EMPTY_SNAPSHOT = SkillSnapshot(
     ordered_summaries=(),
 )
 
-_NOT_CONFIGURED_MSG = (
-    "User skill storage is not configured. "
-    "Set MONGO_SKILLS_URI or MONGO_URL to enable user skills."
-)
+_NOT_CONFIGURED_MSG = "User skill storage is not configured. Set MONGO_SKILLS_URI or MONGO_URL to enable user skills."
 
 
 class NullUserSkillStore:
@@ -53,9 +50,7 @@ class NullUserSkillStore:
     async def delete_skill(self, *, user_id: str, skill_name: str) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def set_skill_shared(
-        self, *, user_id: str, skill_name: str, shared: bool
-    ) -> MongoSkillDocument:
+    async def set_skill_shared(self, *, user_id: str, skill_name: str, shared: bool) -> MongoSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
     async def load_snapshot(self, *, user_id: str) -> SkillSnapshot:
@@ -65,9 +60,7 @@ class NullUserSkillStore:
         return _EMPTY_SNAPSHOT
 
     async def get_skill_details(self, *, user_id: str, skill_name: str) -> SkillDetails:
-        raise SkillNotFoundError(
-            f"Skill '{skill_name}' not found — user skill storage is not configured."
-        )
+        raise SkillNotFoundError(f"Skill '{skill_name}' not found — user skill storage is not configured.")
 
     async def skill_exists(self, *, user_id: str, skill_name: str) -> bool:
         return False
@@ -85,26 +78,16 @@ class NullUserSkillStore:
     ) -> MongoSkillResourceDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def delete_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> bool:
+    async def delete_resource(self, *, user_id: str, skill_name: str, resource_name: str) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def read_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
-        raise SkillNotFoundError(
-            f"Resource '{resource_name}' not found — user skill storage is not configured."
-        )
+    async def read_resource(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
+        raise SkillNotFoundError(f"Resource '{resource_name}' not found — user skill storage is not configured.")
 
-    async def list_resource_names(
-        self, *, user_id: str, skill_name: str
-    ) -> Sequence[str]:
+    async def list_resource_names(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         return ()
 
-    async def resource_exists(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> bool:
+    async def resource_exists(self, *, user_id: str, skill_name: str, resource_name: str) -> bool:
         return False
 
     # --- Script operations ---
@@ -120,39 +103,25 @@ class NullUserSkillStore:
     ) -> MongoSkillScriptDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def delete_script(
-        self, *, user_id: str, skill_name: str, script_name: str
-    ) -> bool:
+    async def delete_script(self, *, user_id: str, skill_name: str, script_name: str) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def read_script(
-        self, *, user_id: str, skill_name: str, script_name: str
-    ) -> str:
-        raise SkillNotFoundError(
-            f"Script '{script_name}' not found — user skill storage is not configured."
-        )
+    async def read_script(self, *, user_id: str, skill_name: str, script_name: str) -> str:
+        raise SkillNotFoundError(f"Script '{script_name}' not found — user skill storage is not configured.")
 
-    async def list_script_names(
-        self, *, user_id: str, skill_name: str
-    ) -> Sequence[str]:
+    async def list_script_names(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         return ()
 
-    async def script_exists(
-        self, *, user_id: str, skill_name: str, script_name: str
-    ) -> bool:
+    async def script_exists(self, *, user_id: str, skill_name: str, script_name: str) -> bool:
         return False
 
     # --- Usage tracking ---
 
-    async def record_skill_usage(
-        self, *, skill_name: str, user_id: str
-    ) -> MongoSkillUsageDocument:
+    async def record_skill_usage(self, *, skill_name: str, user_id: str) -> MongoSkillUsageDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
     async def get_skill_usage_count(self, *, skill_name: str) -> int:
         return 0
 
-    async def get_skill_usage_counts(
-        self, *, skill_names: Sequence[str]
-    ) -> Mapping[str, int]:
+    async def get_skill_usage_counts(self, *, skill_names: Sequence[str]) -> Mapping[str, int]:
         return {name: 0 for name in skill_names}

@@ -94,9 +94,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """Return shared skill summaries (user skills require async — see ``list_all_summaries``)."""
         return self._shared.list_skill_summaries(allowed_skills)
 
-    async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return merged summaries from shared + user skills."""
         snapshot = await self._merged_snapshot(user_id=user_id)
         return snapshot.ordered_summaries
@@ -105,16 +103,12 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """Get skill details from shared loader only (sync)."""
         return self._shared.get_skill_details(skill_name)
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
         """Get skill details checking user skills first, then shared DB, then GitHub."""
         normalized = normalize_skill_name(skill_name)
         # 1. User's own skills (highest precedence)
         try:
-            return await self._user.get_skill_details(
-                user_id=user_id, skill_name=normalized
-            )
+            return await self._user.get_skill_details(user_id=user_id, skill_name=normalized)
         except SkillNotFoundError:
             pass
 
@@ -150,9 +144,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             lines.append("<skill>")
             lines.append(f"<name>{escaped_name}</name>")
             lines.append(f"<description>{escaped_description}</description>")
-            lines.append(
-                f"<usage_count>{usage_counts.get(skill.name, 0)}</usage_count>"
-            )
+            lines.append(f"<usage_count>{usage_counts.get(skill.name, 0)}</usage_count>")
             author = skill.metadata.get("user_id") if skill.metadata else None
             if author:
                 escaped_author = escape(str(author), quote=True)
@@ -200,17 +192,13 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         return self._shared.read_skill_resource(skill_name, resource_name)
 
-    async def read_skill_resource_for_user(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
+    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         """Read a resource, checking user's MongoDB skills first, then shared loader."""
         normalized = normalize_skill_name(skill_name)
 
         # Check user's own skills first
         try:
-            return await self._user.read_resource(
-                user_id=user_id, skill_name=normalized, resource_name=resource_name
-            )
+            return await self._user.read_resource(user_id=user_id, skill_name=normalized, resource_name=resource_name)
         except SkillNotFoundError:
             logger.debug(
                 "Resource '%s' not found in user skill '%s' for user '%s', trying shared skills",
@@ -224,9 +212,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         if normalized in shared_snapshot.details_by_name:
             shared_detail = shared_snapshot.details_by_name[normalized]
             owner_user_id = str(
-                shared_detail.summary.metadata.get("user_id", "")
-                if shared_detail.summary.metadata
-                else ""
+                shared_detail.summary.metadata.get("user_id", "") if shared_detail.summary.metadata else ""
             )
             if owner_user_id:
                 try:
@@ -279,9 +265,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         if normalized in shared_snapshot.details_by_name:
             shared_detail = shared_snapshot.details_by_name[normalized]
             owner_user_id = str(
-                shared_detail.summary.metadata.get("user_id", "")
-                if shared_detail.summary.metadata
-                else ""
+                shared_detail.summary.metadata.get("user_id", "") if shared_detail.summary.metadata else ""
             )
             if owner_user_id:
                 try:
@@ -304,18 +288,14 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return self._shared.list_skill_script_names(skill_name)
 
-    async def list_skill_script_names_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> Sequence[str]:
+    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         """List scripts, merging user MongoDB scripts with shared loader scripts."""
         normalized = normalize_skill_name(skill_name)
         names: set[str] = set()
 
         # User's own scripts
         try:
-            user_scripts = await self._user.list_script_names(
-                user_id=user_id, skill_name=normalized
-            )
+            user_scripts = await self._user.list_script_names(user_id=user_id, skill_name=normalized)
             names.update(user_scripts)
         except (SkillNotFoundError, ValueError):
             pass
@@ -332,18 +312,14 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return self._shared.list_skill_resource_names(skill_name)
 
-    async def list_skill_resource_names_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> Sequence[str]:
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         """List resources, merging user MongoDB resources with shared loader resources."""
         normalized = normalize_skill_name(skill_name)
         names: set[str] = set()
 
         # User's own resources
         try:
-            user_resources = await self._user.list_resource_names(
-                user_id=user_id, skill_name=normalized
-            )
+            user_resources = await self._user.list_resource_names(user_id=user_id, skill_name=normalized)
             names.update(user_resources)
         except (SkillNotFoundError, ValueError):
             pass

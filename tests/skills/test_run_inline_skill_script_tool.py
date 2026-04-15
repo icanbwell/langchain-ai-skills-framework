@@ -83,9 +83,7 @@ def test_run_returns_summary_and_structured_output(
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [
-        ("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
-    ]
+    assert _StubExecutor.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,9 +103,7 @@ def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [
-        ("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
-    ]
+    assert _StubExecutor.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio
@@ -130,9 +126,7 @@ async def test_arun_returns_summary_and_structured_output(
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [
-        ("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
-    ]
+    assert _StubExecutor.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio
@@ -155,9 +149,7 @@ async def test_arun_uses_custom_script_name(
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [
-        ("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)
-    ]
+    assert _StubExecutor.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio

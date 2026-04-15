@@ -61,9 +61,7 @@ class SaveSkillResourceTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
     async def _arun(
@@ -97,9 +95,7 @@ class SaveSkillResourceTool(BaseTool):
                 content=content,
                 modified_by=stripped_user_id,
             )
-            message = (
-                f"Resource '{doc.resource_name}' saved for skill '{doc.skill_name}'."
-            )
+            message = f"Resource '{doc.resource_name}' saved for skill '{doc.skill_name}'."
             logger.info("SaveSkillResourceTool: %s (user=%s)", message, user_id)
             return message, message
         except Exception as exc:
@@ -117,8 +113,4 @@ class SaveSkillResourceTool(BaseTool):
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         skill_name = str(tool_input.get("skill_name", "")) if tool_input else ""
         resource_name = str(tool_input.get("resource_name", "")) if tool_input else ""
-        return (
-            f"Save Resource: {resource_name} ({skill_name})"
-            if resource_name
-            else "Save Resource"
-        )
+        return f"Save Resource: {resource_name} ({skill_name})" if resource_name else "Save Resource"

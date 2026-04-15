@@ -30,9 +30,7 @@ class TestDeleteSkillTool:
         loader = _make_loader_mock(deleted=True)
         tool = DeleteSkillTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(
-            skill_name="test-skill", runtime=_make_runtime("user-1")
-        )
+        result, artifact = await tool._arun(skill_name="test-skill", runtime=_make_runtime("user-1"))
 
         assert "deleted successfully" in result
         loader.delete_skill.assert_awaited_once_with(  # type: ignore[attr-defined]

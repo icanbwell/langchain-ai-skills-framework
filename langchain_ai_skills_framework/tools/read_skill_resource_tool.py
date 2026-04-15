@@ -68,9 +68,7 @@ class ReadSkillResourceTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     async def _arun(
         self,
@@ -84,9 +82,7 @@ class ReadSkillResourceTool(BaseTool):
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
-                await self._format_availability_message(
-                    self.skill_loader, normalized_name, runtime=runtime
-                )
+                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
             )
 
         normalized_resource_name = resource_name.strip()
@@ -105,17 +101,13 @@ class ReadSkillResourceTool(BaseTool):
         )
         return resource, resource
 
-    async def _load_skill_resource(
-        self, *, skill_name: str, resource_name: str, runtime: ToolRuntime
-    ) -> str:
+    async def _load_skill_resource(self, *, skill_name: str, resource_name: str, runtime: ToolRuntime) -> str:
         """Load resource content and raise when a skill cannot be resolved."""
         normalized_name = skill_name.strip()
 
         if not normalized_name:
             raise ToolException(
-                await self._format_availability_message(
-                    self.skill_loader, normalized_name, runtime=runtime
-                )
+                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
             )
 
         try:
@@ -179,15 +171,10 @@ class ReadSkillResourceTool(BaseTool):
         stripped_user_id = user_id.strip() if user_id else ""
 
         if stripped_user_id:
-            summaries = await loader.list_all_summaries(
-                user_id=stripped_user_id, allowed_skills=set()
-            )
+            summaries = await loader.list_all_summaries(user_id=stripped_user_id, allowed_skills=set())
             available_names = sorted(s.name for s in summaries)
         else:
-            available_names = sorted(
-                summary.name
-                for summary in loader.list_skill_summaries(allowed_skills=set())
-            )
+            available_names = sorted(summary.name for summary in loader.list_skill_summaries(allowed_skills=set()))
         available = ", ".join(available_names)
 
         if normalized_name:
@@ -195,9 +182,7 @@ class ReadSkillResourceTool(BaseTool):
         else:
             availability_message = "No skill name provided."
 
-        return (
-            f"{availability_message} Available skills: {available or 'None configured'}"
-        )
+        return f"{availability_message} Available skills: {available or 'None configured'}"
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

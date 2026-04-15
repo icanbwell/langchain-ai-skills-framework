@@ -39,8 +39,7 @@ class ToggleSkillSharingTool(BaseTool):
 
     name: str = "toggle_skill_sharing"
     description: str = (
-        "Toggle whether a saved skill is shared with all users or private to the owner. "
-        "The skill must already exist."
+        "Toggle whether a saved skill is shared with all users or private to the owner. The skill must already exist."
     )
     args_schema: Type[BaseModel] = ToggleSkillSharingInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
@@ -55,9 +54,7 @@ class ToggleSkillSharingTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
     async def _arun(
@@ -86,9 +83,7 @@ class ToggleSkillSharingTool(BaseTool):
             )
             state = "shared" if doc.shared else "private"
             message = f"Skill '{doc.skill_name}' is now {state}."
-            logger.info(
-                "ToggleSkillSharingTool: %s (user=%s)", message, stripped_user_id
-            )
+            logger.info("ToggleSkillSharingTool: %s (user=%s)", message, stripped_user_id)
             return message, message
         except Exception as exc:
             logger.exception(
@@ -96,16 +91,9 @@ class ToggleSkillSharingTool(BaseTool):
                 skill_name,
                 user_id,
             )
-            raise ToolException(
-                f"Unable to update sharing for skill '{skill_name}' "
-                f"due to an internal error."
-            ) from exc
+            raise ToolException(f"Unable to update sharing for skill '{skill_name}' due to an internal error.") from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         skill_name = str(tool_input.get("skill_name", "")) if tool_input else ""
-        return (
-            f"Toggle Skill Sharing: {skill_name}"
-            if skill_name
-            else "Toggle Skill Sharing"
-        )
+        return f"Toggle Skill Sharing: {skill_name}" if skill_name else "Toggle Skill Sharing"

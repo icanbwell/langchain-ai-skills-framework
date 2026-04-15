@@ -31,9 +31,7 @@ class RunPythonScriptInput(BaseModel):
         ),
     )
     script_name: str = Field(
-        description=(
-            "Name to identify the script being executed (e.g., 'data_processing.py')."
-        ),
+        description=("Name to identify the script being executed (e.g., 'data_processing.py')."),
     )
     arguments: dict[str, Any] | None = Field(
         default=None,
@@ -42,9 +40,7 @@ class RunPythonScriptInput(BaseModel):
             The keys and values should match what the script expects."""
         ),
     )
-    timeout: int = Field(
-        description="Timeout for the script execution in seconds.", default=30
-    )
+    timeout: int = Field(description="Timeout for the script execution in seconds.", default=30)
     runtime: ToolRuntime = Field(exclude=True)
 
 

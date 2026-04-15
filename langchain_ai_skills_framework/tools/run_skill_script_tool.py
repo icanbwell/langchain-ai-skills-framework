@@ -49,9 +49,7 @@ class RunSkillScriptInput(BaseModel):
             For example, if the script is designed to take parameters like {"input_file": "data.csv", "threshold": 0.5}, you would provide those here."""
         ),
     )
-    timeout: int = Field(
-        description="Timeout for the script execution in seconds.", default=30
-    )
+    timeout: int = Field(description="Timeout for the script execution in seconds.", default=30)
     runtime: ToolRuntime
 
 
@@ -92,9 +90,7 @@ class RunSkillScriptTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     async def _arun(
         self,
@@ -110,9 +106,7 @@ class RunSkillScriptTool(BaseTool):
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
-                await self._format_availability_message(
-                    self.skill_loader, normalized_name, runtime=runtime
-                )
+                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
             )
 
         normalized_script_name = script_name.strip()
@@ -159,9 +153,7 @@ class RunSkillScriptTool(BaseTool):
             )
         except SkillNotFoundError:
             return (
-                await self._format_availability_message(
-                    self.skill_loader, normalized_name, runtime=runtime
-                ),
+                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime),
                 "",
             )
         except ToolException:
@@ -196,13 +188,11 @@ class RunSkillScriptTool(BaseTool):
             stripped_user_id = user_id.strip() if user_id else ""
 
             if stripped_user_id:
-                result: MyScriptExecutionResult = (
-                    await self.skill_loader.run_skill_script_for_user(
-                        user_id=stripped_user_id,
-                        skill_name=normalized_name,
-                        script_name=script_name,
-                        arguments=arguments,
-                    )
+                result: MyScriptExecutionResult = await self.skill_loader.run_skill_script_for_user(
+                    user_id=stripped_user_id,
+                    skill_name=normalized_name,
+                    script_name=script_name,
+                    arguments=arguments,
                 )
             else:
                 result = await self.skill_loader.run_skill_script(
@@ -250,15 +240,10 @@ class RunSkillScriptTool(BaseTool):
         stripped_user_id = user_id.strip() if user_id else ""
 
         if stripped_user_id:
-            summaries = await loader.list_all_summaries(
-                user_id=stripped_user_id, allowed_skills=set()
-            )
+            summaries = await loader.list_all_summaries(user_id=stripped_user_id, allowed_skills=set())
             available_names = sorted(s.name for s in summaries)
         else:
-            available_names = sorted(
-                summary.name
-                for summary in loader.list_skill_summaries(allowed_skills=set())
-            )
+            available_names = sorted(summary.name for summary in loader.list_skill_summaries(allowed_skills=set()))
         available = ", ".join(available_names)
 
         if normalized_name:
@@ -266,9 +251,7 @@ class RunSkillScriptTool(BaseTool):
         else:
             availability_message = "No skill name provided."
 
-        return (
-            f"{availability_message} Available skills: {available or 'None configured'}"
-        )
+        return f"{availability_message} Available skills: {available or 'None configured'}"
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

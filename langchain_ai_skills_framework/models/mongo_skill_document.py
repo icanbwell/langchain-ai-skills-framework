@@ -150,10 +150,6 @@ class MongoSkillDocument(BaseModel):
             content=data["content"],
             shared=data.get("shared", False),
             modified_by=data.get("modified_by", ""),
-            date_created=data.get(
-                "date_created", data.get("created_at", datetime.now(timezone.utc))
-            ),
-            date_modified=data.get(
-                "date_modified", data.get("updated_at", datetime.now(timezone.utc))
-            ),
+            date_created=data.get("date_created", data.get("created_at", datetime.now(timezone.utc))),
+            date_modified=data.get("date_modified", data.get("updated_at", datetime.now(timezone.utc))),
         )

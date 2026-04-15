@@ -13,9 +13,7 @@ _SKILLS_CACHE_TIMEOUT_ENV_VAR: str = "SKILLS_CACHE_TIMEOUT_SECONDS"
 _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS: int = 60 * 60
 
 
-class LangchainAISkillsFrameworkEnvironmentVariables(
-    EnvironmentVariables, SkillLoaderEnvironmentVariables
-):
+class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, SkillLoaderEnvironmentVariables):
     @property
     def skills_cache_timeout_seconds(self) -> int:
         """Return a validated TTL in seconds for skill reload behavior."""
@@ -117,18 +115,12 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
     @property
     def mongo_skills_db_name(self) -> str:
         """Database name for skills storage (default: ``llm_storage``)."""
-        return (
-            os.environ.get("MONGO_SKILLS_DB_NAME")
-            or os.environ.get("MONGO_DB_NAME")
-            or "llm_storage"
-        )
+        return os.environ.get("MONGO_SKILLS_DB_NAME") or os.environ.get("MONGO_DB_NAME") or "llm_storage"
 
     @property
     def mongo_skills_db_username(self) -> str | None:
         """Username for MongoDB skills storage authentication."""
-        val = os.environ.get("MONGO_SKILLS_DB_USERNAME") or os.environ.get(
-            "MONGO_DB_USERNAME"
-        )
+        val = os.environ.get("MONGO_SKILLS_DB_USERNAME") or os.environ.get("MONGO_DB_USERNAME")
         if not val or not val.strip():
             return None
         return val.strip()
@@ -136,9 +128,7 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
     @property
     def mongo_skills_db_password(self) -> str | None:
         """Password for MongoDB skills storage authentication."""
-        val = os.environ.get("MONGO_SKILLS_DB_PASSWORD") or os.environ.get(
-            "MONGO_DB_PASSWORD"
-        )
+        val = os.environ.get("MONGO_SKILLS_DB_PASSWORD") or os.environ.get("MONGO_DB_PASSWORD")
         if not val or not val.strip():
             return None
         return val.strip()

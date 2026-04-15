@@ -64,9 +64,7 @@ class MyScriptExecutor:
             raise PathSecurityError(f"Cannot resolve skill base directory: {e}") from e
 
         candidate_script_path = (
-            script_path
-            if script_path.is_absolute()
-            else resolved_skill_base_dir.joinpath(script_path)
+            script_path if script_path.is_absolute() else resolved_skill_base_dir.joinpath(script_path)
         )
 
         # Resolve to absolute path to prevent directory traversal
@@ -102,18 +100,14 @@ class MyScriptExecutor:
                 except (ValueError, OSError, RuntimeError):
                     continue
             if not is_in_allowed_dir:
-                raise PathSecurityError(
-                    f"Script path {resolved_path} is not in allowed directories"
-                )
+                raise PathSecurityError(f"Script path {resolved_path} is not in allowed directories")
 
         # Check file permissions (Unix-like systems)
         try:
             stat_info = resolved_path.stat()
             # Check if file is world-writable (dangerous)
             if stat_info.st_mode & 0o002:
-                raise ScriptPermissionError(
-                    f"Script {resolved_path} is world-writable (insecure)"
-                )
+                raise ScriptPermissionError(f"Script {resolved_path} is world-writable (insecure)")
         except OSError:
             pass  # Permission check not available on this system
 
@@ -122,10 +116,7 @@ class MyScriptExecutor:
     def _check_output_size(self, output: bytes) -> None:
         """Prevent memory exhaustion from large outputs"""
         if len(output) > self.max_output_size:
-            raise Exception(
-                f"Script output too large: {len(output)} bytes "
-                f"(max {self.max_output_size})"
-            )
+            raise Exception(f"Script output too large: {len(output)} bytes (max {self.max_output_size})")
 
     def _validate_argument_keys(self, arguments: dict[str, Any]) -> None:
         for key in arguments:
@@ -148,10 +139,7 @@ class MyScriptExecutor:
 
         # Log execution attempt
         logger.info(
-            f"Script execution requested: "
-            f"script={script_name}, "
-            f"path={validated_script_path}, "
-            f"timeout={timeout}s"
+            f"Script execution requested: script={script_name}, path={validated_script_path}, timeout={timeout}s"
         )
 
         # Start timing
@@ -224,12 +212,8 @@ class MyScriptExecutor:
                 )
 
             if scope.cancelled_caught or result is None:
-                logger.error(
-                    f"Script '{script_name}' timed out after {timeout} seconds"
-                )
-                raise Exception(
-                    f"Script '{script_name}' timed out after {timeout} seconds"
-                )
+                logger.error(f"Script '{script_name}' timed out after {timeout} seconds")
+                raise Exception(f"Script '{script_name}' timed out after {timeout} seconds")
 
             # Check output size before decoding
             self._check_output_size(result.stdout)
@@ -244,14 +228,8 @@ class MyScriptExecutor:
                 # Log dependency installation info if present
                 if use_uv and stderr:
                     # uv outputs dependency info to stderr
-                    if (
-                        "Resolved" in stderr
-                        or "Installed" in stderr
-                        or "dependencies" in stderr.lower()
-                    ):
-                        logger.info(
-                            f"[UV] Dependency installation info for {script_name}:"
-                        )
+                    if "Resolved" in stderr or "Installed" in stderr or "dependencies" in stderr.lower():
+                        logger.info(f"[UV] Dependency installation info for {script_name}:")
                         logger.debug(stderr)
 
             if result.returncode != 0:
@@ -260,10 +238,7 @@ class MyScriptExecutor:
             stdout = output.strip()
 
         except PermissionError as e:
-            logger.error(
-                f"Permission denied executing script '{script_name}' at "
-                f"{validated_script_path}: {e}"
-            )
+            logger.error(f"Permission denied executing script '{script_name}' at {validated_script_path}: {e}")
             raise Exception(
                 f"Permission denied executing script '{script_name}' at "
                 f"{validated_script_path}. Ensure the script and uv binary have "
@@ -271,9 +246,7 @@ class MyScriptExecutor:
             ) from e
         except FileNotFoundError as e:
             logger.error(f"Command not found for script '{script_name}': {e}")
-            raise Exception(
-                f"Command not found. Ensure 'uv' is installed and in PATH: {e}"
-            ) from e
+            raise Exception(f"Command not found. Ensure 'uv' is installed and in PATH: {e}") from e
         except OSError as e:
             logger.error(f"Failed to execute script '{script_name}': {e}")
             raise Exception(f"Failed to execute script '{script_name}': {e}") from e
@@ -378,9 +351,7 @@ class MyScriptExecutor:
             try:
                 temp_script_path.chmod(0o700)
             except OSError as e:
-                logger.warning(
-                    f"Failed to set permissions for temporary script file: {temp_script_path} {e}"
-                )
+                logger.warning(f"Failed to set permissions for temporary script file: {temp_script_path} {e}")
                 pass
 
             return await self._execute_validated_script(
@@ -396,6 +367,4 @@ class MyScriptExecutor:
                 try:
                     temp_script_path.unlink(missing_ok=True)
                 except OSError:
-                    logger.warning(
-                        f"Failed to clean up temporary script file: {temp_script_path}"
-                    )
+                    logger.warning(f"Failed to clean up temporary script file: {temp_script_path}")

@@ -54,9 +54,7 @@ class LoadSkillTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     async def _arun(
         self,
@@ -69,25 +67,19 @@ class LoadSkillTool(BaseTool):
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
-                await self._format_availability_message(
-                    self.skill_loader, normalized_name, runtime=runtime
-                )
+                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
             )
 
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = ctx.get("user_id", "")
         stripped_user_id = user_id.strip() if user_id else ""
 
-        skill = await self._load_skill(
-            normalized_name, user_id=stripped_user_id, runtime=runtime
-        )
+        skill = await self._load_skill(normalized_name, user_id=stripped_user_id, runtime=runtime)
         logger.debug("LoadSkillTool (async): loaded skill_name=%s", normalized_name)
 
         if self.user_skill_store and stripped_user_id:
             try:
-                await self.user_skill_store.record_skill_usage(
-                    skill_name=normalized_name, user_id=stripped_user_id
-                )
+                await self.user_skill_store.record_skill_usage(skill_name=normalized_name, user_id=stripped_user_id)
             except Exception:
                 logger.debug(
                     "Failed to record skill usage for skill_name=%s",
@@ -97,43 +89,29 @@ class LoadSkillTool(BaseTool):
 
         return skill, skill
 
-    async def _load_skill(
-        self, skill_name: str, *, user_id: str, runtime: ToolRuntime
-    ) -> str:
+    async def _load_skill(self, skill_name: str, *, user_id: str, runtime: ToolRuntime) -> str:
         """Load skill content checking user skills first, then shared."""
         normalized_name = skill_name.strip()
 
         if not normalized_name:
             raise ToolException(
-                await self._format_availability_message(
-                    self.skill_loader, normalized_name, runtime=runtime
-                )
+                await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
             )
 
         try:
             if user_id:
-                skill = await self.skill_loader.get_skill_details_for_user(
-                    user_id=user_id, skill_name=normalized_name
-                )
+                skill = await self.skill_loader.get_skill_details_for_user(user_id=user_id, skill_name=normalized_name)
             else:
                 skill = self.skill_loader.get_skill_details(skill_name=normalized_name)
-            author = (
-                skill.summary.metadata.get("user_id")
-                if skill.summary.metadata
-                else None
-            )
+            author = skill.summary.metadata.get("user_id") if skill.summary.metadata else None
             if author:
                 return f"Author: {author}\n\n{skill.content}"
             return f"{skill.content}"
         except SkillNotFoundError:
-            return await self._format_availability_message(
-                self.skill_loader, normalized_name, runtime=runtime
-            )
+            return await self._format_availability_message(self.skill_loader, normalized_name, runtime=runtime)
         except Exception as exc:
             logger.exception("LoadSkillTool failed for skill_name=%s", normalized_name)
-            raise ToolException(
-                f"Unable to load skill '{normalized_name}' due to an internal error."
-            ) from exc
+            raise ToolException(f"Unable to load skill '{normalized_name}' due to an internal error.") from exc
 
     @staticmethod
     async def _format_availability_message(
@@ -148,26 +126,15 @@ class LoadSkillTool(BaseTool):
         stripped_user_id = user_id.strip() if user_id else ""
 
         if stripped_user_id:
-            summaries = await loader.list_all_summaries(
-                user_id=stripped_user_id, allowed_skills=set()
-            )
+            summaries = await loader.list_all_summaries(user_id=stripped_user_id, allowed_skills=set())
             available_names = sorted(s.name for s in summaries)
         else:
-            available_names = sorted(
-                summary.name
-                for summary in loader.list_skill_summaries(allowed_skills=set())
-            )
+            available_names = sorted(summary.name for summary in loader.list_skill_summaries(allowed_skills=set()))
         available = ", ".join(available_names)
 
-        availability_message = (
-            f"Skill '{normalized_name}' not found."
-            if normalized_name
-            else "No skill name provided."
-        )
+        availability_message = f"Skill '{normalized_name}' not found." if normalized_name else "No skill name provided."
 
-        return (
-            f"{availability_message} Available skills: {available or 'None configured'}"
-        )
+        return f"{availability_message} Available skills: {available or 'None configured'}"
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

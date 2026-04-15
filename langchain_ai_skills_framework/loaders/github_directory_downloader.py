@@ -60,8 +60,7 @@ class GithubDirectoryDownloader:
         cache_root.mkdir(parents=True, exist_ok=True)
         key = f"{git_location.owner}/{git_location.repository}:{ref}:{source_path}"
         cache_dir_name = (
-            f"{git_location.owner}-{git_location.repository}"
-            f"-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
+            f"{git_location.owner}-{git_location.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
         )
         target_dir = (cache_root / cache_dir_name).resolve()
         if not str(target_dir).startswith(str(cache_root)):
@@ -70,9 +69,7 @@ class GithubDirectoryDownloader:
         # If the on-disk cache is fresh, skip the download.  Multiple
         # workers may check this concurrently — that is fine; the worst
         # case is a few redundant downloads whose atomic swaps are harmless.
-        if cache_ttl_seconds > 0 and self._is_cache_fresh(
-            target_dir, cache_ttl_seconds
-        ):
+        if cache_ttl_seconds > 0 and self._is_cache_fresh(target_dir, cache_ttl_seconds):
             logger.debug(
                 "Cache for %s is fresh — skipping download",
                 source_uri,
@@ -136,9 +133,7 @@ class GithubDirectoryDownloader:
                         exc,
                     )
                     time.sleep(delay)
-        raise ValueError(
-            f"Download failed after {self._MAX_RETRIES} attempts: {last_exc}"
-        ) from last_exc
+        raise ValueError(f"Download failed after {self._MAX_RETRIES} attempts: {last_exc}") from last_exc
 
     def _fetch_to_directory(
         self,
@@ -187,9 +182,7 @@ class GithubDirectoryDownloader:
             raise
         except Exception as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            raise ValueError(
-                "Unable to download github:// directory into cache"
-            ) from exc
+            raise ValueError("Unable to download github:// directory into cache") from exc
 
         # Atomic swap: staging → target, target → old
         if old_dir.exists():
@@ -209,9 +202,7 @@ class GithubDirectoryDownloader:
         """
         parsed = urlsplit(source_uri)
         if parsed.scheme != "github":
-            raise ValueError(
-                f"URI must use the github:// scheme, e.g. {cls._github_uri_example}"
-            )
+            raise ValueError(f"URI must use the github:// scheme, e.g. {cls._github_uri_example}")
         if parsed.fragment:
             raise ValueError("github:// URI must not include a fragment")
 
@@ -219,9 +210,7 @@ class GithubDirectoryDownloader:
         unsupported_query_params = set(query_values.keys()) - {"ref"}
         if unsupported_query_params:
             unsupported = ", ".join(sorted(unsupported_query_params))
-            raise ValueError(
-                f"github:// URI supports only '?ref=' query parameter; got: {unsupported}"
-            )
+            raise ValueError(f"github:// URI supports only '?ref=' query parameter; got: {unsupported}")
 
         ref_values = query_values.get("ref")
         if ref_values and len(ref_values) > 1:
@@ -236,43 +225,26 @@ class GithubDirectoryDownloader:
         if ":" in owner:
             repository_without_ref, separator, branch = owner.partition("@")
             if ":" not in repository_without_ref:
-                raise ValueError(
-                    f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}"
-                )
+                raise ValueError(f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}")
             legacy_owner, repo = repository_without_ref.split(":", 1)
             if not legacy_owner or not repo:
-                raise ValueError(
-                    f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}"
-                )
-            if (
-                branch_from_query is not None
-                and separator
-                and branch
-                and branch_from_query != branch
-            ):
-                raise ValueError(
-                    "github:// URI ref mismatch between legacy '@branch' and '?ref='"
-                )
+                raise ValueError(f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}")
+            if branch_from_query is not None and separator and branch and branch_from_query != branch:
+                raise ValueError("github:// URI ref mismatch between legacy '@branch' and '?ref='")
             owner = legacy_owner
             path_value = "/".join(path_parts)
             normalized_branch = (
-                branch_from_query
-                if branch_from_query is not None
-                else (branch if separator and branch else None)
+                branch_from_query if branch_from_query is not None else (branch if separator and branch else None)
             )
         else:
             if not owner or not path_parts:
-                raise ValueError(
-                    f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}"
-                )
+                raise ValueError(f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}")
             repo = path_parts[0]
             path_value = "/".join(path_parts[1:])
             normalized_branch = branch_from_query
 
         if not owner or not repo:
-            raise ValueError(
-                f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}"
-            )
+            raise ValueError(f"github:// URI must include owner and repo, e.g. {cls._github_uri_example}")
 
         return GitLocation(
             repo_url=f"https://github.com/{owner}/{repo}.git",

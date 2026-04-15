@@ -36,9 +36,7 @@ class SkillMiddleware(AgentMiddleware):
         if skill_loader is None:
             raise ValueError("skill_loader must not be None")
         if not isinstance(skill_loader, SkillLoaderProtocol):
-            raise TypeError(
-                f"skill_loader must be SkillLoaderProtocol, got {type(skill_loader)}"
-            )
+            raise TypeError(f"skill_loader must be SkillLoaderProtocol, got {type(skill_loader)}")
 
     async def awrap_model_call(
         self,
@@ -102,7 +100,5 @@ class SkillMiddleware(AgentMiddleware):
         if isinstance(content, (list, tuple)):
             return any(cls._content_contains_skills_marker(item) for item in content)
         if isinstance(content, dict):
-            return any(
-                cls._content_contains_skills_marker(item) for item in content.values()
-            )
+            return any(cls._content_contains_skills_marker(item) for item in content.values())
         return False

@@ -78,11 +78,7 @@ class MongoUserSkillLoader:
         ]
 
         # --- TTL snapshot cache ---
-        self._snapshot_ttl = (
-            snapshot_ttl_seconds
-            if snapshot_ttl_seconds is not None
-            else self.SNAPSHOT_TTL_SECONDS
-        )
+        self._snapshot_ttl = snapshot_ttl_seconds if snapshot_ttl_seconds is not None else self.SNAPSHOT_TTL_SECONDS
         self._user_snapshot_cache: dict[str, tuple[SkillSnapshot, float]] = {}
         self._shared_snapshot_cache: tuple[SkillSnapshot, float] | None = None
         self._cache_lock = asyncio.Lock()
@@ -158,9 +154,7 @@ class MongoUserSkillLoader:
         self.invalidate_cache(user_id=user_id)
         return MongoSkillDocument.from_mongo_dict(raw)
 
-    async def set_skill_shared(
-        self, *, user_id: str, skill_name: str, shared: bool
-    ) -> MongoSkillDocument:
+    async def set_skill_shared(self, *, user_id: str, skill_name: str, shared: bool) -> MongoSkillDocument:
         """Toggle the shared flag on an existing skill."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -175,9 +169,7 @@ class MongoUserSkillLoader:
             return_document=ReturnDocument.AFTER,
         )
         if raw is None:
-            raise SkillNotFoundError(
-                f"Skill '{skill_name}' not found for user '{user_id}'"
-            )
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found for user '{user_id}'")
         self.invalidate_cache(user_id=user_id)
         return MongoSkillDocument.from_mongo_dict(raw)
 
@@ -191,16 +183,10 @@ class MongoUserSkillLoader:
         normalized_name = self._normalize_skill_name(skill_name)
 
         # Delete associated resources and scripts
-        await self._resources_collection.delete_many(
-            {"user_id": user_id, "skill_name": normalized_name}
-        )
-        await self._scripts_collection.delete_many(
-            {"user_id": user_id, "skill_name": normalized_name}
-        )
+        await self._resources_collection.delete_many({"user_id": user_id, "skill_name": normalized_name})
+        await self._scripts_collection.delete_many({"user_id": user_id, "skill_name": normalized_name})
 
-        result = await self._collection.delete_one(
-            {"user_id": user_id, "skill_name": normalized_name}
-        )
+        result = await self._collection.delete_one({"user_id": user_id, "skill_name": normalized_name})
         self.invalidate_cache(user_id=user_id)
         return result.deleted_count > 0
 
@@ -209,9 +195,7 @@ class MongoUserSkillLoader:
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
         normalized_name = self._normalize_skill_name(skill_name)
-        count = await self._collection.count_documents(
-            {"user_id": user_id, "skill_name": normalized_name}, limit=1
-        )
+        count = await self._collection.count_documents({"user_id": user_id, "skill_name": normalized_name}, limit=1)
         return count > 0
 
     # --- Resource write operations -------------------------------------------
@@ -260,9 +244,7 @@ class MongoUserSkillLoader:
         )
         return MongoSkillResourceDocument.from_mongo_dict(raw)
 
-    async def delete_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> bool:
+    async def delete_resource(self, *, user_id: str, skill_name: str, resource_name: str) -> bool:
         """Delete a resource from a user's skill. Returns True if removed."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -276,9 +258,7 @@ class MongoUserSkillLoader:
         )
         return result.deleted_count > 0
 
-    async def read_resource(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
+    async def read_resource(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         """Read a resource's content. Raises SkillNotFoundError if not found."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -296,9 +276,7 @@ class MongoUserSkillLoader:
             )
         return str(raw["content"])
 
-    async def list_resource_names(
-        self, *, user_id: str, skill_name: str
-    ) -> Sequence[str]:
+    async def list_resource_names(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         """List all resource names for a user's skill."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -311,9 +289,7 @@ class MongoUserSkillLoader:
             names.append(raw["resource_name"])
         return sorted(names)
 
-    async def resource_exists(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> bool:
+    async def resource_exists(self, *, user_id: str, skill_name: str, resource_name: str) -> bool:
         """Return True if the resource exists."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -374,9 +350,7 @@ class MongoUserSkillLoader:
         )
         return MongoSkillScriptDocument.from_mongo_dict(raw)
 
-    async def delete_script(
-        self, *, user_id: str, skill_name: str, script_name: str
-    ) -> bool:
+    async def delete_script(self, *, user_id: str, skill_name: str, script_name: str) -> bool:
         """Delete a script from a user's skill. Returns True if removed."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -390,9 +364,7 @@ class MongoUserSkillLoader:
         )
         return result.deleted_count > 0
 
-    async def read_script(
-        self, *, user_id: str, skill_name: str, script_name: str
-    ) -> str:
+    async def read_script(self, *, user_id: str, skill_name: str, script_name: str) -> str:
         """Read a script's content. Raises SkillNotFoundError if not found."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -405,14 +377,10 @@ class MongoUserSkillLoader:
             }
         )
         if raw is None:
-            raise SkillNotFoundError(
-                f"Script '{script_name}' not found in skill '{skill_name}' for user '{user_id}'"
-            )
+            raise SkillNotFoundError(f"Script '{script_name}' not found in skill '{skill_name}' for user '{user_id}'")
         return str(raw["content"])
 
-    async def list_script_names(
-        self, *, user_id: str, skill_name: str
-    ) -> Sequence[str]:
+    async def list_script_names(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         """List all script names for a user's skill."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -425,9 +393,7 @@ class MongoUserSkillLoader:
             names.append(raw["script_name"])
         return sorted(names)
 
-    async def script_exists(
-        self, *, user_id: str, skill_name: str, script_name: str
-    ) -> bool:
+    async def script_exists(self, *, user_id: str, skill_name: str, script_name: str) -> bool:
         """Return True if the script exists."""
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
@@ -462,9 +428,7 @@ class MongoUserSkillLoader:
                 snapshot, loaded_at = cached
                 if (now - loaded_at) < self._snapshot_ttl:
                     return snapshot
-            snapshot = await self._build_snapshot(
-                query={"user_id": user_id}, owner_label=user_id
-            )
+            snapshot = await self._build_snapshot(query={"user_id": user_id}, owner_label=user_id)
             self._user_snapshot_cache[user_id] = (snapshot, time.monotonic())
             return snapshot
 
@@ -481,9 +445,7 @@ class MongoUserSkillLoader:
                 snapshot, loaded_at = self._shared_snapshot_cache
                 if (now - loaded_at) < self._snapshot_ttl:
                     return snapshot
-            snapshot = await self._build_snapshot(
-                query={"shared": True}, owner_label="shared"
-            )
+            snapshot = await self._build_snapshot(query={"shared": True}, owner_label="shared")
             self._shared_snapshot_cache = (snapshot, time.monotonic())
             return snapshot
 
@@ -493,9 +455,7 @@ class MongoUserSkillLoader:
             self._user_snapshot_cache.pop(user_id, None)
         self._shared_snapshot_cache = None
 
-    async def _build_snapshot(
-        self, *, query: dict[str, object], owner_label: str
-    ) -> SkillSnapshot:
+    async def _build_snapshot(self, *, query: dict[str, object], owner_label: str) -> SkillSnapshot:
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
 
@@ -529,13 +489,9 @@ class MongoUserSkillLoader:
         if not user_id or not user_id.strip():
             raise ValueError("user_id must be a non-empty string")
         normalized_name = self._normalize_skill_name(skill_name)
-        raw = await self._collection.find_one(
-            {"user_id": user_id, "skill_name": normalized_name}
-        )
+        raw = await self._collection.find_one({"user_id": user_id, "skill_name": normalized_name})
         if raw is None:
-            raise SkillNotFoundError(
-                f"Skill '{skill_name}' not found for user '{user_id}'"
-            )
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found for user '{user_id}'")
         doc = MongoSkillDocument.from_mongo_dict(raw)
         summary = SkillSummary(
             name=doc.skill_name,
@@ -581,9 +537,7 @@ class MongoUserSkillLoader:
 
     # --- Usage tracking -------------------------------------------------------
 
-    async def record_skill_usage(
-        self, *, skill_name: str, user_id: str
-    ) -> MongoSkillUsageDocument:
+    async def record_skill_usage(self, *, skill_name: str, user_id: str) -> MongoSkillUsageDocument:
         """Record a skill usage event."""
         doc = MongoSkillUsageDocument(skill_name=skill_name, user_id=user_id)
         await self._usage_collection.insert_one(doc.to_mongo_dict())
@@ -591,13 +545,9 @@ class MongoUserSkillLoader:
 
     async def get_skill_usage_count(self, *, skill_name: str) -> int:
         """Return the total number of times a skill has been used."""
-        return int(
-            await self._usage_collection.count_documents({"skill_name": skill_name})
-        )
+        return int(await self._usage_collection.count_documents({"skill_name": skill_name}))
 
-    async def get_skill_usage_counts(
-        self, *, skill_names: Sequence[str]
-    ) -> Mapping[str, int]:
+    async def get_skill_usage_counts(self, *, skill_names: Sequence[str]) -> Mapping[str, int]:
         """Return usage counts for multiple skills in a single aggregation query."""
         if not skill_names:
             return {}

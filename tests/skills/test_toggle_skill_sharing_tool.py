@@ -17,9 +17,7 @@ from langchain_ai_skills_framework.tools.toggle_skill_sharing_tool import (
 )
 
 
-def _make_doc(
-    skill_name: str = "test-skill", shared: bool = True
-) -> MongoSkillDocument:
+def _make_doc(skill_name: str = "test-skill", shared: bool = True) -> MongoSkillDocument:
     return MongoSkillDocument(
         user_id="user-1",
         skill_name=skill_name,
@@ -51,9 +49,7 @@ class TestToggleSkillSharingTool:
         loader = _make_loader_mock(shared=True)
         tool = ToggleSkillSharingTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(
-            skill_name="test-skill", shared=True, runtime=_make_runtime("user-1")
-        )
+        result, artifact = await tool._arun(skill_name="test-skill", shared=True, runtime=_make_runtime("user-1"))
 
         assert "shared" in result
         loader.set_skill_shared.assert_awaited_once_with(  # type: ignore[attr-defined]
@@ -65,9 +61,7 @@ class TestToggleSkillSharingTool:
         loader = _make_loader_mock(shared=False)
         tool = ToggleSkillSharingTool(mongo_skill_loader=loader)
 
-        result, _ = await tool._arun(
-            skill_name="test-skill", shared=False, runtime=_make_runtime("user-1")
-        )
+        result, _ = await tool._arun(skill_name="test-skill", shared=False, runtime=_make_runtime("user-1"))
 
         assert "private" in result
 
@@ -108,9 +102,7 @@ class TestToggleSkillSharingTool:
             tool._run(skill_name="test", shared=True, runtime=_make_runtime())
 
     def test_get_friendly_name(self) -> None:
-        name = ToggleSkillSharingTool.get_friendly_name(
-            tool_input={"skill_name": "my-skill"}
-        )
+        name = ToggleSkillSharingTool.get_friendly_name(tool_input={"skill_name": "my-skill"})
         assert name == "Toggle Skill Sharing: my-skill"
 
     def test_get_friendly_name_empty(self) -> None:

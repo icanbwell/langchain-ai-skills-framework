@@ -34,8 +34,7 @@ class SaveSkillInput(BaseModel):
     )
     content: str = Field(
         description=(
-            "Full content of the skill in SKILL.md format. "
-            "May include YAML frontmatter with description and metadata."
+            "Full content of the skill in SKILL.md format. May include YAML frontmatter with description and metadata."
         ),
     )
     runtime: ToolRuntime
@@ -64,9 +63,7 @@ class SaveSkillTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
     async def _arun(
@@ -118,9 +115,7 @@ class SaveSkillTool(BaseTool):
                 skill_name,
                 user_id,
             )
-            raise ToolException(
-                f"Unable to save skill '{skill_name}' due to an internal error."
-            ) from exc
+            raise ToolException(f"Unable to save skill '{skill_name}' due to an internal error.") from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

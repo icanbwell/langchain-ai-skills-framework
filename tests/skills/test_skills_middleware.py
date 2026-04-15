@@ -27,18 +27,14 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return self._summaries
 
-    async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:  # pragma: no cover
         del skill_name
         raise NotImplementedError
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:  # pragma: no cover
@@ -65,9 +61,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
-    async def read_skill_resource_for_user(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
+    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script_for_user(
@@ -194,11 +188,7 @@ async def test_awrap_model_call_does_not_duplicate_skills_message() -> None:
 
     async def handler(model_request: ModelRequest[Any]) -> ModelResponse[Any]:
         assert model_request.messages is not None
-        system_messages = [
-            message
-            for message in model_request.messages
-            if isinstance(message, SystemMessage)
-        ]
+        system_messages = [message for message in model_request.messages if isinstance(message, SystemMessage)]
         assert len(system_messages) == 1
         assert system_messages[0] is existing_skills_message
         return cast(ModelResponse[Any], AIMessage(content="ok"))
@@ -212,9 +202,7 @@ async def test_awrap_model_call_does_not_duplicate_skills_message() -> None:
 
 
 @pytest.mark.asyncio
-async def test_awrap_model_call_does_not_duplicate_for_structured_system_content() -> (
-    None
-):
+async def test_awrap_model_call_does_not_duplicate_for_structured_system_content() -> None:
     summaries = [
         SkillSummary(
             name="delta",
@@ -238,11 +226,7 @@ async def test_awrap_model_call_does_not_duplicate_for_structured_system_content
 
     async def handler(model_request: ModelRequest[Any]) -> ModelResponse[Any]:
         assert model_request.messages is not None
-        system_messages = [
-            message
-            for message in model_request.messages
-            if isinstance(message, SystemMessage)
-        ]
+        system_messages = [message for message in model_request.messages if isinstance(message, SystemMessage)]
         assert len(system_messages) == 1
         assert system_messages[0] is existing_skills_message
         return cast(ModelResponse[Any], AIMessage(content="ok"))

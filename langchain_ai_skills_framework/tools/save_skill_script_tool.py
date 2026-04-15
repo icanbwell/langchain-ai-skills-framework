@@ -61,9 +61,7 @@ class SaveSkillScriptTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
     async def _arun(
@@ -115,8 +113,4 @@ class SaveSkillScriptTool(BaseTool):
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         skill_name = str(tool_input.get("skill_name", "")) if tool_input else ""
         script_name = str(tool_input.get("script_name", "")) if tool_input else ""
-        return (
-            f"Save Script: {script_name} ({skill_name})"
-            if script_name
-            else "Save Script"
-        )
+        return f"Save Script: {script_name} ({skill_name})" if script_name else "Save Script"

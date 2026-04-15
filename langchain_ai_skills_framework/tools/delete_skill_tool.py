@@ -36,8 +36,7 @@ class DeleteSkillTool(BaseTool):
 
     name: str = "delete_skill"
     description: str = (
-        "Delete a previously saved skill for the current user. "
-        "This only affects the current user's skills."
+        "Delete a previously saved skill for the current user. This only affects the current user's skills."
     )
     args_schema: Type[BaseModel] = DeleteSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
@@ -51,9 +50,7 @@ class DeleteSkillTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
     async def _arun(
@@ -90,9 +87,7 @@ class DeleteSkillTool(BaseTool):
                 skill_name,
                 user_id,
             )
-            raise ToolException(
-                f"Unable to delete skill '{skill_name}' due to an internal error."
-            ) from exc
+            raise ToolException(f"Unable to delete skill '{skill_name}' due to an internal error.") from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

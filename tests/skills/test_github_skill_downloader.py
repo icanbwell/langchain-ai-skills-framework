@@ -25,18 +25,14 @@ def test_download_uses_expected_storage_options_and_cache_directory(
     get_calls: list[tuple[str, str, bool]] = []
 
     class _FakeGithubFilesystem:
-        def get(
-            self, remote_path: str, local_path: str, recursive: bool = False
-        ) -> None:
+        def get(self, remote_path: str, local_path: str, recursive: bool = False) -> None:
             get_calls.append((remote_path, local_path, recursive))
 
         def ls(self, path: str, detail: bool = False) -> Sequence[str]:
             del path, detail
             return ()
 
-    def _fake_filesystem(
-        protocol: str, **storage_options: object
-    ) -> _FakeGithubFilesystem:
+    def _fake_filesystem(protocol: str, **storage_options: object) -> _FakeGithubFilesystem:
         assert protocol == "github"
         captured_storage_options.update(storage_options)
         return _FakeGithubFilesystem()
@@ -103,18 +99,14 @@ def test_download_omits_auth_fields_when_github_token_missing(
     captured_storage_options: dict[str, object] = {}
 
     class _FakeGithubFilesystem:
-        def get(
-            self, remote_path: str, local_path: str, recursive: bool = False
-        ) -> None:
+        def get(self, remote_path: str, local_path: str, recursive: bool = False) -> None:
             del remote_path, local_path, recursive
 
         def ls(self, path: str, detail: bool = False) -> Sequence[str]:
             del path, detail
             return ()
 
-    def _fake_filesystem(
-        protocol: str, **storage_options: object
-    ) -> _FakeGithubFilesystem:
+    def _fake_filesystem(protocol: str, **storage_options: object) -> _FakeGithubFilesystem:
         assert protocol == "github"
         captured_storage_options.update(storage_options)
         return _FakeGithubFilesystem()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.tools import BaseTool
@@ -22,6 +23,13 @@ from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
 )
 
 
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
+
+
 class _StubSkillLoader(SkillLoaderProtocol):
     def __init__(
         self,
@@ -36,11 +44,21 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return [detail.summary for detail in self._details.values()]
 
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
+        return self.list_skill_summaries(allowed_skills)
+
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError from exc
+
+    async def get_skill_details_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> SkillDetails:
+        return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
         return None
@@ -64,6 +82,21 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
+
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        return self.read_skill_resource(skill_name, resource_name)
+
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        return await self.run_skill_script(skill_name, script_name, arguments)
 
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return self._resource_names_by_skill.get(skill_name, [])
@@ -89,95 +122,107 @@ def _make_skill(name: str) -> SkillDetails:
     )
 
 
-def test_run_reads_named_resource() -> None:
+@pytest.mark.asyncio
+async def test_run_reads_named_resource() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message = tool._run(skill_name="alpha", resource_name="FORMS.md")
+    message, artifact = await tool._arun(
+        skill_name="alpha", resource_name="FORMS.md", runtime=_make_runtime()
+    )
 
-    assert message == ("alpha:FORMS.md", "alpha:FORMS.md")
+    assert message == "alpha:FORMS.md"
+    assert artifact == "alpha:FORMS.md"
     assert loader.calls == [("alpha", "FORMS.md")]
 
 
-def test_run_returns_not_found_message_for_missing_skill() -> None:
+@pytest.mark.asyncio
+async def test_run_returns_not_found_message_for_missing_skill() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message, artifact = tool._run(skill_name="missing", resource_name="FORMS.md")
+    message, artifact = await tool._arun(
+        skill_name="missing", resource_name="FORMS.md", runtime=_make_runtime()
+    )
 
     assert "not found" in message
     assert "missing" in message
     assert "Available skills:" in message
 
 
-def test_run_raises_tool_exception_for_empty_skill_name() -> None:
+@pytest.mark.asyncio
+async def test_run_raises_tool_exception_for_empty_skill_name() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided"):
-        tool._run(skill_name=" ", resource_name="FORMS.md")
+        await tool._arun(
+            skill_name=" ", resource_name="FORMS.md", runtime=_make_runtime()
+        )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("skill_name", "resource_name", "message"),
-    [
-        (123, "FORMS.md", "Skill name must be a string."),
-        ("", "FORMS.md", "No skill name provided."),
-    ],
-)
-async def test_arun_validates_parameters_raises(
-    skill_name: Any, resource_name: Any, message: str
-) -> None:
+async def test_arun_validates_empty_skill_name_raises() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    with pytest.raises(ToolException, match=message):
-        await tool._arun(skill_name=skill_name, resource_name=resource_name)
+    with pytest.raises(ToolException, match="No skill name provided."):
+        await tool._arun(
+            skill_name="",
+            resource_name="FORMS.md",
+            runtime=_make_runtime(),
+        )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("skill_name", "resource_name", "message"),
-    [
-        ("alpha", 123, "Resource name must be a string."),
-        ("alpha", "", "No resource name provided."),
-    ],
-)
-async def test_arun_validates_parameters_returns_error(
-    skill_name: Any, resource_name: Any, message: str
-) -> None:
+async def test_arun_validates_empty_resource_name_returns_error() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     result, artifact = await tool._arun(
-        skill_name=skill_name, resource_name=resource_name
+        skill_name="alpha",
+        resource_name="",
+        runtime=_make_runtime(),
     )
-    assert result == message
+    assert result == "No resource name provided."
     assert artifact == ""
 
 
-def test_run_resource_not_found_lists_available_resources() -> None:
+@pytest.mark.asyncio
+async def test_run_resource_not_found_lists_available_resources() -> None:
     loader = _ResourceNotFoundLoader(
         {"alpha": _make_skill("alpha")},
         resource_names_by_skill={"alpha": ["FORMS.md", "REFERENCE.md"]},
     )
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message, artifact = tool._run(skill_name="alpha", resource_name="MISSING.md")
+    message, artifact = await tool._arun(
+        skill_name="alpha", resource_name="MISSING.md", runtime=_make_runtime()
+    )
     assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
     assert "FORMS.md" in message
     assert "REFERENCE.md" in message
     assert "Available resources:" in message
 
 
-def test_run_resource_not_found_no_resources_shows_none() -> None:
+@pytest.mark.asyncio
+async def test_run_resource_not_found_no_resources_shows_none() -> None:
     loader = _ResourceNotFoundLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message, artifact = tool._run(skill_name="alpha", resource_name="MISSING.md")
+    message, artifact = await tool._arun(
+        skill_name="alpha", resource_name="MISSING.md", runtime=_make_runtime()
+    )
     assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
     assert "Available resources: none" in message
+
+
+def test_sync_run_raises() -> None:
+    loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
+    tool = ReadSkillResourceTool(skill_loader=loader)
+
+    with pytest.raises(NotImplementedError):
+        tool._run(skill_name="alpha", resource_name="FORMS.md", runtime=_make_runtime())
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

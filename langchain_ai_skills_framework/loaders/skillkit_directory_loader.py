@@ -1,5 +1,4 @@
 import logging
-import re
 import time
 from html import escape
 from pathlib import Path, PurePosixPath
@@ -41,6 +40,9 @@ from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
 )
 from langchain_ai_skills_framework.tools.run_skill_script_tool import RunSkillScriptTool
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
+    normalize_skill_name,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
@@ -168,6 +170,18 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             )
             raise SkillNotFoundError(f"Skill '{skill_name}' not found") from exc
 
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str]
+    ) -> Sequence[SkillSummary]:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.list_skill_summaries(allowed_skills)
+
+    async def get_skill_details_for_user(
+        self, *, user_id: str, skill_name: str
+    ) -> SkillDetails:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.get_skill_details(skill_name)
+
     def refresh(self) -> None:
         """Force an immediate reload regardless of TTL."""
 
@@ -245,6 +259,12 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             return []
         return sorted(f.name for f in references_dir.iterdir() if f.is_file())
 
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, skill_name: str, resource_name: str
+    ) -> str:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.read_skill_resource(skill_name, resource_name)
+
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         """Read a specific resource from a skill, such as a file or script."""
         details = self.get_skill_details(skill_name=skill_name)
@@ -288,6 +308,17 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         # Use the normalized skill name from details when loading the skill.
         skill = self._manager.load_skill(details.name)
         return sorted(s.name for s in skill.scripts)
+
+    async def run_skill_script_for_user(
+        self,
+        *,
+        user_id: str,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> MyScriptExecutionResult:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return await self.run_skill_script(skill_name, script_name, arguments)
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
@@ -485,9 +516,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     ) -> float | None:
         """Resolve loader TTL from environment, defaulting to one hour."""
 
-        configured = getattr(
-            environment_variables, "skills_cache_timeout_seconds", 3600
-        )
+        configured = environment_variables.skills_cache_timeout_seconds
         if isinstance(configured, bool):
             return 3600.0
         if not isinstance(configured, (int, float)):
@@ -582,6 +611,4 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     @staticmethod
     def _normalize_skill_name(value: str) -> str:
-        normalized = value.strip().lower().replace("_", "-")
-        normalized = re.sub(r"-+", "-", normalized)
-        return normalized.strip("-")
+        return normalize_skill_name(value)

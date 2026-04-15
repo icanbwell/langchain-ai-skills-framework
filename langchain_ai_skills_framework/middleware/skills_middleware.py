@@ -9,13 +9,23 @@ from typing import Callable, Any, Awaitable, Sequence
 
 from langchain_core.messages import AIMessage, AnyMessage
 
+from langchain_ai_skills_framework.loaders.composite_skill_loader import (
+    CompositeSkillLoader,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 
 
 class SkillMiddleware(AgentMiddleware):
-    """Middleware that injects skill descriptions into the system prompt."""
+    """Middleware that injects skill descriptions into the system prompt.
+
+    This is a **singleton** — ``user_id`` is read from the LangGraph
+    runtime context on each request (``request.runtime.context["user_id"]``).
+    When a ``user_id`` is present and the ``skill_loader`` is a
+    ``CompositeSkillLoader``, per-user MongoDB skills are included
+    alongside shared skills.
+    """
 
     _SKILLS_BLOCK_MARKER = "<available_skills>"
 
@@ -40,7 +50,8 @@ class SkillMiddleware(AgentMiddleware):
         if self._request_has_skills_message(existing_messages):
             return await handler(request)
 
-        skills_block_text: str = await self._skill_loader.get_instructions()
+        user_id = self._extract_user_id(request)
+        skills_block_text: str = await self._get_instructions(user_id=user_id)
         skills_message = SystemMessage(content=skills_block_text)
 
         insertion_index = 0
@@ -54,6 +65,26 @@ class SkillMiddleware(AgentMiddleware):
         existing_messages.insert(insertion_index, skills_message)
         modified_request = request.override(messages=list(existing_messages))
         return await handler(modified_request)
+
+    async def _get_instructions(self, *, user_id: str | None) -> str:
+        """Get skill instructions, including per-user skills when available."""
+        if user_id and isinstance(self._skill_loader, CompositeSkillLoader):
+            return await self._skill_loader.get_instructions_for_user(user_id=user_id)
+        return await self._skill_loader.get_instructions()
+
+    @staticmethod
+    def _extract_user_id(request: ModelRequest[Any]) -> str | None:
+        """Extract user_id from the LangGraph runtime context."""
+        try:
+            context = request.runtime.context
+            if context is None:
+                return None
+            user_id = context.get("user_id")
+            if isinstance(user_id, str) and user_id.strip():
+                return user_id.strip()
+            return None
+        except Exception:
+            return None
 
     @classmethod
     def _request_has_skills_message(cls, messages: Sequence[AnyMessage]) -> bool:

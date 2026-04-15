@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -11,6 +12,13 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
 from langchain_ai_skills_framework.tools.run_python_script_tool import (
     RunPythonScriptTool,
 )
+
+
+def _make_runtime(user_id: str = "user-1") -> MagicMock:
+    """Create a mock ToolRuntime with the given user_id in context."""
+    runtime = MagicMock()
+    runtime.context = {"user_id": user_id}
+    return runtime
 
 
 class _StubExecutor:
@@ -70,6 +78,7 @@ def test_run_returns_summary_and_structured_output(
         script="print('ok')",
         script_name="inline_script.py",
         arguments={"MixedCase": 0.5},
+        runtime=_make_runtime(),
     )
 
     assert message == "script output"
@@ -91,6 +100,7 @@ def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
         script="print('ok')",
         script_name="custom_script.py",
         arguments={"MixedCase": 0.5},
+        runtime=_make_runtime(),
     )
 
     assert message == "script output"
@@ -115,6 +125,7 @@ async def test_arun_returns_summary_and_structured_output(
         script="print('ok')",
         script_name="inline_script.py",
         arguments={"MixedCase": 0.5},
+        runtime=_make_runtime(),
     )
 
     assert message == "script output"
@@ -139,6 +150,7 @@ async def test_arun_uses_custom_script_name(
         script="print('ok')",
         script_name="custom_script.py",
         arguments={"MixedCase": 0.5},
+        runtime=_make_runtime(),
     )
 
     assert message == "script output"
@@ -159,7 +171,12 @@ async def test_arun_raises_tool_exception_for_blank_script_name(
     )
 
     with pytest.raises(ToolException, match="script_name must be a non-empty string"):
-        await tool._arun(script="print('ok')", script_name="   ", arguments=None)
+        await tool._arun(
+            script="print('ok')",
+            script_name="   ",
+            arguments=None,
+            runtime=_make_runtime(),
+        )
 
 
 @pytest.mark.asyncio
@@ -173,7 +190,10 @@ async def test_arun_raises_tool_exception_when_inline_script_fails(
     )
 
     result = await tool._arun(
-        script="print('fail')", script_name="inline_script.py", arguments=None
+        script="print('fail')",
+        script_name="inline_script.py",
+        arguments=None,
+        runtime=_make_runtime(),
     )
     assert result[0] == "inline boom"
     assert result[1] == ""

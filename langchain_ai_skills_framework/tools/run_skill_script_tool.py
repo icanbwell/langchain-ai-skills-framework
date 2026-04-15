@@ -1,5 +1,4 @@
 from __future__ import annotations
-import asyncio
 import logging
 from typing import Any, Type, Literal, Tuple
 from langchain_core.callbacks import (
@@ -7,6 +6,7 @@ from langchain_core.callbacks import (
     CallbackManagerForToolRun,
 )
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 from skillkit import ScriptNotFoundError
 
@@ -29,7 +29,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class RunSkillScriptInput(BaseModel):
     """Input schema for the run_skill_script tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     skill_name: str = Field(
         description="Name of the skill containing the resource.",
@@ -52,6 +52,7 @@ class RunSkillScriptInput(BaseModel):
     timeout: int = Field(
         description="Timeout for the script execution in seconds.", default=30
     )
+    runtime: ToolRuntime
 
 
 class RunSkillScriptTool(BaseTool):
@@ -88,16 +89,11 @@ class RunSkillScriptTool(BaseTool):
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        """Synchronously execute a skill script."""
-        return asyncio.run(
-            self._arun(
-                skill_name=skill_name,
-                script_name=script_name,
-                arguments=arguments,
-                timeout=timeout,
-            )
+        raise NotImplementedError(
+            "Synchronous execution is not supported. Use the asynchronous method instead."
         )
 
     async def _arun(
@@ -107,29 +103,21 @@ class RunSkillScriptTool(BaseTool):
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously execute a skill script."""
-        if not isinstance(skill_name, str):
-            return "Skill name must be a string.", ""
-        if arguments is not None and not isinstance(arguments, dict):
-            return "Arguments must be a dict.", ""
-
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
+                await self._format_availability_message(
+                    self.skill_loader, normalized_name, runtime=runtime
+                )
             )
-
-        if not isinstance(script_name, str):
-            raise ToolException("Script name must be a string.")
 
         normalized_script_name = script_name.strip()
         if not normalized_script_name:
             raise ToolException("No script name provided.")
-
-        if arguments is not None and not isinstance(arguments, dict):
-            raise ToolException("Script arguments must be a dictionary when provided.")
 
         logger.debug(
             "RunSkillScriptTool: Running script_name=%s skill_name=%s argument_keys=%s",
@@ -142,6 +130,7 @@ class RunSkillScriptTool(BaseTool):
                 skill_name=normalized_name,
                 script_name=normalized_script_name,
                 arguments=arguments,
+                runtime=runtime,
             )
             logger.debug(
                 "RunSkillScriptTool: Script completed script_name=%s skill_name=%s",
@@ -160,16 +149,19 @@ class RunSkillScriptTool(BaseTool):
                 )
         except ScriptNotFoundError:
             return (
-                self._format_availability_message(
+                await self._format_availability_message(
                     self.skill_loader,
                     normalized_name,
                     script_name=normalized_script_name,
+                    runtime=runtime,
                 ),
                 "",
             )
         except SkillNotFoundError:
             return (
-                self._format_availability_message(self.skill_loader, normalized_name),
+                await self._format_availability_message(
+                    self.skill_loader, normalized_name, runtime=runtime
+                ),
                 "",
             )
         except ToolException:
@@ -185,20 +177,39 @@ class RunSkillScriptTool(BaseTool):
             ) from exc
 
     async def _run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self,
+        skill_name: str,
+        script_name: str,
+        arguments: dict[str, Any] | None,
+        runtime: ToolRuntime | None = None,
     ) -> MyScriptExecutionResult:
         """Execute the skill script and return results."""
         normalized_name = skill_name.strip()
 
         if not normalized_name:
-            raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
-            )
+            raise ToolException("Skill name must not be empty.")
 
         try:
-            result: MyScriptExecutionResult = await self.skill_loader.run_skill_script(
-                skill_name=normalized_name, script_name=script_name, arguments=arguments
-            )
+            # Use user-aware method if available (CompositeSkillLoader)
+            ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+            user_id = ctx.get("user_id", "")
+            stripped_user_id = user_id.strip() if user_id else ""
+
+            if stripped_user_id:
+                result: MyScriptExecutionResult = (
+                    await self.skill_loader.run_skill_script_for_user(
+                        user_id=stripped_user_id,
+                        skill_name=normalized_name,
+                        script_name=script_name,
+                        arguments=arguments,
+                    )
+                )
+            else:
+                result = await self.skill_loader.run_skill_script(
+                    skill_name=normalized_name,
+                    script_name=script_name,
+                    arguments=arguments,
+                )
 
             return result
         except ToolException:
@@ -218,10 +229,12 @@ class RunSkillScriptTool(BaseTool):
             ) from exc
 
     @staticmethod
-    def _format_availability_message(
+    async def _format_availability_message(
         loader: SkillLoaderProtocol,
         normalized_name: str,
         script_name: str | None = None,
+        *,
+        runtime: ToolRuntime,
     ) -> str:
         """Format a message showing available skills or scripts."""
         if script_name and normalized_name:
@@ -232,10 +245,20 @@ class RunSkillScriptTool(BaseTool):
                 f"Available scripts: {available_scripts or 'none'}"
             )
 
-        available_names = sorted(
-            summary.name
-            for summary in loader.list_skill_summaries(allowed_skills=set())
-        )
+        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+        user_id = ctx.get("user_id", "")
+        stripped_user_id = user_id.strip() if user_id else ""
+
+        if stripped_user_id:
+            summaries = await loader.list_all_summaries(
+                user_id=stripped_user_id, allowed_skills=set()
+            )
+            available_names = sorted(s.name for s in summaries)
+        else:
+            available_names = sorted(
+                summary.name
+                for summary in loader.list_skill_summaries(allowed_skills=set())
+            )
         available = ", ".join(available_names)
 
         if normalized_name:

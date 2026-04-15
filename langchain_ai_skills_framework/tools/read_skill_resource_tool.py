@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Type, Literal, Tuple, Any
 
@@ -9,6 +8,7 @@ from langchain_core.callbacks import (
     CallbackManagerForToolRun,
 )
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -27,7 +27,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class ReadSkillResourceInput(BaseModel):
     """Input schema for the read_skill_resource tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     skill_name: str = Field(
         description="Name of the skill containing the resource.",
@@ -39,6 +39,7 @@ class ReadSkillResourceInput(BaseModel):
             Must match exactly - do not infer or guess."""
         ),
     )
+    runtime: ToolRuntime
 
 
 class ReadSkillResourceTool(BaseTool):
@@ -64,11 +65,11 @@ class ReadSkillResourceTool(BaseTool):
         *,
         skill_name: str,
         resource_name: str,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        """Synchronously load a skill resource."""
-        return asyncio.run(
-            self._arun(skill_name=skill_name, resource_name=resource_name)
+        raise NotImplementedError(
+            "Synchronous execution is not supported. Use the asynchronous method instead."
         )
 
     async def _arun(
@@ -76,27 +77,26 @@ class ReadSkillResourceTool(BaseTool):
         *,
         skill_name: str,
         resource_name: str,
+        runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         """Asynchronously load a skill resource."""
-        if not isinstance(skill_name, str):
-            raise ToolException("Skill name must be a string.")
-
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
+                await self._format_availability_message(
+                    self.skill_loader, normalized_name, runtime=runtime
+                )
             )
-
-        if not isinstance(resource_name, str):
-            return "Resource name must be a string.", ""
 
         normalized_resource_name = resource_name.strip()
         if not normalized_resource_name:
             return "No resource name provided.", ""
 
-        resource = self._load_skill_resource(
-            skill_name=normalized_name, resource_name=normalized_resource_name
+        resource = await self._load_skill_resource(
+            skill_name=normalized_name,
+            resource_name=normalized_resource_name,
+            runtime=runtime,
         )
         logger.debug(
             "ReadSkillResourceTool: Loaded resource_name=%s from skill_name=%s",
@@ -105,23 +105,42 @@ class ReadSkillResourceTool(BaseTool):
         )
         return resource, resource
 
-    def _load_skill_resource(self, *, skill_name: str, resource_name: str) -> str:
+    async def _load_skill_resource(
+        self, *, skill_name: str, resource_name: str, runtime: ToolRuntime
+    ) -> str:
         """Load resource content and raise when a skill cannot be resolved."""
         normalized_name = skill_name.strip()
 
         if not normalized_name:
             raise ToolException(
-                self._format_availability_message(self.skill_loader, normalized_name)
+                await self._format_availability_message(
+                    self.skill_loader, normalized_name, runtime=runtime
+                )
             )
 
         try:
-            resource = self.skill_loader.read_skill_resource(
-                skill_name=normalized_name, resource_name=resource_name
-            )
+            # Use user-aware method if available (CompositeSkillLoader)
+            ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+            user_id = ctx.get("user_id", "")
+            stripped_user_id = user_id.strip() if user_id else ""
+
+            if stripped_user_id:
+                resource: str = await self.skill_loader.read_skill_resource_for_user(
+                    user_id=stripped_user_id,
+                    skill_name=normalized_name,
+                    resource_name=resource_name,
+                )
+            else:
+                resource = self.skill_loader.read_skill_resource(
+                    skill_name=normalized_name, resource_name=resource_name
+                )
             return resource
         except SkillNotFoundError:
-            return self._format_availability_message(
-                self.skill_loader, normalized_name, resource_name=resource_name
+            return await self._format_availability_message(
+                self.skill_loader,
+                normalized_name,
+                resource_name=resource_name,
+                runtime=runtime,
             )
         except Exception as exc:
             logger.exception(
@@ -134,17 +153,18 @@ class ReadSkillResourceTool(BaseTool):
             ) from exc
 
     @staticmethod
-    def _format_availability_message(
+    async def _format_availability_message(
         loader: SkillLoaderProtocol,
         normalized_name: str,
         resource_name: str | None = None,
+        *,
+        runtime: ToolRuntime,
     ) -> str:
         """Format a message showing available skills or resources."""
         if resource_name and normalized_name:
             try:
                 loader.get_skill_details(normalized_name)
             except SkillNotFoundError:
-                # Skill doesn't exist — fall through to list available skills
                 pass
             else:
                 resource_names = loader.list_skill_resource_names(normalized_name)
@@ -154,10 +174,20 @@ class ReadSkillResourceTool(BaseTool):
                     f"Available resources: {available_resources or 'none'}"
                 )
 
-        available_names = sorted(
-            summary.name
-            for summary in loader.list_skill_summaries(allowed_skills=set())
-        )
+        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+        user_id = ctx.get("user_id", "")
+        stripped_user_id = user_id.strip() if user_id else ""
+
+        if stripped_user_id:
+            summaries = await loader.list_all_summaries(
+                user_id=stripped_user_id, allowed_skills=set()
+            )
+            available_names = sorted(s.name for s in summaries)
+        else:
+            available_names = sorted(
+                summary.name
+                for summary in loader.list_skill_summaries(allowed_skills=set())
+            )
         available = ", ".join(available_names)
 
         if normalized_name:

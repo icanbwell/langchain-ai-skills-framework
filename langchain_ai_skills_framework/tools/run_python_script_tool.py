@@ -7,6 +7,7 @@ from langchain_core.callbacks import (
     CallbackManagerForToolRun,
 )
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -21,7 +22,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class RunPythonScriptInput(BaseModel):
     """Input schema for the run_python_script tool."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     script: str = Field(
         description=(
@@ -42,31 +43,12 @@ class RunPythonScriptInput(BaseModel):
         ),
     )
     timeout: int = Field(
-        description=("Timeout for the script execution in seconds."), default=30
+        description="Timeout for the script execution in seconds.", default=30
     )
+    runtime: ToolRuntime = Field(exclude=True)
 
 
-class RunPythonScriptOutput(BaseModel):
-    """Structured output schema for the run_python_script tool."""
-
-    model_config = ConfigDict(extra="allow")
-
-    success: bool = Field(description="Whether the script executed successfully")
-    stdout: str | None = Field(
-        default=None, description="Standard output from the script"
-    )
-    stderr: str | None = Field(
-        default=None, description="Standard error from the script"
-    )
-    exit_code: int | None = Field(
-        default=None, description="Exit code from the script execution"
-    )
-    error_message: str | None = Field(
-        default=None, description="Human-readable error message if failed"
-    )
-
-
-class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
+class RunPythonScriptTool(BaseTool):
     """LangChain tool that executes inline Python script content within a runtime context."""
 
     name: str = "run_python_script"
@@ -96,6 +78,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Synchronous execution with named parameters."""
@@ -105,6 +88,7 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
                 arguments=arguments,
                 timeout=timeout,
                 script_name=script_name,
+                runtime=runtime,
             )
         )
 
@@ -115,16 +99,10 @@ class RunPythonScriptTool(BaseTool):  # Changed from StructuredTool
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
+        runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
         """Async execution with named parameters."""
-        if not isinstance(script_name, str):
-            return "Script name must be a string.", ""
-        if arguments is not None and not isinstance(arguments, dict):
-            return "Arguments must be a dict.", ""
-        if not isinstance(timeout, int):
-            return "Timeout must be an int.", ""
-
         logger.debug(
             "RunPythonScriptTool: Running inline script script_name=%s argument_keys=%s timeout=%s",
             script_name,

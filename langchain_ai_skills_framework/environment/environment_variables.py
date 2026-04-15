@@ -98,3 +98,47 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
         if not raw_value or not raw_value.strip():
             return set()
         return {item.strip() for item in raw_value.split(",") if item.strip()}
+
+    @property
+    def mongo_skills_uri(self) -> str:
+        """MongoDB connection URI for skills storage.
+
+        Falls back to ``MONGO_URL`` when the skills-specific variable is
+        not set, matching the pattern used by other icanbwell services.
+        """
+        uri = os.environ.get("MONGO_SKILLS_URI") or os.environ.get("MONGO_URL")
+        if not uri or not uri.strip():
+            raise RuntimeError(
+                "Neither MONGO_SKILLS_URI nor MONGO_URL is set. "
+                "A MongoDB connection URI is required for user skill storage."
+            )
+        return uri.strip()
+
+    @property
+    def mongo_skills_db_name(self) -> str:
+        """Database name for skills storage (default: ``llm_storage``)."""
+        return (
+            os.environ.get("MONGO_SKILLS_DB_NAME")
+            or os.environ.get("MONGO_DB_NAME")
+            or "llm_storage"
+        )
+
+    @property
+    def mongo_skills_db_username(self) -> str | None:
+        """Username for MongoDB skills storage authentication."""
+        val = os.environ.get("MONGO_SKILLS_DB_USERNAME") or os.environ.get(
+            "MONGO_DB_USERNAME"
+        )
+        if not val or not val.strip():
+            return None
+        return val.strip()
+
+    @property
+    def mongo_skills_db_password(self) -> str | None:
+        """Password for MongoDB skills storage authentication."""
+        val = os.environ.get("MONGO_SKILLS_DB_PASSWORD") or os.environ.get(
+            "MONGO_DB_PASSWORD"
+        )
+        if not val or not val.strip():
+            return None
+        return val.strip()

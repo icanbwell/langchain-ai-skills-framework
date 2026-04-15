@@ -95,6 +95,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return self._resource_names_by_skill.get(skill_name, [])
 
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_resource_names(skill_name)
+
 
 class _ResourceNotFoundLoader(_StubSkillLoader):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:

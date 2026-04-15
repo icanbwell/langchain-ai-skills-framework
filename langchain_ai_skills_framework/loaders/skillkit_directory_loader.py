@@ -244,6 +244,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             return []
         return sorted(f.name for f in references_dir.iterdir() if f.is_file())
 
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.list_skill_resource_names(skill_name)
+
     async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         """Fallback: directory loader has no user skills, delegate to shared."""
         return self.read_skill_resource(skill_name, resource_name)

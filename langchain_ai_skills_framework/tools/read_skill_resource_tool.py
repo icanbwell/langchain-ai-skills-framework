@@ -153,22 +153,30 @@ class ReadSkillResourceTool(BaseTool):
         runtime: ToolRuntime,
     ) -> str:
         """Format a message showing available skills or resources."""
+        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+        user_id = ctx.get("user_id", "")
+        stripped_user_id = user_id.strip() if user_id else ""
+
         if resource_name and normalized_name:
             try:
-                loader.get_skill_details(normalized_name)
+                if stripped_user_id:
+                    await loader.get_skill_details_for_user(user_id=stripped_user_id, skill_name=normalized_name)
+                else:
+                    loader.get_skill_details(normalized_name)
             except SkillNotFoundError:
                 pass
             else:
-                resource_names = loader.list_skill_resource_names(normalized_name)
+                if stripped_user_id:
+                    resource_names = await loader.list_skill_resource_names_for_user(
+                        user_id=stripped_user_id, skill_name=normalized_name
+                    )
+                else:
+                    resource_names = loader.list_skill_resource_names(normalized_name)
                 available_resources = ", ".join(resource_names)
                 return (
                     f"Resource '{resource_name}' not found in skill '{normalized_name}'. "
                     f"Available resources: {available_resources or 'none'}"
                 )
-
-        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
-        user_id = ctx.get("user_id", "")
-        stripped_user_id = user_id.strip() if user_id else ""
 
         if stripped_user_id:
             summaries = await loader.list_all_summaries(user_id=stripped_user_id, allowed_skills=set())

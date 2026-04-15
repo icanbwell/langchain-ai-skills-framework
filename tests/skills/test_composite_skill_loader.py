@@ -96,6 +96,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_resource_names(skill_name)
+
 
 def _make_user_loader_mock(
     user_skills: dict[str, SkillDetails] | None = None,

@@ -292,6 +292,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         skill = self._manager.load_skill(details.name)
         return sorted(s.name for s in skill.scripts)
 
+    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.list_skill_script_names(skill_name)
+
     async def run_skill_script_for_user(
         self,
         *,

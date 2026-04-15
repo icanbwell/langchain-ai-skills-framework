@@ -81,6 +81,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_script_names(skill_name)
+
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return []
 

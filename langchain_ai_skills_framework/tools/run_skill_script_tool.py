@@ -227,17 +227,22 @@ class RunSkillScriptTool(BaseTool):
         runtime: ToolRuntime,
     ) -> str:
         """Format a message showing available skills or scripts."""
+        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
+        user_id = ctx.get("user_id", "")
+        stripped_user_id = user_id.strip() if user_id else ""
+
         if script_name and normalized_name:
-            script_names = loader.list_skill_script_names(normalized_name)
+            if stripped_user_id:
+                script_names = await loader.list_skill_script_names_for_user(
+                    user_id=stripped_user_id, skill_name=normalized_name
+                )
+            else:
+                script_names = loader.list_skill_script_names(normalized_name)
             available_scripts = ", ".join(script_names)
             return (
                 f"Script '{script_name}' not found in skill '{normalized_name}'. "
                 f"Available scripts: {available_scripts or 'none'}"
             )
-
-        ctx: dict[str, Any] = runtime.context or {} if runtime else {}
-        user_id = ctx.get("user_id", "")
-        stripped_user_id = user_id.strip() if user_id else ""
 
         if stripped_user_id:
             summaries = await loader.list_all_summaries(user_id=stripped_user_id, allowed_skills=set())

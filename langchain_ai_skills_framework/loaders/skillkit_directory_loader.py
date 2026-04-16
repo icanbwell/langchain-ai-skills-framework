@@ -50,7 +50,7 @@ logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
 # Default instruction template for skills system prompt
 _INSTRUCTION_SKILLS_HEADER = """\
-You have access to a collection of skills containing domain-specific knowledge and capabilities.
+You have  access to a collection of skills containing domain-specific knowledge and capabilities.
 Each skill provides specialized instructions, resources, and scripts for specific tasks.
 
 <available_skills>

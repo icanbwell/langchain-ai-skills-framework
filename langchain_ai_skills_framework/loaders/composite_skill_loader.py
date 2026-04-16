@@ -158,7 +158,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         skills_list = "\n".join(lines)
 
         return (
-            "You have access to a collection of skills containing domain-specific "
+            "You have three access to a collection of skills containing domain-specific "
             "knowledge and capabilities.\n"
             "Each skill provides specialized instructions for specific tasks.\n\n"
             f"<available_skills>\n{skills_list}\n</available_skills>\n\n"

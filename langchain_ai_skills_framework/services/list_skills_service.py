@@ -43,8 +43,12 @@ class ListSkillsService:
 
     @staticmethod
     def format_as_text(skills: Sequence[SkillInfo]) -> str:
-        """Format the skill list as a human-readable string."""
+        """Format the skill list as an XML string."""
         if not skills:
-            return "No skills available."
-        lines = [f"- **{s.name}**: {s.description}" for s in skills]
-        return f"Available skills ({len(skills)}):\n" + "\n".join(lines)
+            return "<available_skills>\n</available_skills>"
+        skill_elements = []
+        for s in skills:
+            skill_elements.append(
+                f"<skill>\n<name>{s.name}</name>\n<description>{s.description}</description>\n</skill>"
+            )
+        return "<available_skills>\n" + "\n".join(skill_elements) + "\n</available_skills>"

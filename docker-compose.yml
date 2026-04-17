@@ -1,13 +1,21 @@
-version: '3.5'
 services:
   dev:
     user: root
     build:
       dockerfile: Dockerfile
       context: .
+      secrets:
+        - jfrog_user
+        - jfrog_token
     volumes:
       - ./:/usr/src/langchain_ai_skills_framework
     working_dir: /usr/src/langchain_ai_skills_framework
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - SKILLS_DIRECTORY=github://icanbwell/language-model-gateway-configuration/bailey/skills?ref=main
+
+secrets:
+  jfrog_user:
+    environment: JFROG_READ_USER
+  jfrog_token:
+    environment: JFROG_READ_TOKEN

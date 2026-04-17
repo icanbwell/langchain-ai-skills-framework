@@ -1,12 +1,6 @@
 [[source]]
-url = "https://pypi.python.org/simple"
-verify_ssl = true
-name = "pypi"
-
-[[source]]
-name = "alpine-wheels"
-# https://github.com/imranq2/alpine-wheels/
-url = "https://imranq2.github.io/alpine-wheels/docs/"
+name = "virtual-pypi"
+url = "https://artifacts.bwell.com/artifactory/api/pypi/virtual-pypi/simple"
 verify_ssl = true
 
 [packages]

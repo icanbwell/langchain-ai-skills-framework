@@ -55,6 +55,7 @@ class LangchainAISkillsFrameworkContainerFactory:
             UserSkillStoreFactory,
             lambda c: UserSkillStoreFactory(
                 mongo_database_factory=c.resolve(MongoDatabaseFactory),
+                environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
             ),
         )
 

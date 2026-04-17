@@ -52,11 +52,23 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
             return None
         return token.strip()
 
+    @staticmethod
+    def _resolve_path(value: str | None) -> str | None:
+        """Replace ``{pid}`` with the current process ID.
+
+        When multiple gunicorn workers share the same environment, this
+        gives each worker its own directory tree so they don't collide
+        on reads/writes.
+        """
+        if value and "{pid}" in value:
+            return value.replace("{pid}", str(os.getpid()))
+        return value
+
     @property
     def skills_directory(self) -> str:
         """Return the absolute path to the Agent Skills directory."""
 
-        configured = os.environ.get("SKILLS_DIRECTORY")
+        configured = self._resolve_path(os.environ.get("SKILLS_DIRECTORY"))
         if configured and configured.strip():
             return configured
 

@@ -39,7 +39,7 @@ RUN --mount=type=secret,id=jfrog_user --mount=type=secret,id=jfrog_token \
     if [ "$RUN_PIPENV_LOCK" = "true" ]; then \
         echo "Locking Pipfile"; \
         rm -f Pipfile.lock; \
-        pipenv lock --categories="packages dev-packages" --clear --verbose --extra-pip-args="--prefer-binary"; \
+        pipenv lock --clear --verbose --extra-pip-args="--prefer-binary"; \
     fi; \
     pipenv sync --dev --system --verbose --extra-pip-args="--prefer-binary"
 

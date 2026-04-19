@@ -50,7 +50,7 @@ logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
 # Default instruction template for skills system prompt
 _INSTRUCTION_SKILLS_HEADER = """\
-You have access to a collection of skills containing domain-specific knowledge and capabilities.
+You have  access to a collection of skills containing domain-specific knowledge and capabilities.
 Each skill provides specialized instructions, resources, and scripts for specific tasks.
 
 <available_skills>
@@ -113,9 +113,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         elif isinstance(skills_directory, str):
             configured_directory = skills_directory
         else:
-            raise SkillValidationError(
-                f"skills_directory must be a string or Path: {type(skills_directory)}"
-            )
+            raise SkillValidationError(f"skills_directory must be a string or Path: {type(skills_directory)}")
 
         if not configured_directory.strip():
             raise SkillValidationError("skills_directory is not configured")
@@ -134,9 +132,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
         self._manager: SkillManager = self._create_manager()
-        self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(
-            environment_variables
-        )
+        self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(environment_variables)
 
         logger.info(
             "SkillkitDirectoryLoader %s initialized for %s",
@@ -170,15 +166,11 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             )
             raise SkillNotFoundError(f"Skill '{skill_name}' not found") from exc
 
-    async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Fallback: directory loader has no user skills, delegate to shared."""
         return self.list_skill_summaries(allowed_skills)
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
         """Fallback: directory loader has no user skills, delegate to shared."""
         return self.get_skill_details(skill_name)
 
@@ -194,21 +186,14 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     def _build_skills_prompt(self, *, summaries: Sequence[SkillSummary]) -> str:
         if not summaries:
             return "No skills are currently configured."
-        skills_block = " ".join(
-            self._format_skill_entry(summary) for summary in summaries
-        )
+        skills_block = " ".join(self._format_skill_entry(summary) for summary in summaries)
         return f"<available_skills> {skills_block} </available_skills>"
 
     @staticmethod
     def _format_skill_entry(summary: SkillSummary) -> str:
         escaped_name = escape(summary.name, quote=True)
         escaped_description = escape(summary.description.strip(), quote=True)
-        return (
-            "<skill>"
-            f"<name> {escaped_name} </name> "
-            f"<description> {escaped_description} </description> "
-            "</skill>"
-        )
+        return f"<skill><name> {escaped_name} </name> <description> {escaped_description} </description> </skill>"
 
     async def get_instructions(self) -> str:
         """Return `<available_skills>` block used by middleware system prompts."""
@@ -259,9 +244,11 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             return []
         return sorted(f.name for f in references_dir.iterdir() if f.is_file())
 
-    async def read_skill_resource_for_user(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.list_skill_resource_names(skill_name)
+
+    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         """Fallback: directory loader has no user skills, delegate to shared."""
         return self.read_skill_resource(skill_name, resource_name)
 
@@ -282,14 +269,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             # Ensure the resource is within the skill's `references` directory
             resolved_resource.relative_to(resolved_references)
         except ValueError as exc:
-            raise SkillValidationError(
-                f"Invalid resource path '{resource_name}' for skill '{skill_name}'"
-            ) from exc
+            raise SkillValidationError(f"Invalid resource path '{resource_name}' for skill '{skill_name}'") from exc
 
         if not resolved_resource.is_file():
-            raise SkillNotFoundError(
-                f"Resource '{resource_name}' not found for skill '{skill_name}'"
-            )
+            raise SkillNotFoundError(f"Resource '{resource_name}' not found for skill '{skill_name}'")
         try:
             return resolved_resource.read_text(encoding="utf-8")
         except Exception as exc:
@@ -309,6 +292,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         skill = self._manager.load_skill(details.name)
         return sorted(s.name for s in skill.scripts)
 
+    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        """Fallback: directory loader has no user skills, delegate to shared."""
+        return self.list_skill_script_names(skill_name)
+
     async def run_skill_script_for_user(
         self,
         *,
@@ -326,9 +313,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         """Run a specific script from a skill and return its output."""
 
         # remove only a trailing ".py" extension since the Skillkit wants just the name
-        cleaned_script_name: str = (
-            script_name[:-3] if script_name.endswith(".py") else script_name
-        )
+        cleaned_script_name: str = script_name[:-3] if script_name.endswith(".py") else script_name
 
         result: MyScriptExecutionResult = await self.execute_skill_script(
             skill_name=skill_name,
@@ -416,21 +401,15 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         new_details: dict[str, SkillDetails] = {}
         new_summaries: list[SkillSummary] = []
 
-        excluded_skills = self._normalize_excluded_skills(
-            self._environment_variables.excluded_skills
-        )
-        excluded_skill_groups = self._normalize_excluded_skill_groups(
-            self._environment_variables.excluded_skill_groups
-        )
+        excluded_skills = self._normalize_excluded_skills(self._environment_variables.excluded_skills)
+        excluded_skill_groups = self._normalize_excluded_skill_groups(self._environment_variables.excluded_skill_groups)
 
         metadata: SkillMetadata | str
         for metadata in self._manager.list_skills():
             if isinstance(metadata, SkillMetadata):
                 skill: Skill = self._manager.load_skill(name=metadata.name)
                 definition = self._map_skill(metadata=metadata, content=skill.content)
-                skill_group = self._resolve_skill_group(
-                    str(definition.source_path.parent)
-                )
+                skill_group = self._resolve_skill_group(str(definition.source_path.parent))
                 if skill_group and skill_group in excluded_skill_groups:
                     logger.info("Skipping excluded skill group '%s'", skill_group)
                     continue
@@ -438,15 +417,11 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                     logger.info("Skipping excluded skill '%s'", definition.name)
                     continue
                 if definition.name in new_details:
-                    raise SkillValidationError(
-                        f"Duplicate skill name '{definition.name}' detected"
-                    )
+                    raise SkillValidationError(f"Duplicate skill name '{definition.name}' detected")
                 new_details[definition.name] = definition
                 new_summaries.append(definition.summary)
 
-        ordered_summaries = tuple(
-            sorted(new_summaries, key=lambda summary: summary.name)
-        )
+        ordered_summaries = tuple(sorted(new_summaries, key=lambda summary: summary.name))
         snapshot = SkillSnapshot(
             details_by_name=MappingProxyType(new_details),
             ordered_summaries=ordered_summaries,
@@ -464,11 +439,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         """Refresh the underlying SkillManager when forced or when TTL expires."""
 
         try:
-            if (
-                force
-                or self._snapshot is None
-                or not self._is_snapshot_valid_unlocked()
-            ):
+            if force or self._snapshot is None or not self._is_snapshot_valid_unlocked():
                 if self._skills_directory.startswith("github://"):
                     self._skills_root_path = self._github_skill_downloader.download(
                         cache_path=Path(".skills-git-cache"),
@@ -534,15 +505,9 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         if not normalized_name:
             raise SkillValidationError("Skill name must not be empty")
 
-        description = (
-            metadata.description.strip()
-            if isinstance(metadata.description, str)
-            else ""
-        )
+        description = metadata.description.strip() if isinstance(metadata.description, str) else ""
         if not description:
-            raise SkillValidationError(
-                f"Skill {normalized_name} must include a non-empty description"
-            )
+            raise SkillValidationError(f"Skill {normalized_name} must include a non-empty description")
 
         summary = SkillSummary(
             name=normalized_name,
@@ -563,9 +528,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     def _resolve_skill_group(self, skill_dir: str) -> str | None:
         try:
-            relative = PurePosixPath(skill_dir).relative_to(
-                PurePosixPath(str(self._skills_root_path))
-            )
+            relative = PurePosixPath(skill_dir).relative_to(PurePosixPath(str(self._skills_root_path)))
         except ValueError:
             return None
         if len(relative.parts) < 2:
@@ -586,27 +549,17 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         return Path(skills_directory).expanduser().resolve()
 
     @classmethod
-    def _normalize_excluded_skill_groups(
-        cls, values: set[str] | None
-    ) -> frozenset[str]:
+    def _normalize_excluded_skill_groups(cls, values: set[str] | None) -> frozenset[str]:
         if not values:
             return frozenset()
-        normalized = {
-            cls._normalize_skill_name(value)
-            for value in values
-            if isinstance(value, str) and value.strip()
-        }
+        normalized = {cls._normalize_skill_name(value) for value in values if isinstance(value, str) and value.strip()}
         return frozenset(item for item in normalized if item)
 
     @classmethod
     def _normalize_excluded_skills(cls, values: set[str] | None) -> frozenset[str]:
         if not values:
             return frozenset()
-        normalized = {
-            cls._normalize_skill_name(value)
-            for value in values
-            if isinstance(value, str) and value.strip()
-        }
+        normalized = {cls._normalize_skill_name(value) for value in values if isinstance(value, str) and value.strip()}
         return frozenset(item for item in normalized if item)
 
     @staticmethod

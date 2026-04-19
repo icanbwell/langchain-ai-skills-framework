@@ -8,7 +8,7 @@
 - Provide direct, prioritized feedback for contributors with blocking issues called out before suggestions.
 
 ## Repository Context Summary
-- **Stack**: Python 3.12, LangChain + langchain-core, Pydantic v2, PyYAML, Docker/Compose, Pipenv.
+- **Stack**: Python 3.12, LangChain + langchain-core, Pydantic v2, PyYAML, Docker/Compose, uv.
 - **Key modules**:
   - `langchain_ai_skills_framework/skills/skill_loader.py` – SKILL.md discovery, parsing, validation, and caching.
   - `langchain_ai_skills_framework/skills/skills_model.py` – SkillSummary/SkillDetails dataclasses.
@@ -17,7 +17,7 @@
   - `langchain_ai_skills_framework/utilities/cache/skill_cache.py` – TTL-aware cache for skill snapshots.
   - `langchain_ai_skills_framework/utilities/logger/log_levels.py` – logging defaults and per-source levels.
 - **Tests & fixtures**: `tests/skills/test_skill_loader.py`, `tests/skills/test_skills_middleware.py`, `tests/skills/test_skills_tool.py`.
-- **Tooling**: Pipenv (`Pipfile`), Ruff/mypy/bandit via pre-commit, Docker Compose in `docker-compose.yml`, pytest config in `setup.cfg`.
+- **Tooling**: uv (`pyproject.toml`), Ruff/mypy/bandit via pre-commit, Docker Compose in `docker-compose.yml`, pytest config in `pyproject.toml`.
 
 ## Code Style and Quality Rules
 - Absolute imports only (e.g., `from langchain_ai_skills_framework.skills.skill_loader import SkillDirectoryLoader`). No relative imports within the project.
@@ -73,7 +73,7 @@
 - Keep async middleware tests deterministic with `pytest-asyncio`.
 
 ## Dependencies & Build
-- Manage Python deps via Pipenv. If `Pipfile` changes, regenerate lockfile using `make Pipfile.lock`.
+- Manage Python deps via uv. If `pyproject.toml` changes, regenerate lockfile using `make uv.lock`.
 - Pre-commit hooks live in `pre-commit-hook`; run `make setup-pre-commit` once per clone.
 - Build and publish tasks use `make build`, `make testpackage`, and `make package`.
 

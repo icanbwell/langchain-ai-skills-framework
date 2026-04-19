@@ -17,18 +17,12 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
 )
 
 
-async def test_skillkit_loader_reads_skills_from_github_and_prints_parsed_summaries() -> (
-    None
-):
+async def test_skillkit_loader_reads_skills_from_github_and_prints_parsed_summaries() -> None:
     skills_directory = os.environ.get("SKILLS_DIRECTORY", "").strip()
-    github_token = (
-        os.environ.get("SKILLS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
-    ).strip()
+    github_token = (os.environ.get("SKILLS_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
 
     if not skills_directory:
-        pytest.skip(
-            "Set SKILLS_DIRECTORY to a github:// URI to run GitHub integration test"
-        )
+        pytest.skip("Set SKILLS_DIRECTORY to a github:// URI to run GitHub integration test")
     if not skills_directory.startswith("github://"):
         pytest.skip("SKILLS_DIRECTORY must use a github:// URI")
     if not github_token:

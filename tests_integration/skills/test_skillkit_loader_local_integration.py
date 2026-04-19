@@ -20,9 +20,7 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
 )
 
 
-class MyLangchainAISkillsFrameworkEnvironmentVariables(
-    LangchainAISkillsFrameworkEnvironmentVariables
-):
+class MyLangchainAISkillsFrameworkEnvironmentVariables(LangchainAISkillsFrameworkEnvironmentVariables):
     @override
     @property
     def skills_directory(self) -> str:
@@ -30,9 +28,7 @@ class MyLangchainAISkillsFrameworkEnvironmentVariables(
         return str(Path(__file__).parent.joinpath("skills").absolute())
 
 
-async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summaries() -> (
-    None
-):
+async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summaries() -> None:
     environment_variables = MyLangchainAISkillsFrameworkEnvironmentVariables()
     loader = SkillkitDirectoryLoader(
         environment_variables=environment_variables,
@@ -77,9 +73,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         assert len(tools) > 0
 
         # test reference
-        resource: str = loader.read_skill_resource(
-            skill_name="skill-with-references", resource_name="REFERENCE.md"
-        )
+        resource: str = loader.read_skill_resource(skill_name="skill-with-references", resource_name="REFERENCE.md")
         print("========= Resource REFERENCE.md ===========")
         print(f"{resource}")
         print("===========================================")
@@ -110,10 +104,7 @@ async def test_skillkit_loader_reads_skills_from_local_and_prints_parsed_summari
         print(f"{script_result.stderr}")
         print("===========================================")
         assert script_result.stdout is not None
-        assert (
-            '{"the_count": 3, "text": "the cat and the dog saw The bird"}'
-            in script_result.stdout
-        )
+        assert '{"the_count": 3, "text": "the cat and the dog saw The bird"}' in script_result.stdout
 
     except Exception:
         traceback.print_exc()

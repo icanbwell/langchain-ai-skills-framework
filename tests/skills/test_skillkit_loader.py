@@ -91,9 +91,7 @@ class _FakeSkillManager:
                 allowed_tools=allowed_tools,
             )
 
-    def list_skills(
-        self, include_qualified: bool = False
-    ) -> tuple[_FakeSkillMetadata, ...]:
+    def list_skills(self, include_qualified: bool = False) -> tuple[_FakeSkillMetadata, ...]:
         del include_qualified
         metadata_values = tuple(self._metadata_by_name.values())
         return metadata_values
@@ -168,9 +166,7 @@ def _build_loader(
         "SkillMetadata",
         _FakeSkillMetadata,
     )
-    monkeypatch.setattr(
-        SkillkitDirectoryLoader, "_create_manager", lambda self: manager
-    )
+    monkeypatch.setattr(SkillkitDirectoryLoader, "_create_manager", lambda self: manager)
 
     loader = SkillkitDirectoryLoader(
         environment_variables=FakeEnvironmentVariables(
@@ -214,10 +210,7 @@ async def test_skillkit_loader_reads_metadata_content_and_instructions(
     instructions = await loader.get_instructions()
     assert "<available_skills>" in instructions
     assert "alpha-skill" in instructions
-    assert (
-        "Use `read_skill_resource` to read files referenced by the skill"
-        in instructions
-    )
+    assert "Use `read_skill_resource` to read files referenced by the skill" in instructions
     assert "Use `run_skill_script` to run scripts provided by the skill" in instructions
 
 

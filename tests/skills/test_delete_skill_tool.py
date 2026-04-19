@@ -11,7 +11,7 @@ from langchain_ai_skills_framework.loaders.user_skill_store import (
 from langchain_ai_skills_framework.tools.delete_skill_tool import DeleteSkillTool
 
 
-def _make_loader_mock(deleted: bool = True) -> UserSkillStore:
+def _make_loader_mock(deleted: bool = True) -> AsyncMock:
     loader = AsyncMock(spec=UserSkillStore)
     loader.delete_skill.return_value = deleted
     return loader
@@ -30,14 +30,10 @@ class TestDeleteSkillTool:
         loader = _make_loader_mock(deleted=True)
         tool = DeleteSkillTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(
-            skill_name="test-skill", runtime=_make_runtime("user-1")
-        )
+        result, artifact = await tool._arun(skill_name="test-skill", runtime=_make_runtime("user-1"))
 
         assert "deleted successfully" in result
-        loader.delete_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
-            user_id="user-1", skill_name="test-skill"
-        )
+        loader.delete_skill.assert_awaited_once_with(user_id="user-1", skill_name="test-skill")
 
     @pytest.mark.asyncio
     async def test_reports_not_found(self) -> None:

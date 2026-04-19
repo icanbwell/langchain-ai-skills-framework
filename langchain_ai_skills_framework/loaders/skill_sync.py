@@ -42,30 +42,23 @@ class SkillSync:
         """
         result = SyncResult()
 
-        summaries: Sequence[SkillSummary] = self._shared.list_skill_summaries(
-            allowed_skills=set()
-        )
+        summaries: Sequence[SkillSummary] = self._shared.list_skill_summaries(allowed_skills=set())
         if not summaries:
             logger.info("SkillSync: no shared skills found; nothing to sync.")
             return result
 
-        logger.info(
-            "SkillSync: checking %d shared skills against MongoDB.", len(summaries)
-        )
+        logger.info("SkillSync: checking %d shared skills against MongoDB.", len(summaries))
 
         for summary in summaries:
             skill_name = summary.name
             try:
                 await self._sync_skill(skill_name=skill_name, result=result)
             except Exception:
-                logger.exception(
-                    "SkillSync: failed to sync skill '%s'; skipping.", skill_name
-                )
+                logger.exception("SkillSync: failed to sync skill '%s'; skipping.", skill_name)
                 result.errors += 1
 
         logger.info(
-            "SkillSync: complete. skills_added=%d resources_added=%d "
-            "scripts_added=%d skills_skipped=%d errors=%d",
+            "SkillSync: complete. skills_added=%d resources_added=%d scripts_added=%d skills_skipped=%d errors=%d",
             result.skills_added,
             result.resources_added,
             result.scripts_added,
@@ -77,9 +70,7 @@ class SkillSync:
     async def _sync_skill(self, *, skill_name: str, result: SyncResult) -> None:
         """Sync a single skill and its resources/scripts."""
         # Sync the skill content
-        skill_exists = await self._store.skill_exists(
-            user_id=SYSTEM_USER_ID, skill_name=skill_name
-        )
+        skill_exists = await self._store.skill_exists(user_id=SYSTEM_USER_ID, skill_name=skill_name)
         if skill_exists:
             result.skills_skipped += 1
         else:
@@ -91,9 +82,7 @@ class SkillSync:
                 modified_by=SYSTEM_USER_ID,
             )
             # Mark seeded skills as shared so all users can see them
-            await self._store.set_skill_shared(
-                user_id=SYSTEM_USER_ID, skill_name=skill_name, shared=True
-            )
+            await self._store.set_skill_shared(user_id=SYSTEM_USER_ID, skill_name=skill_name, shared=True)
             result.skills_added += 1
             logger.debug("SkillSync: added skill '%s'.", skill_name)
 
@@ -101,9 +90,7 @@ class SkillSync:
         try:
             resource_names = self._shared.list_skill_resource_names(skill_name)
         except Exception:
-            logger.debug(
-                "SkillSync: could not list resources for skill '%s'.", skill_name
-            )
+            logger.debug("SkillSync: could not list resources for skill '%s'.", skill_name)
             resource_names = []
 
         for resource_name in resource_names:
@@ -141,9 +128,7 @@ class SkillSync:
         try:
             script_names = self._shared.list_skill_script_names(skill_name)
         except Exception:
-            logger.debug(
-                "SkillSync: could not list scripts for skill '%s'.", skill_name
-            )
+            logger.debug("SkillSync: could not list scripts for skill '%s'.", skill_name)
             script_names = []
 
         for script_name in script_names:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Literal, Optional, Tuple, Type, override
 
 from langchain_core.callbacks import (
@@ -11,17 +10,11 @@ from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
-from skills_ref.errors import ParseError
-from skills_ref.parser import parse_frontmatter
-from skills_ref.validator import validate_metadata
-
 from langchain_ai_skills_framework.loaders.user_skill_store import (
     UserSkillStore,
 )
-from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
-
-logger = logging.getLogger(__name__)
-logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+from langchain_ai_skills_framework.services.save_skill_service import SaveSkillService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 
 class SaveSkillInput(BaseModel):
@@ -34,8 +27,7 @@ class SaveSkillInput(BaseModel):
     )
     content: str = Field(
         description=(
-            "Full content of the skill in SKILL.md format. "
-            "May include YAML frontmatter with description and metadata."
+            "Full content of the skill in SKILL.md format. May include YAML frontmatter with description and metadata."
         ),
     )
     runtime: ToolRuntime
@@ -64,9 +56,7 @@ class SaveSkillTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
-        raise NotImplementedError(
-            "Synchronous execution is not supported. Use the asynchronous method instead."
-        )
+        raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
     async def _arun(
@@ -78,49 +68,18 @@ class SaveSkillTool(BaseTool):
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
-        user_id = ctx.get("user_id", "")
-        stripped_user_id = user_id.strip() if user_id else ""
-        if not stripped_user_id:
-            raise ToolException("user_id is required for save_skill")
-        if not skill_name or not skill_name.strip():
-            raise ToolException("skill_name must be a non-empty string.")
-        if not content or not content.strip():
-            raise ToolException("content must be a non-empty string.")
-        if self.mongo_skill_loader is None:
-            raise ToolException("mongo_skill_loader is not configured.")
+        user_id = (ctx.get("user_id", "") or "").strip()
 
-        # Validate skill content using skills_ref
+        service = SaveSkillService(mongo_skill_loader=self.mongo_skill_loader)
         try:
-            metadata, _ = parse_frontmatter(content)
-        except ParseError as exc:
-            message = f"Skill validation failed: {exc}"
-            return message, message
-
-        validation_errors = validate_metadata(metadata)
-        if validation_errors:
-            error_details = "; ".join(validation_errors)
-            message = f"Skill validation failed ({len(validation_errors)} error(s)): {error_details}"
-            return message, message
-
-        try:
-            doc = await self.mongo_skill_loader.save_skill(
-                user_id=stripped_user_id,
+            message = await service.execute(
+                user_id=user_id,
                 skill_name=skill_name,
                 content=content,
-                modified_by=stripped_user_id,
             )
-            message = f"Skill '{doc.skill_name}' saved successfully."
-            logger.info("SaveSkillTool: %s (user=%s)", message, user_id)
             return message, message
-        except Exception as exc:
-            logger.exception(
-                "SaveSkillTool failed for skill_name=%s user=%s",
-                skill_name,
-                user_id,
-            )
-            raise ToolException(
-                f"Unable to save skill '{skill_name}' due to an internal error."
-            ) from exc
+        except SkillOperationError as exc:
+            raise ToolException(str(exc)) from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:

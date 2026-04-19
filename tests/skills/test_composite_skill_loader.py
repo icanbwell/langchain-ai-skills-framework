@@ -30,9 +30,7 @@ from langchain_ai_skills_framework.models.skills_model import (
 )
 
 
-def _make_skill(
-    name: str, *, content: str = "Skill content", source: str = "shared"
-) -> SkillDetails:
+def _make_skill(name: str, *, content: str = "Skill content", source: str = "shared") -> SkillDetails:
     source_path = Path(f"/{source}/{name}/SKILL.md")
     summary = SkillSummary(
         name=name,
@@ -50,9 +48,7 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return [d.summary for d in self._details.values()]
 
-    async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
@@ -61,9 +57,7 @@ class _StubSharedLoader(SkillLoaderProtocol):
         except KeyError as exc:
             raise SkillNotFoundError(f"'{skill_name}' not found") from exc
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -86,9 +80,10 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
-    async def read_skill_resource_for_user(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
+    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_script_names(skill_name)
+
+    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script_for_user(
@@ -104,6 +99,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_resource_names(skill_name)
+
 
 def _make_user_loader_mock(
     user_skills: dict[str, SkillDetails] | None = None,
@@ -115,15 +113,11 @@ def _make_user_loader_mock(
     shared = shared_skills or {}
     snapshot = SkillSnapshot(
         details_by_name=MappingProxyType(skills),
-        ordered_summaries=tuple(
-            sorted([d.summary for d in skills.values()], key=lambda s: s.name)
-        ),
+        ordered_summaries=tuple(sorted([d.summary for d in skills.values()], key=lambda s: s.name)),
     )
     shared_snapshot = SkillSnapshot(
         details_by_name=MappingProxyType(shared),
-        ordered_summaries=tuple(
-            sorted([d.summary for d in shared.values()], key=lambda s: s.name)
-        ),
+        ordered_summaries=tuple(sorted([d.summary for d in shared.values()], key=lambda s: s.name)),
     )
     loader.load_snapshot.return_value = snapshot
     loader.load_shared_snapshot.return_value = shared_snapshot
@@ -159,9 +153,7 @@ class TestListAllSummaries:
         user_loader = _make_user_loader_mock({"beta": user_skill})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        summaries = await composite.list_all_summaries(
-            user_id="user-1", allowed_skills=set()
-        )
+        summaries = await composite.list_all_summaries(user_id="user-1", allowed_skills=set())
 
         names = [s.name for s in summaries]
         assert "alpha" in names
@@ -176,9 +168,7 @@ class TestListAllSummaries:
         user_loader = _make_user_loader_mock({"alpha": user_skill})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        summaries = await composite.list_all_summaries(
-            user_id="user-1", allowed_skills=set()
-        )
+        summaries = await composite.list_all_summaries(user_id="user-1", allowed_skills=set())
 
         assert len(summaries) == 1
         assert summaries[0].name == "alpha"
@@ -193,9 +183,7 @@ class TestGetSkillDetailsForUser:
         user_loader = _make_user_loader_mock({"my-skill": user_skill})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(
-            user_id="user-1", skill_name="my-skill"
-        )
+        detail = await composite.get_skill_details_for_user(user_id="user-1", skill_name="my-skill")
 
         assert detail.content == "user version"
 
@@ -206,34 +194,24 @@ class TestGetSkillDetailsForUser:
         user_loader = _make_user_loader_mock({})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(
-            user_id="user-1", skill_name="shared-skill"
-        )
+        detail = await composite.get_skill_details_for_user(user_id="user-1", skill_name="shared-skill")
 
         assert detail.content == "shared version"
 
     @pytest.mark.asyncio
     async def test_returns_shared_db_skill_from_another_user(self) -> None:
-        shared_db_skill = _make_skill(
-            "health-news-monitor", content="shared db version", source="mongodb"
-        )
+        shared_db_skill = _make_skill("health-news-monitor", content="shared db version", source="mongodb")
         shared = _StubSharedLoader({})
-        user_loader = _make_user_loader_mock(
-            user_skills={}, shared_skills={"health-news-monitor": shared_db_skill}
-        )
+        user_loader = _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(
-            user_id="different-user", skill_name="health-news-monitor"
-        )
+        detail = await composite.get_skill_details_for_user(user_id="different-user", skill_name="health-news-monitor")
 
         assert detail.content == "shared db version"
 
     @pytest.mark.asyncio
     async def test_user_skill_takes_precedence_over_shared_db_skill(self) -> None:
-        shared_db_skill = _make_skill(
-            "my-skill", content="shared db version", source="mongodb"
-        )
+        shared_db_skill = _make_skill("my-skill", content="shared db version", source="mongodb")
         user_skill = _make_skill("my-skill", content="user version", source="mongodb")
         shared = _StubSharedLoader({})
         user_loader = _make_user_loader_mock(
@@ -242,9 +220,7 @@ class TestGetSkillDetailsForUser:
         )
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(
-            user_id="user-1", skill_name="my-skill"
-        )
+        detail = await composite.get_skill_details_for_user(user_id="user-1", skill_name="my-skill")
 
         assert detail.content == "user version"
 
@@ -255,9 +231,7 @@ class TestGetSkillDetailsForUser:
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
         with pytest.raises(SkillNotFoundError):
-            await composite.get_skill_details_for_user(
-                user_id="user-1", skill_name="nonexistent"
-            )
+            await composite.get_skill_details_for_user(user_id="user-1", skill_name="nonexistent")
 
 
 class TestGetTools:

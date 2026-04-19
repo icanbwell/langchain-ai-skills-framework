@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Type, Literal, Tuple, Any
+from typing import Any, Literal, Tuple, Type, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -8,71 +8,62 @@ from langchain_core.callbacks import (
 )
 from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
-from langchain_ai_skills_framework.services.load_skill_service import LoadSkillService
+from langchain_ai_skills_framework.services.list_skills_service import ListSkillsService
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
-from langchain_ai_skills_framework.utilities.text_humanizer import Humanizer
 
 
-class LoadSkillInput(BaseModel):
-    """Input schema for the load_skill tool."""
+class ListSkillsInput(BaseModel):
+    """Input schema for the list_skills tool."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    skill_name: str = Field(
-        description="Name of the skill to load (e.g., 'sales_analytics').",
-    )
     runtime: ToolRuntime
 
 
-class LoadSkillTool(BaseTool):
-    """LangChain tool that loads full skill definitions for the agent."""
+class ListSkillsTool(BaseTool):
+    """LangChain tool that lists available skills for the current user."""
 
-    name: str = "load_skill"
+    name: str = "list_skills"
     description: str = (
-        "Load the full content of a skill into the agent's context for detailed"
-        " handling instructions, policies, and guidelines."
+        "List all skills available to the current user, including both shared skills "
+        "and the user's own saved skills. Returns skill names and descriptions."
     )
-    args_schema: Type[BaseModel] = LoadSkillInput
+    args_schema: Type[BaseModel] = ListSkillsInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
-    user_skill_store: UserSkillStore | None = None
 
+    @override
     def _run(
         self,
         *,
-        skill_name: str,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
+    @override
     async def _arun(
         self,
         *,
-        skill_name: str,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 
-        service = LoadSkillService(
-            skill_loader=self.skill_loader,
-            user_skill_store=self.user_skill_store,
-        )
+        service = ListSkillsService(skill_loader=self.skill_loader)
         try:
-            content = await service.execute(user_id=user_id, skill_name=skill_name)
-            return content, content
+            skills = await service.execute(user_id=user_id)
+            message = ListSkillsService.format_as_text(skills)
+            return message, message
         except SkillOperationError as exc:
             raise ToolException(str(exc)) from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
-        skill_name: str = str(tool_input.get("skill_name") if tool_input else "")
-        return f"{Humanizer.humanize_tool_name(key=skill_name)}"
+        return "List Skills"

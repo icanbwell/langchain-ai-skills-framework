@@ -22,18 +22,14 @@ def test_download_uses_expected_storage_options_and_cache_directory(
     get_calls: list[tuple[str, str, bool]] = []
 
     class _FakeGithubFilesystem:
-        def get(
-            self, remote_path: str, local_path: str, recursive: bool = False
-        ) -> None:
+        def get(self, remote_path: str, local_path: str, recursive: bool = False) -> None:
             get_calls.append((remote_path, local_path, recursive))
 
         def ls(self, path: str, detail: bool = False) -> Sequence[str]:
             del path, detail
             return ()
 
-    def _fake_filesystem(
-        protocol: str, **storage_options: object
-    ) -> _FakeGithubFilesystem:
+    def _fake_filesystem(protocol: str, **storage_options: object) -> _FakeGithubFilesystem:
         assert protocol == "github"
         captured_storage_options.update(storage_options)
         return _FakeGithubFilesystem()
@@ -98,18 +94,14 @@ def test_download_omits_auth_fields_when_github_token_missing(
     captured_storage_options: dict[str, object] = {}
 
     class _FakeGithubFilesystem:
-        def get(
-            self, remote_path: str, local_path: str, recursive: bool = False
-        ) -> None:
+        def get(self, remote_path: str, local_path: str, recursive: bool = False) -> None:
             del remote_path, local_path, recursive
 
         def ls(self, path: str, detail: bool = False) -> Sequence[str]:
             del path, detail
             return ()
 
-    def _fake_filesystem(
-        protocol: str, **storage_options: object
-    ) -> _FakeGithubFilesystem:
+    def _fake_filesystem(protocol: str, **storage_options: object) -> _FakeGithubFilesystem:
         assert protocol == "github"
         captured_storage_options.update(storage_options)
         return _FakeGithubFilesystem()
@@ -168,17 +160,12 @@ def test_download_preserves_existing_cache_on_failure(
 
     # Pre-populate the cache with known content.
     downloader = GithubDirectoryDownloader()
-    git_loc = downloader.parse_github_uri(
-        "github://my-org/private-repo/configs?ref=main"
-    )
+    git_loc = downloader.parse_github_uri("github://my-org/private-repo/configs?ref=main")
     # Compute the target dir the same way download() does.
     from hashlib import sha256
 
     key = f"{git_loc.owner}/{git_loc.repository}:main:configs"
-    cache_dir_name = (
-        f"{git_loc.owner}-{git_loc.repository}"
-        f"-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
-    )
+    cache_dir_name = f"{git_loc.owner}-{git_loc.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
     target_dir = cache_dir / cache_dir_name
     target_dir.mkdir(parents=True)
     (target_dir / "old_file.txt").write_text("precious data")
@@ -216,9 +203,7 @@ def test_download_retries_on_transient_failure(
     call_count = 0
 
     class _FlakeyFilesystem:
-        def get(
-            self, remote_path: str, local_path: str, recursive: bool = False
-        ) -> None:
+        def get(self, remote_path: str, local_path: str, recursive: bool = False) -> None:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
@@ -258,16 +243,11 @@ def test_download_skips_when_disk_cache_is_fresh(
 
     # Pre-populate cache and timestamp file.
     downloader = GithubDirectoryDownloader()
-    git_loc = downloader.parse_github_uri(
-        "github://my-org/private-repo/configs?ref=main"
-    )
+    git_loc = downloader.parse_github_uri("github://my-org/private-repo/configs?ref=main")
     from hashlib import sha256
 
     key = f"{git_loc.owner}/{git_loc.repository}:main:configs"
-    cache_dir_name = (
-        f"{git_loc.owner}-{git_loc.repository}"
-        f"-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
-    )
+    cache_dir_name = f"{git_loc.owner}-{git_loc.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
     target_dir = cache_dir / cache_dir_name
     target_dir.mkdir(parents=True)
     (target_dir / "cached_file.txt").write_text("already here")
@@ -295,9 +275,7 @@ def test_download_skips_when_disk_cache_is_fresh(
 
 
 def test_parse_github_uri_returns_git_location() -> None:
-    result = GithubDirectoryDownloader.parse_github_uri(
-        "github://my-org/my-repo/path/to/dir?ref=develop"
-    )
+    result = GithubDirectoryDownloader.parse_github_uri("github://my-org/my-repo/path/to/dir?ref=develop")
     assert result == GitLocation(
         repo_url="https://github.com/my-org/my-repo.git",
         owner="my-org",

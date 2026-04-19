@@ -13,9 +13,7 @@ _SKILLS_CACHE_TIMEOUT_ENV_VAR: str = "SKILLS_CACHE_TIMEOUT_SECONDS"
 _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS: int = 60 * 60
 
 
-class LangchainAISkillsFrameworkEnvironmentVariables(
-    EnvironmentVariables, SkillLoaderEnvironmentVariables
-):
+class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, SkillLoaderEnvironmentVariables):
     @property
     def skills_cache_timeout_seconds(self) -> int:
         """Return a validated TTL in seconds for skill reload behavior."""
@@ -54,11 +52,23 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
             return None
         return token.strip()
 
+    @staticmethod
+    def _resolve_path(value: str | None) -> str | None:
+        """Replace ``{pid}`` with the current process ID.
+
+        When multiple gunicorn workers share the same environment, this
+        gives each worker its own directory tree so they don't collide
+        on reads/writes.
+        """
+        if value and "{pid}" in value:
+            return value.replace("{pid}", str(os.getpid()))
+        return value
+
     @property
     def skills_directory(self) -> str:
         """Return the absolute path to the Agent Skills directory."""
 
-        configured = os.environ.get("SKILLS_DIRECTORY")
+        configured = self._resolve_path(os.environ.get("SKILLS_DIRECTORY"))
         if configured and configured.strip():
             return configured
 
@@ -117,18 +127,12 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
     @property
     def mongo_skills_db_name(self) -> str:
         """Database name for skills storage (default: ``llm_storage``)."""
-        return (
-            os.environ.get("MONGO_SKILLS_DB_NAME")
-            or os.environ.get("MONGO_DB_NAME")
-            or "llm_storage"
-        )
+        return os.environ.get("MONGO_SKILLS_DB_NAME") or os.environ.get("MONGO_DB_NAME") or "llm_storage"
 
     @property
     def mongo_skills_db_username(self) -> str | None:
         """Username for MongoDB skills storage authentication."""
-        val = os.environ.get("MONGO_SKILLS_DB_USERNAME") or os.environ.get(
-            "MONGO_DB_USERNAME"
-        )
+        val = os.environ.get("MONGO_SKILLS_DB_USERNAME") or os.environ.get("MONGO_DB_USERNAME")
         if not val or not val.strip():
             return None
         return val.strip()
@@ -136,9 +140,7 @@ class LangchainAISkillsFrameworkEnvironmentVariables(
     @property
     def mongo_skills_db_password(self) -> str | None:
         """Password for MongoDB skills storage authentication."""
-        val = os.environ.get("MONGO_SKILLS_DB_PASSWORD") or os.environ.get(
-            "MONGO_DB_PASSWORD"
-        )
+        val = os.environ.get("MONGO_SKILLS_DB_PASSWORD") or os.environ.get("MONGO_DB_PASSWORD")
         if not val or not val.strip():
             return None
         return val.strip()

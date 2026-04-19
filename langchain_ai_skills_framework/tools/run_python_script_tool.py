@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import asyncio
-import logging
 from typing import Any, Type, Literal
+
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
@@ -9,14 +10,9 @@ from langchain_core.callbacks import (
 from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
-from langchain_ai_skills_framework.executors.my_script_execution_result import (
-    MyScriptExecutionResult,
-)
-from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
-from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
-logger = logging.getLogger(__name__)
-logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+from langchain_ai_skills_framework.services.run_python_script_service import RunPythonScriptService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 
 class RunPythonScriptInput(BaseModel):
@@ -31,9 +27,7 @@ class RunPythonScriptInput(BaseModel):
         ),
     )
     script_name: str = Field(
-        description=(
-            "Name to identify the script being executed (e.g., 'data_processing.py')."
-        ),
+        description=("Name to identify the script being executed (e.g., 'data_processing.py')."),
     )
     arguments: dict[str, Any] | None = Field(
         default=None,
@@ -42,9 +36,7 @@ class RunPythonScriptInput(BaseModel):
             The keys and values should match what the script expects."""
         ),
     )
-    timeout: int = Field(
-        description="Timeout for the script execution in seconds.", default=30
-    )
+    timeout: int = Field(description="Timeout for the script execution in seconds.", default=30)
     runtime: ToolRuntime = Field(exclude=True)
 
 
@@ -81,7 +73,6 @@ class RunPythonScriptTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
-        """Synchronous execution with named parameters."""
         return asyncio.run(
             self._arun(
                 script=script,
@@ -102,73 +93,18 @@ class RunPythonScriptTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
-        """Async execution with named parameters."""
-        logger.debug(
-            "RunPythonScriptTool: Running inline script script_name=%s argument_keys=%s timeout=%s",
-            script_name,
-            sorted((arguments or {}).keys()),
-            timeout,
-        )
-
+        service = RunPythonScriptService()
         try:
-            result: MyScriptExecutionResult = await self._run_inline_script(
+            return await service.execute(
                 script=script,
                 script_name=script_name,
                 arguments=arguments,
                 timeout=timeout,
             )
-
-            logger.debug(
-                "RunPythonScriptTool: Output from Python script with arguments %s\n%s",
-                arguments,
-                result,
-            )
-
-            if result.success:
-                return (
-                    result.stdout or "No output",
-                    result.stdout or "",
-                )
-            else:
-                return (
-                    result.stderr or result.stdout or "No output",
-                    result.stdout or "",
-                )
-
-        except ToolException:
-            raise
-        except Exception as exc:
-            logger.exception(
-                "RunPythonScriptTool: Error running inline Python script",
-            )
-            raise ToolException(f"Error running inline Python script: {exc}") from exc
-
-    async def _run_inline_script(
-        self,
-        *,
-        script: str,
-        script_name: str,
-        arguments: dict[str, Any] | None,
-        timeout: int = 30,
-    ) -> MyScriptExecutionResult:
-        """Execute the script using MyScriptExecutor."""
-        resolved_script_name = script_name.strip()
-        if not resolved_script_name:
-            raise ToolException("script_name must be a non-empty string")
-
-        normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
-
-        executor = MyScriptExecutor()
-        result: MyScriptExecutionResult = await executor.execute_inline_script(
-            script_name=resolved_script_name,
-            script=script,
-            arguments=normalized_arguments,
-            timeout=timeout,
-        )
-        return result
+        except SkillOperationError as exc:
+            raise ToolException(str(exc)) from exc
 
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
-        """Get the friendly name of the skill."""
         skill_name = tool_input.get("skill_name") if tool_input else None
         return f"{skill_name}"

@@ -27,9 +27,7 @@ def test_validate_path_accepts_paths_within_skill_directory(
     executor = MyScriptExecutor()
     script_path = script_file if as_absolute else Path("scripts/extract.py")
 
-    resolved = executor._validate_path(
-        script_path=script_path, skill_base_dir=skill_base_dir
-    )
+    resolved = executor._validate_path(script_path=script_path, skill_base_dir=skill_base_dir)
 
     assert resolved == script_file.resolve()
 

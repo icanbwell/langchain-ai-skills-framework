@@ -36,9 +36,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return [detail.summary for detail in self._details.values()]
 
-    async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str]
-    ) -> Sequence[SkillSummary]:
+    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
@@ -47,9 +45,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
         except KeyError as exc:
             raise SkillNotFoundError from exc
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -64,9 +60,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
         raise NotImplementedError()
 
-    async def read_skill_resource_for_user(
-        self, *, user_id: str, skill_name: str, resource_name: str
-    ) -> str:
+    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script(
@@ -87,8 +81,14 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
         return []
 
+    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_script_names(skill_name)
+
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
         return []
+
+    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+        return self.list_skill_resource_names(skill_name)
 
 
 def _make_skill(name: str, *, content: str = "Skill content") -> SkillDetails:

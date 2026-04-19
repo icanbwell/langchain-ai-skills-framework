@@ -33,16 +33,11 @@ def _make_database(
     """Create a mock AsyncIOMotorDatabase with configurable collections."""
     db = MagicMock()
     collections = {
-        MongoUserSkillLoader.RESOURCES_COLLECTION_NAME: resources_collection
-        or _make_collection(),
-        MongoUserSkillLoader.SCRIPTS_COLLECTION_NAME: scripts_collection
-        or _make_collection(),
-        MongoUserSkillLoader.USAGE_COLLECTION_NAME: usage_collection
-        or _make_collection(),
+        MongoUserSkillLoader.RESOURCES_COLLECTION_NAME: resources_collection or _make_collection(),
+        MongoUserSkillLoader.SCRIPTS_COLLECTION_NAME: scripts_collection or _make_collection(),
+        MongoUserSkillLoader.USAGE_COLLECTION_NAME: usage_collection or _make_collection(),
     }
-    db.__getitem__ = MagicMock(
-        side_effect=lambda name: collections.get(name, _make_collection())
-    )
+    db.__getitem__ = MagicMock(side_effect=lambda name: collections.get(name, _make_collection()))
     return db
 
 
@@ -225,9 +220,7 @@ class TestSaveSkill:
         loader = _make_loader()
 
         with pytest.raises(ValueError, match="user_id must be a non-empty string"):
-            await loader.save_skill(
-                user_id=user_id, skill_name="test", content="content"
-            )
+            await loader.save_skill(user_id=user_id, skill_name="test", content="content")
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
@@ -253,16 +246,10 @@ class TestDeleteSkill:
         result = await loader.delete_skill(user_id="user-1", skill_name="my-skill")
 
         assert result is True
-        collection.delete_one.assert_awaited_once_with(
-            {"user_id": "user-1", "skill_name": "my-skill"}
-        )
+        collection.delete_one.assert_awaited_once_with({"user_id": "user-1", "skill_name": "my-skill"})
         # Also deletes associated resources and scripts
-        resources_collection.delete_many.assert_awaited_once_with(
-            {"user_id": "user-1", "skill_name": "my-skill"}
-        )
-        scripts_collection.delete_many.assert_awaited_once_with(
-            {"user_id": "user-1", "skill_name": "my-skill"}
-        )
+        resources_collection.delete_many.assert_awaited_once_with({"user_id": "user-1", "skill_name": "my-skill"})
+        scripts_collection.delete_many.assert_awaited_once_with({"user_id": "user-1", "skill_name": "my-skill"})
 
     @pytest.mark.asyncio
     async def test_returns_false_when_not_found(self) -> None:
@@ -432,9 +419,7 @@ class TestSaveResource:
     @pytest.mark.asyncio
     async def test_stores_modified_by(self) -> None:
         resources_collection = _make_collection()
-        resources_collection.find_one_and_update.return_value = _make_raw_resource_doc(
-            modified_by="system"
-        )
+        resources_collection.find_one_and_update.return_value = _make_raw_resource_doc(modified_by="system")
         loader = _make_loader(resources_collection=resources_collection)
 
         await loader.save_resource(
@@ -466,9 +451,7 @@ class TestSaveResource:
     async def test_rejects_empty_resource_name(self) -> None:
         loader = _make_loader()
 
-        with pytest.raises(
-            ValueError, match="resource_name must be a non-empty string"
-        ):
+        with pytest.raises(ValueError, match="resource_name must be a non-empty string"):
             await loader.save_resource(
                 user_id="user-1",
                 skill_name="test",
@@ -481,14 +464,10 @@ class TestReadResource:
     @pytest.mark.asyncio
     async def test_returns_content(self) -> None:
         resources_collection = _make_collection()
-        resources_collection.find_one.return_value = _make_raw_resource_doc(
-            content="Resource content here"
-        )
+        resources_collection.find_one.return_value = _make_raw_resource_doc(content="Resource content here")
         loader = _make_loader(resources_collection=resources_collection)
 
-        content = await loader.read_resource(
-            user_id="user-1", skill_name="my-skill", resource_name="FORMS.md"
-        )
+        content = await loader.read_resource(user_id="user-1", skill_name="my-skill", resource_name="FORMS.md")
 
         assert content == "Resource content here"
 
@@ -499,9 +478,7 @@ class TestReadResource:
         loader = _make_loader(resources_collection=resources_collection)
 
         with pytest.raises(SkillNotFoundError):
-            await loader.read_resource(
-                user_id="user-1", skill_name="my-skill", resource_name="nope.md"
-            )
+            await loader.read_resource(user_id="user-1", skill_name="my-skill", resource_name="nope.md")
 
 
 class TestListResourceNames:
@@ -516,9 +493,7 @@ class TestListResourceNames:
         )
         loader = _make_loader(resources_collection=resources_collection)
 
-        names = await loader.list_resource_names(
-            user_id="user-1", skill_name="my-skill"
-        )
+        names = await loader.list_resource_names(user_id="user-1", skill_name="my-skill")
 
         assert list(names) == ["ALPHA.md", "ZEBRA.md"]
 
@@ -530,9 +505,7 @@ class TestDeleteResource:
         resources_collection.delete_one.return_value = MagicMock(deleted_count=1)
         loader = _make_loader(resources_collection=resources_collection)
 
-        result = await loader.delete_resource(
-            user_id="user-1", skill_name="my-skill", resource_name="FORMS.md"
-        )
+        result = await loader.delete_resource(user_id="user-1", skill_name="my-skill", resource_name="FORMS.md")
 
         assert result is True
 
@@ -544,9 +517,7 @@ class TestResourceExists:
         resources_collection.count_documents.return_value = 1
         loader = _make_loader(resources_collection=resources_collection)
 
-        result = await loader.resource_exists(
-            user_id="user-1", skill_name="my-skill", resource_name="FORMS.md"
-        )
+        result = await loader.resource_exists(user_id="user-1", skill_name="my-skill", resource_name="FORMS.md")
 
         assert result is True
 
@@ -556,9 +527,7 @@ class TestResourceExists:
         resources_collection.count_documents.return_value = 0
         loader = _make_loader(resources_collection=resources_collection)
 
-        result = await loader.resource_exists(
-            user_id="user-1", skill_name="my-skill", resource_name="nope.md"
-        )
+        result = await loader.resource_exists(user_id="user-1", skill_name="my-skill", resource_name="nope.md")
 
         assert result is False
 
@@ -612,9 +581,7 @@ class TestSaveScript:
     @pytest.mark.asyncio
     async def test_stores_modified_by(self) -> None:
         scripts_collection = _make_collection()
-        scripts_collection.find_one_and_update.return_value = _make_raw_script_doc(
-            modified_by="system"
-        )
+        scripts_collection.find_one_and_update.return_value = _make_raw_script_doc(modified_by="system")
         loader = _make_loader(scripts_collection=scripts_collection)
 
         await loader.save_script(
@@ -659,14 +626,10 @@ class TestReadScript:
     @pytest.mark.asyncio
     async def test_returns_content(self) -> None:
         scripts_collection = _make_collection()
-        scripts_collection.find_one.return_value = _make_raw_script_doc(
-            content="import sys\nprint(sys.argv)"
-        )
+        scripts_collection.find_one.return_value = _make_raw_script_doc(content="import sys\nprint(sys.argv)")
         loader = _make_loader(scripts_collection=scripts_collection)
 
-        content = await loader.read_script(
-            user_id="user-1", skill_name="my-skill", script_name="analyze.py"
-        )
+        content = await loader.read_script(user_id="user-1", skill_name="my-skill", script_name="analyze.py")
 
         assert content == "import sys\nprint(sys.argv)"
 
@@ -677,9 +640,7 @@ class TestReadScript:
         loader = _make_loader(scripts_collection=scripts_collection)
 
         with pytest.raises(SkillNotFoundError):
-            await loader.read_script(
-                user_id="user-1", skill_name="my-skill", script_name="nope.py"
-            )
+            await loader.read_script(user_id="user-1", skill_name="my-skill", script_name="nope.py")
 
 
 class TestListScriptNames:
@@ -706,9 +667,7 @@ class TestDeleteScript:
         scripts_collection.delete_one.return_value = MagicMock(deleted_count=1)
         loader = _make_loader(scripts_collection=scripts_collection)
 
-        result = await loader.delete_script(
-            user_id="user-1", skill_name="my-skill", script_name="analyze.py"
-        )
+        result = await loader.delete_script(user_id="user-1", skill_name="my-skill", script_name="analyze.py")
 
         assert result is True
 
@@ -720,9 +679,7 @@ class TestScriptExists:
         scripts_collection.count_documents.return_value = 1
         loader = _make_loader(scripts_collection=scripts_collection)
 
-        result = await loader.script_exists(
-            user_id="user-1", skill_name="my-skill", script_name="analyze.py"
-        )
+        result = await loader.script_exists(user_id="user-1", skill_name="my-skill", script_name="analyze.py")
 
         assert result is True
 
@@ -732,9 +689,7 @@ class TestScriptExists:
         scripts_collection.count_documents.return_value = 0
         loader = _make_loader(scripts_collection=scripts_collection)
 
-        result = await loader.script_exists(
-            user_id="user-1", skill_name="my-skill", script_name="nope.py"
-        )
+        result = await loader.script_exists(user_id="user-1", skill_name="my-skill", script_name="nope.py")
 
         assert result is False
 
@@ -765,9 +720,7 @@ class TestGetSkillUsageCount:
         count = await loader.get_skill_usage_count(skill_name="my-skill")
 
         assert count == 42
-        usage_collection.count_documents.assert_awaited_once_with(
-            {"skill_name": "my-skill"}
-        )
+        usage_collection.count_documents.assert_awaited_once_with({"skill_name": "my-skill"})
 
     @pytest.mark.asyncio
     async def test_returns_zero_for_unused_skill(self) -> None:

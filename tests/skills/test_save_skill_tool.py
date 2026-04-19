@@ -14,12 +14,10 @@ from langchain_ai_skills_framework.models.mongo_skill_document import (
 )
 from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
 
-VALID_SKILL_CONTENT = (
-    "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
-)
+VALID_SKILL_CONTENT = "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
 
 
-def _make_loader_mock() -> UserSkillStore:
+def _make_loader_mock() -> AsyncMock:
     loader = AsyncMock(spec=UserSkillStore)
     loader.save_skill.return_value = MongoSkillDocument(
         user_id="user-1",
@@ -53,7 +51,7 @@ class TestSaveSkillTool:
         )
 
         assert "saved successfully" in result
-        loader.save_skill.assert_awaited_once_with(  # type: ignore[attr-defined]
+        loader.save_skill.assert_awaited_once_with(
             user_id="user-1",
             skill_name="test-skill",
             content=VALID_SKILL_CONTENT,
@@ -65,9 +63,7 @@ class TestSaveSkillTool:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(
-                skill_name="test", content="content", runtime=_make_runtime("")
-            )
+            await tool._arun(skill_name="test", content="content", runtime=_make_runtime(""))
 
     @pytest.mark.asyncio
     async def test_rejects_missing_user_id_in_context(self) -> None:
@@ -121,9 +117,7 @@ class TestSaveSkillTool:
         tool = SaveSkillTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(
-                skill_name="test", content="content", runtime=_make_runtime()
-            )
+            await tool._arun(skill_name="test", content="content", runtime=_make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())

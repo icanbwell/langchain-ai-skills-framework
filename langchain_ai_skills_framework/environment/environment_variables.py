@@ -65,8 +65,12 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return value
 
     @property
-    def skills_directory(self) -> str:
-        """Return the absolute path to the Agent Skills directory."""
+    def skills_directory(self) -> str | None:
+        """Return the absolute path to the Agent Skills directory.
+
+        Returns None when no directory is configured or discoverable,
+        allowing the system to operate with marketplace-only or user-only skills.
+        """
 
         configured = self._resolve_path(os.environ.get("SKILLS_DIRECTORY"))
         if configured and configured.strip():
@@ -87,11 +91,11 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
             if candidate.is_dir():
                 return str(candidate)
 
-        raise RuntimeError(
-            "SKILLS_DIRECTORY environment variable is not set and no default skills "
-            "directory could be found. Please set SKILLS_DIRECTORY to the directory "
-            "containing your Agent Skills."
+        _LOGGER.info(
+            "SKILLS_DIRECTORY is not set and no default skills directory found. "
+            "Skills will be loaded from other sources (marketplace, user store) if configured."
         )
+        return None
 
     @property
     def plugins_marketplace(self) -> str | None:
@@ -100,6 +104,25 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         if not value or not value.strip():
             return None
         return value.strip()
+
+    @property
+    def plugins_marketplace_include(self) -> set[str] | None:
+        """Allowlist of plugin names to load from the marketplace.
+
+        When set, only matching plugins are loaded. When unset, all are loaded.
+        """
+        raw_value = os.environ.get("PLUGINS_MARKETPLACE_INCLUDE")
+        if not raw_value or not raw_value.strip():
+            return None
+        return {item.strip() for item in raw_value.split(",") if item.strip()}
+
+    @property
+    def plugins_marketplace_exclude(self) -> set[str]:
+        """Plugin names to exclude from the marketplace."""
+        raw_value = os.environ.get("PLUGINS_MARKETPLACE_EXCLUDE")
+        if not raw_value or not raw_value.strip():
+            return set()
+        return {item.strip() for item in raw_value.split(",") if item.strip()}
 
     @property
     def excluded_skills(self) -> set[str]:

@@ -108,6 +108,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         self._environment_variables = environment_variables
 
         skills_directory = environment_variables.skills_directory
+        if skills_directory is None:
+            raise SkillValidationError("skills_directory is not configured")
         if isinstance(skills_directory, Path):
             configured_directory = str(skills_directory)
         elif isinstance(skills_directory, str):

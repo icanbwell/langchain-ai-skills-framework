@@ -237,13 +237,26 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
 
         excluded_skills = self._normalize_set(self._environment_variables.excluded_skills)
         excluded_groups = self._normalize_set(self._environment_variables.excluded_skill_groups)
+        marketplace_include = self._normalize_set(self._environment_variables.plugins_marketplace_include) or None
+        marketplace_exclude = self._normalize_set(self._environment_variables.plugins_marketplace_exclude)
 
         # Walk plugins/*/skills/ directories
         plugin_dirs = self._discover_plugin_dirs(cache_path)
 
         for plugin_dir in plugin_dirs:
             plugin_name = plugin_dir.name
-            if plugin_name in excluded_groups:
+            normalized_plugin_name = normalize_skill_name(plugin_name)
+
+            # Include-list takes precedence: if set, only named plugins are loaded
+            if marketplace_include and normalized_plugin_name not in marketplace_include:
+                logger.debug("Marketplace: skipping plugin '%s' (not in include list)", plugin_name)
+                continue
+
+            # Exclude-list (both marketplace-specific and the global skill groups)
+            if normalized_plugin_name in marketplace_exclude:
+                logger.info("Marketplace: skipping excluded plugin '%s'", plugin_name)
+                continue
+            if normalized_plugin_name in excluded_groups:
                 logger.info("Marketplace: skipping excluded plugin group '%s'", plugin_name)
                 continue
 

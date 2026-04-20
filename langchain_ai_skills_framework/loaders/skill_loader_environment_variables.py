@@ -15,12 +15,16 @@ class SkillLoaderEnvironmentVariables(Protocol):
     def excluded_skill_groups(self) -> set[str]: ...
 
     @property
-    def skills_directory(self) -> str:
+    def skills_directory(self) -> str | None:
         """Base location where skills are discovered.
+
+        Returns None when no directory is configured, allowing the system
+        to operate with marketplace-only or user-only skills.
 
         Examples:
         - Local filesystem: "/opt/app/skills"
         - GitHub via pydantic-ai-skills: "github://my-org/private-skills/skills?ref=main"
+        - None: no primary skills directory configured
         """
         ...
 
@@ -33,6 +37,29 @@ class SkillLoaderEnvironmentVariables(Protocol):
 
         Example:
         - "github://my-org/claude-plugin-marketplace/plugins?ref=main"
+        """
+        ...
+
+    @property
+    def plugins_marketplace_include(self) -> set[str] | None:
+        """Optional allowlist of plugin names to include from the marketplace.
+
+        When set, only plugins whose directory name matches an entry in this
+        set are loaded. When None/empty, all plugins are included (subject
+        to the exclude list).
+
+        Expected environment variable: PLUGINS_MARKETPLACE_INCLUDE (comma-separated)
+        """
+        ...
+
+    @property
+    def plugins_marketplace_exclude(self) -> set[str]:
+        """Plugin names to exclude from the marketplace.
+
+        Plugins whose directory name matches an entry in this set are skipped.
+        Applied after the include list (if set).
+
+        Expected environment variable: PLUGINS_MARKETPLACE_EXCLUDE (comma-separated)
         """
         ...
 

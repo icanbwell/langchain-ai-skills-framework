@@ -50,29 +50,44 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     When PLUGINS_MARKETPLACE is configured, creates a MultiSourceSkillLoader
     that merges the primary SkillkitDirectoryLoader (highest precedence) with
     a MarketplaceDirectoryLoader (lower precedence).
+
+    When SKILLS_DIRECTORY is not configured, the directory loader is skipped
+    and only marketplace skills are loaded.
     """
-    directory_loader = c.resolve(SkillkitDirectoryLoader)
     env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
+    loaders: list[SkillLoaderProtocol] = []
 
+    # Primary directory loader (optional when skills_directory is None)
+    if env_vars.skills_directory:
+        try:
+            loaders.append(c.resolve(SkillkitDirectoryLoader))
+        except Exception:
+            logger.exception("Failed to initialize SkillkitDirectoryLoader; skipping.")
+
+    # Marketplace loader (optional when plugins_marketplace is set)
     marketplace_uri = env_vars.plugins_marketplace
-    if not marketplace_uri:
-        return directory_loader
+    if marketplace_uri:
+        try:
+            marketplace_loader = MarketplaceDirectoryLoader(
+                environment_variables=env_vars,
+                github_directory_downloader=c.resolve(GithubDirectoryDownloader),
+            )
+            loaders.append(marketplace_loader)
+        except Exception:
+            logger.exception(
+                "Failed to initialize MarketplaceDirectoryLoader for '%s'; skipping.",
+                marketplace_uri,
+            )
 
-    try:
-        marketplace_loader = MarketplaceDirectoryLoader(
-            environment_variables=env_vars,
-            github_directory_downloader=c.resolve(GithubDirectoryDownloader),
-        )
-    except Exception:
-        logger.exception(
-            "Failed to initialize MarketplaceDirectoryLoader for '%s'; falling back to directory-only skills.",
-            marketplace_uri,
-        )
-        return directory_loader
+    if not loaders:
+        logger.warning("No skill loaders configured (neither SKILLS_DIRECTORY nor PLUGINS_MARKETPLACE is set).")
+        # Fall back to the directory loader which will raise a clear error on access
+        return c.resolve(SkillkitDirectoryLoader)
 
-    return MultiSourceSkillLoader(
-        loaders=[directory_loader, marketplace_loader],
-    )
+    if len(loaders) == 1:
+        return loaders[0]
+
+    return MultiSourceSkillLoader(loaders=loaders)
 
 
 class LangchainAISkillsFrameworkContainerFactory:

@@ -149,6 +149,14 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
         return None
 
     @property
+    def plugins_marketplace_include(self) -> set[str] | None:
+        return None
+
+    @property
+    def plugins_marketplace_exclude(self) -> set[str]:
+        return set()
+
+    @property
     def skills_github_token(self) -> str | None:
         return None
 

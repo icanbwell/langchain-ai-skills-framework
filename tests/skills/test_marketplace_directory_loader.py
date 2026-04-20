@@ -30,6 +30,8 @@ class FakeEnvVars:
     skills_cache_timeout_seconds: int = 3600
     excluded_skills: set[str] = field(default_factory=set)
     excluded_skill_groups: set[str] = field(default_factory=set)
+    plugins_marketplace_include: set[str] | None = None
+    plugins_marketplace_exclude: set[str] = field(default_factory=set)
 
 
 def _write_marketplace_skill(
@@ -158,6 +160,66 @@ class TestLocalMarketplaceDiscovery:
 
         with pytest.raises(SkillValidationError, match="does not exist"):
             loader.list_skill_summaries(allowed_skills=set())
+
+    def test_include_list_filters_plugins(self, tmp_path: Path) -> None:
+        _write_marketplace_skill(tmp_path, "glass-health", "glass-skill")
+        _write_marketplace_skill(tmp_path, "other-plugin", "other-skill")
+
+        env = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_marketplace_include={"glass-health"},
+        )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+
+        assert "glass-skill" in names
+        assert "other-skill" not in names
+
+    def test_exclude_list_filters_plugins(self, tmp_path: Path) -> None:
+        _write_marketplace_skill(tmp_path, "good-plugin", "good-skill")
+        _write_marketplace_skill(tmp_path, "unwanted", "unwanted-skill")
+
+        env = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_marketplace_exclude={"unwanted"},
+        )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+
+        assert "good-skill" in names
+        assert "unwanted-skill" not in names
+
+    def test_include_and_exclude_combined(self, tmp_path: Path) -> None:
+        _write_marketplace_skill(tmp_path, "alpha", "alpha-skill")
+        _write_marketplace_skill(tmp_path, "beta", "beta-skill")
+        _write_marketplace_skill(tmp_path, "gamma", "gamma-skill")
+
+        env = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_marketplace_include={"alpha", "beta"},
+            plugins_marketplace_exclude={"beta"},
+        )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+
+        assert "alpha-skill" in names
+        assert "beta-skill" not in names
+        assert "gamma-skill" not in names
 
 
 class TestCacheRefreshSemantics:

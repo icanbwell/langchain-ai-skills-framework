@@ -1,8 +1,22 @@
+import logging
+
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
 )
+from langchain_ai_skills_framework.loaders.github_directory_downloader import (
+    GithubDirectoryDownloader,
+)
 from langchain_ai_skills_framework.loaders.github_skill_downloader import (
     GithubSkillDownloader,
+)
+from langchain_ai_skills_framework.loaders.marketplace_directory_loader import (
+    MarketplaceDirectoryLoader,
+)
+from langchain_ai_skills_framework.loaders.multi_source_skill_loader import (
+    MultiSourceSkillLoader,
+)
+from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
+    SkillLoaderEnvironmentVariables,
 )
 from langchain_ai_skills_framework.loaders.skill_sync import SkillSync
 from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
@@ -15,6 +29,7 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory import (
 from langchain_ai_skills_framework.persistence.mongo_database_factory_impl import (
     MongoDatabaseFactoryImpl,
 )
+from simple_container.container.interfaces import IContainer
 from simple_container.container.simple_container import SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
 
@@ -25,6 +40,39 @@ from langchain_ai_skills_framework.loaders.skillkit_directory_loader import (
     SkillkitDirectoryLoader,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
+    """Build the shared skill loader, optionally including marketplace skills.
+
+    When PLUGINS_MARKETPLACE is configured, creates a MultiSourceSkillLoader
+    that merges the primary SkillkitDirectoryLoader (highest precedence) with
+    a MarketplaceDirectoryLoader (lower precedence).
+    """
+    directory_loader = c.resolve(SkillkitDirectoryLoader)
+    env_vars: SkillLoaderEnvironmentVariables = c.resolve(EnvironmentVariables)  # type: ignore[assignment]
+
+    marketplace_uri = env_vars.plugins_marketplace
+    if not marketplace_uri:
+        return directory_loader
+
+    try:
+        marketplace_loader = MarketplaceDirectoryLoader(
+            environment_variables=env_vars,
+            github_directory_downloader=c.resolve(GithubDirectoryDownloader),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to initialize MarketplaceDirectoryLoader for '%s'; falling back to directory-only skills.",
+            marketplace_uri,
+        )
+        return directory_loader
+
+    return MultiSourceSkillLoader(
+        loaders=[directory_loader, marketplace_loader],
+    )
+
 
 class LangchainAISkillsFrameworkContainerFactory:
     @staticmethod
@@ -34,6 +82,7 @@ class LangchainAISkillsFrameworkContainerFactory:
     ) -> SimpleContainer:
 
         container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
+        container.singleton(GithubDirectoryDownloader, lambda c: GithubDirectoryDownloader())
 
         # GitHub/filesystem skills are always loaded first.
         container.singleton(
@@ -67,7 +116,7 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             CompositeSkillLoader,
             lambda c: CompositeSkillLoader(
-                shared_loader=c.resolve(SkillkitDirectoryLoader),
+                shared_loader=_build_shared_loader(c),
                 user_loader=c.resolve(UserSkillStore),
             ),
         )
@@ -80,7 +129,7 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillSync,
             lambda c: SkillSync(
-                shared_loader=c.resolve(SkillkitDirectoryLoader),
+                shared_loader=_build_shared_loader(c),
                 user_store=c.resolve(UserSkillStore),
             ),
         )

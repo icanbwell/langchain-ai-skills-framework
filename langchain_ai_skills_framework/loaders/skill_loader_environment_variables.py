@@ -25,6 +25,18 @@ class SkillLoaderEnvironmentVariables(Protocol):
         ...
 
     @property
+    def plugins_marketplace(self) -> str | None:
+        """Optional github:// URI to a Claude plugin marketplace repository.
+
+        When set, skills are also loaded from the marketplace structure
+        (plugins/*/skills/) in addition to the primary skills_directory.
+
+        Example:
+        - "github://my-org/claude-plugin-marketplace/plugins?ref=main"
+        """
+        ...
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated GitSkillsRegistry loading.
 

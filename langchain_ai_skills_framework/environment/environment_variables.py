@@ -94,6 +94,14 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         )
 
     @property
+    def plugins_marketplace(self) -> str | None:
+        """Optional github:// URI to a Claude plugin marketplace repository."""
+        value = self._resolve_path(os.environ.get("PLUGINS_MARKETPLACE"))
+        if not value or not value.strip():
+            return None
+        return value.strip()
+
+    @property
     def excluded_skills(self) -> set[str]:
         """List of skill names to skip when loading Agent Skills."""
         raw_value = os.environ.get("SKILLS_EXCLUDED")

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Sequence
 
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
+from langchain_ai_skills_framework.utilities.skill_name_normalizer import normalize_skill_name
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +313,7 @@ class MarketplacePluginManager:
         """Apply include/exclude filters to a list of plugin entries."""
         result: list[PluginEntry] = []
         for entry in entries:
-            normalized = entry.name.strip().lower().replace("-", "_").replace(" ", "_")
+            normalized = normalize_skill_name(entry.name)
             if include_filter and normalized not in include_filter:
                 logger.debug(
                     "Marketplace: skipping plugin '%s' (not in include list)",

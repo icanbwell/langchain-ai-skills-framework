@@ -1,4 +1,5 @@
 import logging
+from typing import cast
 
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
@@ -51,7 +52,7 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     a MarketplaceDirectoryLoader (lower precedence).
     """
     directory_loader = c.resolve(SkillkitDirectoryLoader)
-    env_vars: SkillLoaderEnvironmentVariables = c.resolve(EnvironmentVariables)  # type: ignore[assignment]
+    env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
 
     marketplace_uri = env_vars.plugins_marketplace
     if not marketplace_uri:
@@ -113,10 +114,18 @@ class LangchainAISkillsFrameworkContainerFactory:
             lambda c: c.resolve(UserSkillStoreFactory).create(),
         )
 
+        # Register the shared loader as a singleton so CompositeSkillLoader
+        # and SkillSync share the same instance (avoiding redundant downloads
+        # and inconsistent cache state).
+        container.singleton(
+            MultiSourceSkillLoader,
+            lambda c: _build_shared_loader(c),
+        )
+
         container.singleton(
             CompositeSkillLoader,
             lambda c: CompositeSkillLoader(
-                shared_loader=_build_shared_loader(c),
+                shared_loader=c.resolve(MultiSourceSkillLoader),
                 user_loader=c.resolve(UserSkillStore),
             ),
         )
@@ -129,7 +138,7 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(
             SkillSync,
             lambda c: SkillSync(
-                shared_loader=_build_shared_loader(c),
+                shared_loader=c.resolve(MultiSourceSkillLoader),
                 user_store=c.resolve(UserSkillStore),
             ),
         )

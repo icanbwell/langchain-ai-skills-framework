@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 from typing import Any, Sequence
 
 from langchain_core.tools import BaseTool
@@ -69,8 +70,33 @@ class MultiSourceSkillLoader(SkillLoaderProtocol):
             loader.refresh()
 
     async def get_instructions(self) -> str:
-        # Delegate to the primary loader for the instructions template
-        return await self._loaders[0].get_instructions()
+        # Build instructions from the merged view so all sources are discoverable
+        summaries = self.list_skill_summaries(allowed_skills=set())
+        if not summaries:
+            return ""
+        skills_list_lines: list[str] = []
+        for skill in summaries:
+            skills_list_lines.append("<skill>")
+            skills_list_lines.append(f"<name>{escape(skill.name, quote=True)}</name>")
+            skills_list_lines.append(f"<description>{escape(skill.description.strip(), quote=True)}</description>")
+            skills_list_lines.append("</skill>")
+        skills_list = "\n".join(skills_list_lines)
+        return (
+            "You have  access to a collection of skills containing domain-specific knowledge and capabilities.\n"
+            "Each skill provides specialized instructions, resources, and scripts for specific tasks.\n"
+            "\n"
+            "<available_skills>\n"
+            f"{skills_list}\n"
+            "</available_skills>\n"
+            "\n"
+            "When a task falls within a skill's domain:\n"
+            "1. Use `load_skill` to read the complete skill instructions\n"
+            "2. Follow the skill's guidance to complete the task\n"
+            "3. Use `read_skill_resource` to read files referenced by the skill\n"
+            "4. Use `run_skill_script` to run scripts provided by the skill\n"
+            "\n"
+            "Use progressive disclosure: load only what you need, when you need it."
+        )
 
     def get_tools(self) -> list[BaseTool]:
         # Tools come from the primary loader only to avoid duplicates

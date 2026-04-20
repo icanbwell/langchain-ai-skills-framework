@@ -12,6 +12,7 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
 from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
+from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -72,7 +73,6 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
-        self._cache_path: Path | None = None
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(environment_variables)
 
         logger.info(
@@ -189,9 +189,10 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
                 arguments=normalized_arguments,
             )
         else:
-            # Shell script execution
-            return await self._execute_shell_script(
+            shell_executor = MyShellExecutor()
+            return await shell_executor.execute(
                 script_path=script_path,
+                skill_base_dir=script_path.parent,
                 arguments=arguments,
             )
 
@@ -230,7 +231,6 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
 
     def _build_snapshot(self, *, force_download: bool) -> SkillSnapshot:
         cache_path = self._resolve_marketplace_path(force=force_download)
-        self._cache_path = cache_path
 
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
@@ -320,17 +320,18 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
                 raise SkillValidationError(f"Marketplace directory does not exist: '{self._marketplace_uri}'")
             return local_path
 
-        # GitHub URI — download via fsspec
+        # GitHub URI — download via the directory downloader with TTL-awareness.
+        # When force=False, delegate freshness checks to the downloader's
+        # cache_ttl_seconds parameter so expired caches trigger re-downloads.
         cache_path = Path(".marketplace-git-cache")
-
-        if not force and self._cache_path and self._cache_path.exists():
-            return self._cache_path
+        cache_ttl = 0 if force else int(self._reload_ttl_seconds or 0)
 
         try:
             return self._github_directory_downloader.download(
                 source_uri=self._marketplace_uri,
                 github_token=self._environment_variables.skills_github_token,
                 cache_path=cache_path,
+                cache_ttl_seconds=cache_ttl,
             )
         except ValueError as exc:
             raise SkillValidationError(f"Failed to download marketplace from '{self._marketplace_uri}': {exc}") from exc
@@ -387,61 +388,6 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
                     return candidate
 
         return None
-
-    @staticmethod
-    async def _execute_shell_script(
-        *,
-        script_path: Path,
-        arguments: dict[str, Any] | None,
-    ) -> MyScriptExecutionResult:
-        """Execute a shell script and return its output."""
-        import asyncio
-        import os
-        import time
-
-        cmd = ["bash", str(script_path)]
-        env_vars: dict[str, str] = {}
-        for key, value in (arguments or {}).items():
-            env_vars[key.upper()] = str(value)
-
-        full_env = {**os.environ, **env_vars}
-        start_time = time.monotonic()
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=full_env,
-                cwd=str(script_path.parent),
-            )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            return MyScriptExecutionResult(
-                stdout=stdout.decode("utf-8", errors="replace"),
-                stderr=stderr.decode("utf-8", errors="replace"),
-                exit_code=process.returncode or 0,
-                execution_time_ms=elapsed_ms,
-                success=process.returncode == 0,
-            )
-        except asyncio.TimeoutError:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            return MyScriptExecutionResult(
-                stdout="",
-                stderr="Script execution timed out after 30 seconds",
-                exit_code=1,
-                execution_time_ms=elapsed_ms,
-                success=False,
-            )
-        except Exception as exc:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            return MyScriptExecutionResult(
-                stdout="",
-                stderr=str(exc),
-                exit_code=1,
-                execution_time_ms=elapsed_ms,
-                success=False,
-            )
 
     def _is_snapshot_valid(self) -> bool:
         if self._snapshot is None:

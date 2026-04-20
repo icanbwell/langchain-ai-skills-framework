@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,6 +53,28 @@ def _write_marketplace_skill(
     skill_file = skill_dir / "SKILL.md"
     skill_file.write_text(f"---\n{frontmatter}\n---\n{body}\n", encoding="utf-8")
     return skill_file
+
+
+def _write_marketplace_json(
+    root: Path,
+    plugins: list[dict[str, str]],
+    *,
+    name: str = "test-marketplace",
+    metadata: dict[str, str] | None = None,
+) -> Path:
+    """Create .claude-plugin/marketplace.json at the marketplace root."""
+    manifest_dir = root / ".claude-plugin"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, object] = {
+        "name": name,
+        "owner": {"name": "Test Owner"},
+        "plugins": plugins,
+    }
+    if metadata:
+        manifest["metadata"] = metadata
+    manifest_path = manifest_dir / "marketplace.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest_path
 
 
 class TestMarketplaceDirectoryLoaderInit:
@@ -449,3 +472,239 @@ class TestShellScriptSecurity:
                 script_path=script,
                 skill_base_dir=tmp_path,
             )
+
+
+class TestMarketplaceJsonDiscovery:
+    """Tests for .claude-plugin/marketplace.json based plugin discovery."""
+
+    def test_discovers_plugins_from_marketplace_json(self, tmp_path: Path) -> None:
+        """Plugins listed in marketplace.json are discovered by name and source path."""
+        _write_marketplace_skill(tmp_path, "plugin-a", "skill-one")
+        _write_marketplace_skill(tmp_path, "plugin-b", "skill-two")
+        _write_marketplace_json(
+            tmp_path,
+            [
+                {"name": "plugin-a", "source": "./plugins/plugin-a", "description": "First plugin"},
+                {"name": "plugin-b", "source": "./plugins/plugin-b", "description": "Second plugin"},
+            ],
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+
+        assert "skill-one" in names
+        assert "skill-two" in names
+
+    def test_marketplace_json_name_used_for_filtering(self, tmp_path: Path) -> None:
+        """The plugin 'name' from marketplace.json is used for include/exclude, not the directory name."""
+        # Directory is called "my-plugin-dir" but marketplace.json names it "custom-name"
+        skill_dir = tmp_path / "my-plugin-dir" / "skills" / "the-skill"
+        skill_dir.mkdir(parents=True)
+        frontmatter = yaml.safe_dump(
+            {"name": "the-skill", "description": "A skill"},
+            sort_keys=False,
+        ).strip()
+        (skill_dir / "SKILL.md").write_text(f"---\n{frontmatter}\n---\nBody.\n")
+
+        _write_marketplace_json(
+            tmp_path,
+            [{"name": "custom-name", "source": "./my-plugin-dir"}],
+        )
+
+        # Include filter uses the marketplace.json name, not the directory name
+        env = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_marketplace_include={"custom-name"},
+        )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 1
+        assert summaries[0].name == "the-skill"
+
+        # Excluding by directory name should NOT filter it (wrong name)
+        env_wrong = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_marketplace_exclude={"my-plugin-dir"},
+        )
+        loader_wrong = MarketplaceDirectoryLoader(
+            environment_variables=env_wrong,
+            github_directory_downloader=MagicMock(),
+        )
+        summaries_wrong = loader_wrong.list_skill_summaries(allowed_skills=set())
+        assert len(summaries_wrong) == 1  # NOT excluded because name doesn't match
+
+        # Excluding by marketplace.json name DOES filter it
+        env_correct = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_marketplace_exclude={"custom-name"},
+        )
+        loader_correct = MarketplaceDirectoryLoader(
+            environment_variables=env_correct,
+            github_directory_downloader=MagicMock(),
+        )
+        summaries_correct = loader_correct.list_skill_summaries(allowed_skills=set())
+        assert len(summaries_correct) == 0
+
+    def test_plugin_root_resolves_relative_paths(self, tmp_path: Path) -> None:
+        """metadata.pluginRoot is prepended to relative source paths."""
+        # Skill lives at <root>/custom-root/plugins/plugin-a/skills/deep-skill/SKILL.md
+        deep_root = tmp_path / "custom-root"
+        skill_dir = deep_root / "plugins" / "plugin-a" / "skills" / "deep-skill"
+        skill_dir.mkdir(parents=True)
+        frontmatter = yaml.safe_dump(
+            {"name": "deep-skill", "description": "Deeply nested"},
+            sort_keys=False,
+        ).strip()
+        (skill_dir / "SKILL.md").write_text(f"---\n{frontmatter}\n---\nBody.\n")
+
+        _write_marketplace_json(
+            tmp_path,
+            [{"name": "plugin-a", "source": "./plugins/plugin-a"}],
+            metadata={"pluginRoot": "custom-root"},
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 1
+        assert summaries[0].name == "deep-skill"
+
+    def test_bare_relative_paths_resolve(self, tmp_path: Path) -> None:
+        """Source paths without ./ prefix are treated as relative to marketplace root."""
+        _write_marketplace_skill(tmp_path, "plugin-a", "bare-skill")
+        _write_marketplace_json(
+            tmp_path,
+            [{"name": "plugin-a", "source": "plugins/plugin-a"}],
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 1
+        assert summaries[0].name == "bare-skill"
+
+    def test_missing_source_plugin_skipped(self, tmp_path: Path) -> None:
+        """Plugins whose source path doesn't exist are skipped gracefully."""
+        _write_marketplace_skill(tmp_path, "real-plugin", "real-skill")
+        _write_marketplace_json(
+            tmp_path,
+            [
+                {"name": "real-plugin", "source": "./plugins/real-plugin"},
+                {"name": "ghost-plugin", "source": "./plugins/nonexistent"},
+            ],
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+        assert "real-skill" in names
+        assert len(summaries) == 1
+
+    def test_invalid_marketplace_json_falls_back_to_directory_scan(self, tmp_path: Path) -> None:
+        """Malformed marketplace.json triggers fallback to directory scanning."""
+        _write_marketplace_skill(tmp_path, "plugin-a", "fallback-skill")
+
+        manifest_dir = tmp_path / ".claude-plugin"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "marketplace.json").write_text("not valid json{{{", encoding="utf-8")
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+        assert "fallback-skill" in names
+
+    def test_no_marketplace_json_falls_back_to_directory_scan(self, tmp_path: Path) -> None:
+        """Without marketplace.json, legacy directory scanning is used."""
+        _write_marketplace_skill(tmp_path, "legacy-plugin", "legacy-skill")
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        names = [s.name for s in summaries]
+        assert "legacy-skill" in names
+
+    def test_empty_plugins_array_returns_no_plugins(self, tmp_path: Path) -> None:
+        """An empty plugins array in marketplace.json results in no plugins loaded."""
+        _write_marketplace_json(tmp_path, [])
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 0
+
+    def test_plugin_entry_missing_name_skipped(self, tmp_path: Path) -> None:
+        """Plugin entries without a 'name' field are skipped."""
+        _write_marketplace_skill(tmp_path, "good-plugin", "good-skill")
+        _write_marketplace_json(
+            tmp_path,
+            [
+                {"name": "good-plugin", "source": "./plugins/good-plugin"},
+                {"source": "./plugins/nameless"},  # missing name
+            ],
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 1
+        assert summaries[0].name == "good-skill"
+
+    def test_plugin_entry_missing_source_skipped(self, tmp_path: Path) -> None:
+        """Plugin entries without a 'source' field are skipped."""
+        _write_marketplace_skill(tmp_path, "valid-plugin", "valid-skill")
+        _write_marketplace_json(
+            tmp_path,
+            [
+                {"name": "valid-plugin", "source": "./plugins/valid-plugin"},
+                {"name": "sourceless"},  # missing source
+            ],
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 1
+        assert summaries[0].name == "valid-skill"

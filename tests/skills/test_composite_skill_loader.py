@@ -23,6 +23,7 @@ from langchain_ai_skills_framework.loaders.user_skill_store import (
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
@@ -101,6 +102,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
 
     async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
+
+    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        return []
 
 
 def _make_user_loader_mock(

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import logging
 import time
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
-from typing import Any, Sequence
+from typing import Any, Sequence, TYPE_CHECKING
 
 from langchain_core.tools import BaseTool
 from skillkit import SkillManager, SkillMetadata, Skill
@@ -40,6 +42,15 @@ from langchain_ai_skills_framework.models.skills_model import (
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
+from langchain_ai_skills_framework.utilities.snapshot_serializer import (
+    deserialize_snapshot,
+    serialize_snapshot,
+)
+
+if TYPE_CHECKING:
+    from languagemodelcommon.utilities.cache.snapshot_cache_store import (
+        SnapshotCacheStore,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +72,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         environment_variables: SkillLoaderEnvironmentVariables,
         github_directory_downloader: GithubDirectoryDownloader,
         plugin_manager: MarketplacePluginManager | None = None,
+        snapshot_cache_store: SnapshotCacheStore | None = None,
     ) -> None:
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
@@ -77,6 +89,8 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             raise SkillValidationError("github_directory_downloader is not configured")
         self._github_directory_downloader = github_directory_downloader
 
+        self._snapshot_cache_store = snapshot_cache_store
+
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
@@ -92,7 +106,8 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         return snapshot.ordered_summaries
 
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
-        return self.list_skill_summaries(allowed_skills)
+        snapshot = await self._get_snapshot_async()
+        return snapshot.ordered_summaries
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         normalized = normalize_skill_name(skill_name)
@@ -103,7 +118,12 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in marketplace") from exc
 
     async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
-        return self.get_skill_details(skill_name)
+        normalized = normalize_skill_name(skill_name)
+        snapshot = await self._get_snapshot_async()
+        try:
+            return snapshot.details_by_name[normalized]
+        except KeyError as exc:
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found in marketplace") from exc
 
     def refresh(self) -> None:
         with self._lock:
@@ -213,6 +233,8 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
 
+    _SNAPSHOT_CACHE_KEY = "skill_snapshot"
+
     # --- Private implementation ------------------------------------------------
 
     def _get_snapshot(self) -> SkillSnapshot:
@@ -235,6 +257,67 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             self._snapshot = self._build_snapshot(force_download=False)
             self._snapshot_loaded_at = time.monotonic()
             return self._snapshot
+
+    async def _get_snapshot_async(self) -> SkillSnapshot:
+        """Async variant that checks MongoDB snapshot cache before building."""
+        with self._lock:
+            if self._is_snapshot_valid():
+                snapshot = self._snapshot
+                if snapshot is not None:
+                    return snapshot
+
+        # Check MongoDB snapshot cache
+        snapshot = await self._read_from_snapshot_cache()
+        if snapshot is not None:
+            with self._lock:
+                self._snapshot = snapshot
+                self._snapshot_loaded_at = time.monotonic()
+            return snapshot
+
+        with self._lock:
+            if self._is_snapshot_valid():
+                snapshot = self._snapshot
+                if snapshot is not None:
+                    return snapshot
+
+            logger.info(
+                "MarketplaceDirectoryLoader cache expired; loading from %s",
+                self._marketplace_uri,
+            )
+            self._snapshot = self._build_snapshot(force_download=False)
+            self._snapshot_loaded_at = time.monotonic()
+            await self._write_to_snapshot_cache(self._snapshot)
+            return self._snapshot
+
+    async def _read_from_snapshot_cache(self) -> SkillSnapshot | None:
+        if not self._snapshot_cache_store:
+            return None
+        data = await self._snapshot_cache_store.get(self._SNAPSHOT_CACHE_KEY)
+        if data is None:
+            return None
+        try:
+            snapshot = deserialize_snapshot(data)
+            logger.info(
+                "MarketplaceDirectoryLoader loaded snapshot from cache (%d skills)",
+                len(snapshot.ordered_summaries),
+            )
+            return snapshot
+        except Exception:
+            logger.debug(
+                "MarketplaceDirectoryLoader failed to deserialize snapshot cache",
+                exc_info=True,
+            )
+            return None
+
+    async def _write_to_snapshot_cache(self, snapshot: SkillSnapshot) -> None:
+        if not self._snapshot_cache_store:
+            return
+        data = serialize_snapshot(snapshot)
+        await self._snapshot_cache_store.put(self._SNAPSHOT_CACHE_KEY, data)
+        logger.debug(
+            "MarketplaceDirectoryLoader wrote snapshot to cache (%d skills)",
+            len(snapshot.ordered_summaries),
+        )
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         snapshot = self._get_snapshot()

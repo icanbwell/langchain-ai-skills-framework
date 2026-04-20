@@ -229,7 +229,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             return self._snapshot
 
     def _build_snapshot(self, *, force_download: bool) -> SkillSnapshot:
-        cache_path = self._download_marketplace(force=force_download)
+        cache_path = self._resolve_marketplace_path(force=force_download)
         self._cache_path = cache_path
 
         details_map: dict[str, SkillDetails] = {}
@@ -307,8 +307,20 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         )
         return snapshot
 
-    def _download_marketplace(self, *, force: bool) -> Path:
-        """Download the marketplace repo using fsspec via GithubDirectoryDownloader."""
+    def _resolve_marketplace_path(self, *, force: bool) -> Path:
+        """Resolve the marketplace to a local path.
+
+        Supports both local filesystem paths and github:// URIs.
+        Local paths are used directly; github:// URIs are downloaded via fsspec.
+        """
+        if not self._marketplace_uri.startswith("github://"):
+            # Local filesystem path
+            local_path = Path(self._marketplace_uri).expanduser().resolve()
+            if not local_path.is_dir():
+                raise SkillValidationError(f"Marketplace directory does not exist: '{self._marketplace_uri}'")
+            return local_path
+
+        # GitHub URI — download via fsspec
         cache_path = Path(".marketplace-git-cache")
 
         if not force and self._cache_path and self._cache_path.exists():

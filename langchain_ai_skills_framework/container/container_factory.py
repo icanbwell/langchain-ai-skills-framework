@@ -68,15 +68,13 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     marketplace_uri = env_vars.plugins_marketplace
     if marketplace_uri:
         try:
-            # SnapshotCacheStore is registered by language-model-common's
-            # container factory.  It may not be available at this point if the
-            # skills framework container runs first; treat as optional.
-            snapshot_cache_store = None
+            # BaseStore is registered by language-model-common's container
+            # factory.  It may not be available at this point if the skills
+            # framework container runs first; treat as optional.
+            from key_value.aio.stores.base import BaseStore
+            snapshot_cache_store: BaseStore | None = None
             try:
-                from languagemodelcommon.utilities.cache.snapshot_cache_store import (
-                    SnapshotCacheStore,
-                )
-                snapshot_cache_store = c.resolve(SnapshotCacheStore)
+                snapshot_cache_store = c.resolve(BaseStore)
             except Exception:
                 pass
 

@@ -48,9 +48,7 @@ from langchain_ai_skills_framework.utilities.snapshot_serializer import (
 )
 
 if TYPE_CHECKING:
-    from languagemodelcommon.utilities.cache.snapshot_cache_store import (
-        SnapshotCacheStore,
-    )
+    from key_value.aio.stores.base import BaseStore
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +70,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         environment_variables: SkillLoaderEnvironmentVariables,
         github_directory_downloader: GithubDirectoryDownloader,
         plugin_manager: MarketplacePluginManager | None = None,
-        snapshot_cache_store: SnapshotCacheStore | None = None,
+        snapshot_cache_store: BaseStore | None = None,
     ) -> None:
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
@@ -313,7 +311,9 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         if not self._snapshot_cache_store:
             return
         data = serialize_snapshot(snapshot)
-        await self._snapshot_cache_store.put(self._SNAPSHOT_CACHE_KEY, data)
+        await self._snapshot_cache_store.put(
+            self._SNAPSHOT_CACHE_KEY, data, ttl=self._reload_ttl_seconds
+        )
         logger.debug(
             "MarketplaceDirectoryLoader wrote snapshot to cache (%d skills)",
             len(snapshot.ordered_summaries),

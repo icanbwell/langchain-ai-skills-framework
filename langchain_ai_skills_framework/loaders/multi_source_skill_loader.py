@@ -15,6 +15,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
@@ -152,3 +153,13 @@ class MultiSourceSkillLoader(SkillLoaderProtocol):
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
+
+    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        merged: list[PluginMcpServerEntry] = []
+        seen_keys: set[str] = set()
+        for loader in self._loaders:
+            for entry in loader.get_plugin_mcp_configs():
+                if entry.namespaced_key not in seen_keys:
+                    seen_keys.add(entry.namespaced_key)
+                    merged.append(entry)
+        return merged

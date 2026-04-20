@@ -5,6 +5,7 @@ from langchain_core.tools import BaseTool
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 
 
@@ -48,3 +49,5 @@ class SkillLoaderProtocol(Protocol):
     def list_skill_resource_names(self, skill_name: str) -> Sequence[str]: ...
 
     async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]: ...
+
+    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]: ...

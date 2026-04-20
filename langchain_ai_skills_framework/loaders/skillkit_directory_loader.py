@@ -29,6 +29,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_environment_variables im
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
@@ -308,6 +309,10 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         """Fallback: directory loader has no user skills, delegate to shared."""
         return await self.run_skill_script(skill_name, script_name, arguments)
+
+    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        """Directory loader does not provide plugin MCP servers."""
+        return ()
 
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None

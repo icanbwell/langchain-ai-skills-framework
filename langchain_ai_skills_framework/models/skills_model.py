@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
+
 
 @dataclass(frozen=True, slots=True)
 class SkillSummary:
@@ -41,3 +43,4 @@ class SkillSnapshot:
 
     details_by_name: Mapping[str, SkillDetails]
     ordered_summaries: tuple[SkillSummary, ...]
+    mcp_servers: tuple[PluginMcpServerEntry, ...] = ()

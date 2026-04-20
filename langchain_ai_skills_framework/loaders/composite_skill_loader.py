@@ -17,6 +17,7 @@ from langchain_ai_skills_framework.executors.my_script_executor import (
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.tools.list_skills_tool import ListSkillsTool
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
@@ -340,6 +341,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             pass
 
         return sorted(names)
+
+    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        return self._shared_loader.get_plugin_mcp_configs()
 
     # --- Merging -------------------------------------------------------------
 

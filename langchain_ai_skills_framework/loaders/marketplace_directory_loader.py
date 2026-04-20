@@ -1,7 +1,5 @@
-import json
 import logging
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
@@ -24,12 +22,16 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_validation_error imp
 from langchain_ai_skills_framework.loaders.github_directory_downloader import (
     GithubDirectoryDownloader,
 )
+from langchain_ai_skills_framework.loaders.marketplace_plugin_manager import (
+    MarketplacePluginManager,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
@@ -40,15 +42,6 @@ from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class _PluginEntry:
-    """A discovered plugin with its resolved filesystem path and canonical name."""
-
-    name: str
-    path: Path
-    description: str | None = None
 
 
 class MarketplaceDirectoryLoader(SkillLoaderProtocol):
@@ -67,6 +60,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         *,
         environment_variables: SkillLoaderEnvironmentVariables,
         github_directory_downloader: GithubDirectoryDownloader,
+        plugin_manager: MarketplacePluginManager | None = None,
     ) -> None:
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
@@ -76,6 +70,8 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         if not marketplace_uri or not marketplace_uri.strip():
             raise SkillValidationError("plugins_marketplace is not configured")
         self._marketplace_uri = marketplace_uri.strip()
+
+        self._plugin_manager = plugin_manager or MarketplacePluginManager()
 
         if github_directory_downloader is None:
             raise SkillValidationError("github_directory_downloader is not configured")
@@ -240,6 +236,10 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             self._snapshot_loaded_at = time.monotonic()
             return self._snapshot
 
+    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        snapshot = self._get_snapshot()
+        return snapshot.mcp_servers
+
     def _build_snapshot(self, *, force_download: bool) -> SkillSnapshot:
         cache_path = self._resolve_marketplace_path(force=force_download)
 
@@ -251,26 +251,20 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         marketplace_include = self._normalize_set(self._environment_variables.plugins_marketplace_include) or None
         marketplace_exclude = self._normalize_set(self._environment_variables.plugins_marketplace_exclude)
 
-        # Discover plugins via marketplace.json or directory scanning fallback
-        plugin_entries = self._discover_plugins(cache_path)
+        # Build combined exclude filter (marketplace-specific + global skill groups)
+        combined_exclude = (marketplace_exclude | excluded_groups) if excluded_groups else marketplace_exclude
+
+        # Discover plugins via MarketplacePluginManager
+        plugin_entries = self._plugin_manager.discover_plugins(
+            cache_path,
+            include_filter=marketplace_include,
+            exclude_filter=combined_exclude or None,
+        )
+
+        # Collect MCP server configs from all discovered plugins
+        mcp_servers = self._plugin_manager.collect_all_mcp_configs(plugin_entries)
 
         for entry in plugin_entries:
-            plugin_name = entry.name
-            normalized_plugin_name = normalize_skill_name(plugin_name)
-
-            # Include-list takes precedence: if set, only named plugins are loaded
-            if marketplace_include and normalized_plugin_name not in marketplace_include:
-                logger.debug("Marketplace: skipping plugin '%s' (not in include list)", plugin_name)
-                continue
-
-            # Exclude-list (both marketplace-specific and the global skill groups)
-            if normalized_plugin_name in marketplace_exclude:
-                logger.info("Marketplace: skipping excluded plugin '%s'", plugin_name)
-                continue
-            if normalized_plugin_name in excluded_groups:
-                logger.info("Marketplace: skipping excluded plugin group '%s'", plugin_name)
-                continue
-
             skills_dir = entry.path / "skills"
             if not skills_dir.is_dir():
                 continue
@@ -286,7 +280,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             except Exception:
                 logger.exception(
                     "Marketplace: failed to discover skills in plugin '%s'",
-                    plugin_name,
+                    entry.name,
                 )
                 continue
 
@@ -301,7 +295,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
                     logger.exception(
                         "Marketplace: failed to load skill '%s' from plugin '%s'",
                         metadata.name if isinstance(metadata, SkillMetadata) else metadata,
-                        plugin_name,
+                        entry.name,
                     )
                     continue
 
@@ -312,7 +306,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
                     logger.warning(
                         "Marketplace: duplicate skill '%s' from plugin '%s'; keeping first occurrence",
                         definition.name,
-                        plugin_name,
+                        entry.name,
                     )
                     continue
 
@@ -323,10 +317,12 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         snapshot = SkillSnapshot(
             details_by_name=MappingProxyType(details_map),
             ordered_summaries=ordered,
+            mcp_servers=tuple(mcp_servers),
         )
         logger.info(
-            "Marketplace: loaded %d skills from %d plugins",
+            "Marketplace: loaded %d skills and %d MCP servers from %d plugins",
             len(ordered),
+            len(mcp_servers),
             len(plugin_entries),
         )
         return snapshot
@@ -359,168 +355,6 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             )
         except ValueError as exc:
             raise SkillValidationError(f"Failed to download marketplace from '{self._marketplace_uri}': {exc}") from exc
-
-    @staticmethod
-    def _discover_plugins(cache_path: Path) -> list[_PluginEntry]:
-        """Discover plugins from the marketplace root.
-
-        Reads ``.claude-plugin/marketplace.json`` when present (the canonical
-        Claude Code plugin marketplace spec).  Falls back to directory scanning
-        for backward compatibility with marketplaces that lack a manifest.
-
-        marketplace.json schema (relevant fields)::
-
-            {
-              "name": "my-marketplace",
-              "plugins": [
-                {"name": "plugin-a", "source": "./plugins/plugin-a", "description": "..."}
-              ],
-              "metadata": {"pluginRoot": "optional/base/path"}
-            }
-
-        ``source`` paths starting with ``./`` are resolved relative to the
-        marketplace root.  ``metadata.pluginRoot`` is prepended to relative
-        source paths when present.
-        """
-        manifest_path = cache_path / ".claude-plugin" / "marketplace.json"
-        if manifest_path.is_file():
-            return MarketplaceDirectoryLoader._parse_marketplace_json(manifest_path, cache_path)
-
-        # Fallback: directory-based discovery for legacy marketplaces
-        return MarketplaceDirectoryLoader._discover_plugins_from_directories(cache_path)
-
-    @staticmethod
-    def _parse_marketplace_json(manifest_path: Path, marketplace_root: Path) -> list[_PluginEntry]:
-        """Parse .claude-plugin/marketplace.json and resolve plugin paths."""
-        try:
-            raw = manifest_path.read_text(encoding="utf-8")
-            manifest = json.loads(raw)
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning(
-                "Failed to read marketplace.json at %s: %s; falling back to directory scan",
-                manifest_path,
-                exc,
-            )
-            return MarketplaceDirectoryLoader._discover_plugins_from_directories(marketplace_root)
-
-        if not isinstance(manifest, dict):
-            logger.warning(
-                "marketplace.json at %s is not a JSON object; falling back to directory scan",
-                manifest_path,
-            )
-            return MarketplaceDirectoryLoader._discover_plugins_from_directories(marketplace_root)
-
-        plugins_list = manifest.get("plugins", [])
-        if not isinstance(plugins_list, list):
-            logger.warning("marketplace.json 'plugins' is not an array; falling back to directory scan")
-            return MarketplaceDirectoryLoader._discover_plugins_from_directories(marketplace_root)
-
-        # metadata.pluginRoot is a base directory prepended to relative source paths
-        metadata = manifest.get("metadata") or {}
-        plugin_root_str = metadata.get("pluginRoot", "")
-
-        entries: list[_PluginEntry] = []
-        for plugin_spec in plugins_list:
-            if not isinstance(plugin_spec, dict):
-                continue
-
-            name = plugin_spec.get("name")
-            source = plugin_spec.get("source")
-            if not name or not isinstance(name, str):
-                logger.warning("Skipping marketplace plugin entry with missing/invalid 'name'")
-                continue
-            if not source or not isinstance(source, str):
-                logger.warning("Skipping marketplace plugin '%s' with missing/invalid 'source'", name)
-                continue
-
-            resolved_path = MarketplaceDirectoryLoader._resolve_plugin_source(
-                source=source,
-                marketplace_root=marketplace_root,
-                plugin_root=plugin_root_str,
-            )
-            if resolved_path is None:
-                logger.warning(
-                    "Skipping marketplace plugin '%s': unsupported source type '%s'",
-                    name,
-                    source,
-                )
-                continue
-
-            if not resolved_path.is_dir():
-                logger.warning(
-                    "Skipping marketplace plugin '%s': resolved path does not exist: %s",
-                    name,
-                    resolved_path,
-                )
-                continue
-
-            description = plugin_spec.get("description")
-            entries.append(
-                _PluginEntry(
-                    name=name.strip(),
-                    path=resolved_path,
-                    description=description if isinstance(description, str) else None,
-                )
-            )
-
-        logger.info(
-            "marketplace.json: discovered %d plugins from %s",
-            len(entries),
-            manifest_path,
-        )
-        return sorted(entries, key=lambda e: e.name)
-
-    @staticmethod
-    def _resolve_plugin_source(*, source: str, marketplace_root: Path, plugin_root: str) -> Path | None:
-        """Resolve a plugin source path from marketplace.json.
-
-        Supports relative paths (starting with ``./``).  Other source types
-        (git URLs, npm packages) are not yet supported and return None.
-        """
-        if source.startswith("./") or source.startswith("../"):
-            # Relative path — resolve against marketplace root with optional pluginRoot
-            base = marketplace_root
-            if plugin_root:
-                base = marketplace_root / plugin_root
-            return (base / source).resolve()
-
-        # Absolute local path (unusual but supported)
-        if source.startswith("/"):
-            return Path(source)
-
-        # Bare relative path (no ./ prefix) — treat as relative to marketplace root
-        base = marketplace_root
-        if plugin_root:
-            base = marketplace_root / plugin_root
-        return (base / source).resolve()
-
-    @staticmethod
-    def _discover_plugins_from_directories(cache_path: Path) -> list[_PluginEntry]:
-        """Legacy fallback: discover plugins by scanning directories.
-
-        Supports two layouts:
-        1. Direct: cache_path contains plugin subdirectories with skills/ folders
-        2. Nested: cache_path/plugins/ contains plugin subdirectories
-        """
-        plugins_subdir = cache_path / "plugins"
-        if plugins_subdir.is_dir():
-            return sorted(
-                (
-                    _PluginEntry(name=d.name, path=d)
-                    for d in plugins_subdir.iterdir()
-                    if d.is_dir() and not d.name.startswith(".")
-                ),
-                key=lambda e: e.name,
-            )
-
-        return sorted(
-            (
-                _PluginEntry(name=d.name, path=d)
-                for d in cache_path.iterdir()
-                if d.is_dir() and not d.name.startswith(".") and (d / "skills").is_dir()
-            ),
-            key=lambda e: e.name,
-        )
 
     def _find_plugin_dir_for_skill(self, details: SkillDetails) -> Path | None:
         """Walk up from the skill's source_path to find the plugin root."""

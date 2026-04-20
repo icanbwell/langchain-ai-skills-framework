@@ -23,13 +23,8 @@ from langchain_ai_skills_framework.models.skills_model import (
 def serialize_snapshot(snapshot: SkillSnapshot) -> dict[str, Any]:
     """Convert a SkillSnapshot to a JSON-serializable dict."""
     return {
-        "details_by_name": {
-            name: _serialize_details(details)
-            for name, details in snapshot.details_by_name.items()
-        },
-        "ordered_summaries": [
-            _serialize_summary(s) for s in snapshot.ordered_summaries
-        ],
+        "details_by_name": {name: _serialize_details(details) for name, details in snapshot.details_by_name.items()},
+        "ordered_summaries": [_serialize_summary(s) for s in snapshot.ordered_summaries],
         "mcp_servers": [_serialize_mcp_entry(e) for e in snapshot.mcp_servers],
     }
 
@@ -37,15 +32,10 @@ def serialize_snapshot(snapshot: SkillSnapshot) -> dict[str, Any]:
 def deserialize_snapshot(data: dict[str, Any]) -> SkillSnapshot:
     """Reconstruct a SkillSnapshot from a serialized dict."""
     details_by_name: dict[str, SkillDetails] = {
-        name: _deserialize_details(d)
-        for name, d in data.get("details_by_name", {}).items()
+        name: _deserialize_details(d) for name, d in data.get("details_by_name", {}).items()
     }
-    ordered_summaries = tuple(
-        _deserialize_summary(s) for s in data.get("ordered_summaries", [])
-    )
-    mcp_servers = tuple(
-        _deserialize_mcp_entry(e) for e in data.get("mcp_servers", [])
-    )
+    ordered_summaries = tuple(_deserialize_summary(s) for s in data.get("ordered_summaries", []))
+    mcp_servers = tuple(_deserialize_mcp_entry(e) for e in data.get("mcp_servers", []))
     return SkillSnapshot(
         details_by_name=MappingProxyType(details_by_name),
         ordered_summaries=ordered_summaries,
@@ -70,9 +60,7 @@ def _serialize_summary(summary: SkillSummary) -> dict[str, Any]:
 
 def _deserialize_summary(data: dict[str, Any]) -> SkillSummary:
     metadata_raw = data.get("metadata", {})
-    metadata: Mapping[str, object] = (
-        metadata_raw if isinstance(metadata_raw, dict) else {}
-    )
+    metadata: Mapping[str, object] = metadata_raw if isinstance(metadata_raw, dict) else {}
     return SkillSummary(
         name=data["name"],
         description=data["description"],

@@ -11,7 +11,6 @@ from langchain_ai_skills_framework.loaders.marketplace_plugin_manager import (
     MarketplacePluginManager,
     PluginEntry,
 )
-from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 
 
 @pytest.fixture
@@ -22,9 +21,7 @@ def manager() -> MarketplacePluginManager:
 class TestDiscoverPlugins:
     """Tests for plugin discovery logic."""
 
-    def test_discovers_from_marketplace_json(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_discovers_from_marketplace_json(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         # Create plugin directory
         plugin_dir = tmp_path / "plugins" / "my-plugin"
         plugin_dir.mkdir(parents=True)
@@ -35,9 +32,7 @@ class TestDiscoverPlugins:
         manifest_dir.mkdir()
         manifest = {
             "name": "test-marketplace",
-            "plugins": [
-                {"name": "my-plugin", "source": "./plugins/my-plugin", "description": "A test plugin"}
-            ],
+            "plugins": [{"name": "my-plugin", "source": "./plugins/my-plugin", "description": "A test plugin"}],
         }
         (manifest_dir / "marketplace.json").write_text(json.dumps(manifest))
 
@@ -47,9 +42,7 @@ class TestDiscoverPlugins:
         assert entries[0].path == plugin_dir.resolve()
         assert entries[0].description == "A test plugin"
 
-    def test_falls_back_to_directory_scan(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_falls_back_to_directory_scan(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         # No marketplace.json — uses directory fallback
         plugin_dir = tmp_path / "plugins" / "fallback-plugin"
         plugin_dir.mkdir(parents=True)
@@ -73,36 +66,26 @@ class TestDiscoverPlugins:
         assert len(entries) == 1
         assert entries[0].name == "good-plugin"
 
-    def test_include_filter(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_include_filter(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         for name in ("alpha", "beta", "gamma"):
             d = tmp_path / "plugins" / name
             d.mkdir(parents=True)
 
-        entries = manager.discover_plugins(
-            tmp_path, include_filter=frozenset({"alpha", "gamma"})
-        )
+        entries = manager.discover_plugins(tmp_path, include_filter=frozenset({"alpha", "gamma"}))
         names = {e.name for e in entries}
         assert names == {"alpha", "gamma"}
 
-    def test_exclude_filter(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_exclude_filter(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         for name in ("alpha", "beta", "gamma"):
             d = tmp_path / "plugins" / name
             d.mkdir(parents=True)
 
-        entries = manager.discover_plugins(
-            tmp_path, exclude_filter=frozenset({"beta"})
-        )
+        entries = manager.discover_plugins(tmp_path, exclude_filter=frozenset({"beta"}))
         names = {e.name for e in entries}
         assert "beta" not in names
         assert "alpha" in names
 
-    def test_plugin_root_in_metadata(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_plugin_root_in_metadata(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         # Plugin lives under a nested base dir
         plugin_dir = tmp_path / "packages" / "my-plugin"
         plugin_dir.mkdir(parents=True)
@@ -119,9 +102,7 @@ class TestDiscoverPlugins:
         assert len(entries) == 1
         assert entries[0].path == plugin_dir.resolve()
 
-    def test_skips_hidden_directories(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_skips_hidden_directories(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         (tmp_path / "plugins" / ".hidden").mkdir(parents=True)
         (tmp_path / "plugins" / "visible").mkdir(parents=True)
 
@@ -129,9 +110,7 @@ class TestDiscoverPlugins:
         assert len(entries) == 1
         assert entries[0].name == "visible"
 
-    def test_invalid_marketplace_json_falls_back(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_invalid_marketplace_json_falls_back(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         manifest_dir = tmp_path / ".claude-plugin"
         manifest_dir.mkdir()
         (manifest_dir / "marketplace.json").write_text("not valid json {{{")
@@ -148,9 +127,7 @@ class TestDiscoverPlugins:
 class TestReadMcpConfigs:
     """Tests for .mcp.json reading."""
 
-    def test_reads_http_server(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_reads_http_server(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         mcp_config = {
             "mcpServers": {
                 "my-server": {
@@ -173,9 +150,7 @@ class TestReadMcpConfigs:
         assert configs[0].display_name == "My Server"
         assert configs[0].is_http is True
 
-    def test_reads_stdio_server(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_reads_stdio_server(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         mcp_config = {
             "mcpServers": {
                 "local-tool": {
@@ -194,9 +169,7 @@ class TestReadMcpConfigs:
         assert configs[0].command == "python"
         assert configs[0].args == ("-m", "my_tool")
 
-    def test_substitutes_plugin_root(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_substitutes_plugin_root(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         mcp_config = {
             "mcpServers": {
                 "server": {
@@ -217,27 +190,17 @@ class TestReadMcpConfigs:
         assert configs[0].args == ("--config", f"{root}/config.json")
         assert configs[0].env == {"HOME": root}
 
-    def test_returns_empty_for_missing_file(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_returns_empty_for_missing_file(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         entry = PluginEntry(name="no-mcp", path=tmp_path)
         assert manager.read_mcp_configs(entry) == []
 
-    def test_returns_empty_for_invalid_json(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_returns_empty_for_invalid_json(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         (tmp_path / ".mcp.json").write_text("not json")
         entry = PluginEntry(name="bad-json", path=tmp_path)
         assert manager.read_mcp_configs(entry) == []
 
-    def test_namespaced_key(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
-        mcp_config = {
-            "mcpServers": {
-                "search": {"url": "http://localhost:9090"}
-            }
-        }
+    def test_namespaced_key(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
+        mcp_config = {"mcpServers": {"search": {"url": "http://localhost:9090"}}}
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="my-plugin", path=tmp_path)
@@ -245,9 +208,7 @@ class TestReadMcpConfigs:
 
         assert configs[0].namespaced_key == "my-plugin__search"
 
-    def test_headers_and_auth(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_headers_and_auth(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         mcp_config = {
             "mcpServers": {
                 "authed": {
@@ -269,15 +230,11 @@ class TestReadMcpConfigs:
 class TestCollectAllMcpConfigs:
     """Tests for batch collection across multiple plugins."""
 
-    def test_collects_from_multiple_plugins(
-        self, tmp_path: Path, manager: MarketplacePluginManager
-    ) -> None:
+    def test_collects_from_multiple_plugins(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         for i, name in enumerate(("plugin-a", "plugin-b")):
             plugin_dir = tmp_path / name
             plugin_dir.mkdir()
-            mcp_config = {
-                "mcpServers": {f"server-{i}": {"url": f"http://localhost:{8080 + i}"}}
-            }
+            mcp_config = {"mcpServers": {f"server-{i}": {"url": f"http://localhost:{8080 + i}"}}}
             (plugin_dir / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entries = [

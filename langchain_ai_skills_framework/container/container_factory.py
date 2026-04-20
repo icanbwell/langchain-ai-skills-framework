@@ -72,6 +72,7 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
             # factory.  It may not be available at this point if the skills
             # framework container runs first; treat as optional.
             from key_value.aio.stores.base import BaseStore
+
             snapshot_cache_store: BaseStore | None = None
             try:
                 snapshot_cache_store = c.resolve(BaseStore)

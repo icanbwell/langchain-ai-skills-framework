@@ -121,31 +121,20 @@ class MarketplacePluginManager:
                 url=_sub(url) if isinstance(url, str) else None,
                 command=_sub(command) if isinstance(command, str) else None,
                 args=tuple(_sub(a) for a in args_raw if isinstance(a, str)),
-                env={
-                    k: _sub(v)
-                    for k, v in env_raw.items()
-                    if isinstance(k, str) and isinstance(v, str)
-                },
-                headers={
-                    k: _sub(v)
-                    for k, v in headers_raw.items()
-                    if isinstance(k, str) and isinstance(v, str)
-                },
+                env={k: _sub(v) for k, v in env_raw.items() if isinstance(k, str) and isinstance(v, str)},
+                headers={k: _sub(v) for k, v in headers_raw.items() if isinstance(k, str) and isinstance(v, str)},
                 description=server_config.get("description")
                 if isinstance(server_config.get("description"), str)
                 else None,
                 display_name=server_config.get("displayName")
                 if isinstance(server_config.get("displayName"), str)
                 else None,
-                auth=server_config.get("auth")
-                if isinstance(server_config.get("auth"), str)
-                else None,
+                auth=server_config.get("auth") if isinstance(server_config.get("auth"), str) else None,
             )
 
             if not mcp_entry.is_http:
                 logger.debug(
-                    "Plugin '%s' MCP server '%s' has no url (stdio-only); "
-                    "skipping for server-side use",
+                    "Plugin '%s' MCP server '%s' has no url (stdio-only); skipping for server-side use",
                     entry.name,
                     server_key,
                 )
@@ -161,9 +150,7 @@ class MarketplacePluginManager:
 
         return entries
 
-    def collect_all_mcp_configs(
-        self, entries: Sequence[PluginEntry]
-    ) -> list[PluginMcpServerEntry]:
+    def collect_all_mcp_configs(self, entries: Sequence[PluginEntry]) -> list[PluginMcpServerEntry]:
         """Read MCP configs from all plugin entries and return a flat list."""
         result: list[PluginMcpServerEntry] = []
         for entry in entries:
@@ -180,9 +167,7 @@ class MarketplacePluginManager:
 
         return self._discover_from_directories(marketplace_root)
 
-    def _parse_marketplace_json(
-        self, manifest_path: Path, marketplace_root: Path
-    ) -> list[PluginEntry]:
+    def _parse_marketplace_json(self, manifest_path: Path, marketplace_root: Path) -> list[PluginEntry]:
         """Parse .claude-plugin/marketplace.json and resolve plugin paths."""
         try:
             raw = manifest_path.read_text(encoding="utf-8")
@@ -204,9 +189,7 @@ class MarketplacePluginManager:
 
         plugins_list = manifest.get("plugins", [])
         if not isinstance(plugins_list, list):
-            logger.warning(
-                "marketplace.json 'plugins' is not an array; falling back to directory scan"
-            )
+            logger.warning("marketplace.json 'plugins' is not an array; falling back to directory scan")
             return self._discover_from_directories(marketplace_root)
 
         # metadata.pluginRoot is a base directory prepended to relative source paths
@@ -221,9 +204,7 @@ class MarketplacePluginManager:
             name = plugin_spec.get("name")
             source = plugin_spec.get("source")
             if not name or not isinstance(name, str):
-                logger.warning(
-                    "Skipping marketplace plugin entry with missing/invalid 'name'"
-                )
+                logger.warning("Skipping marketplace plugin entry with missing/invalid 'name'")
                 continue
             if not source or not isinstance(source, str):
                 logger.warning(
@@ -270,9 +251,7 @@ class MarketplacePluginManager:
         return sorted(entries, key=lambda e: e.name)
 
     @staticmethod
-    def _resolve_plugin_source(
-        *, source: str, marketplace_root: Path, plugin_root: str
-    ) -> Path | None:
+    def _resolve_plugin_source(*, source: str, marketplace_root: Path, plugin_root: str) -> Path | None:
         """Resolve a plugin source path from marketplace.json.
 
         Supports relative paths (starting with ``./`` or ``../``), absolute
@@ -318,9 +297,7 @@ class MarketplacePluginManager:
             (
                 PluginEntry(name=d.name, path=d)
                 for d in cache_path.iterdir()
-                if d.is_dir()
-                and not d.name.startswith(".")
-                and (d / "skills").is_dir()
+                if d.is_dir() and not d.name.startswith(".") and (d / "skills").is_dir()
             ),
             key=lambda e: e.name,
         )
@@ -343,9 +320,7 @@ class MarketplacePluginManager:
                 )
                 continue
             if exclude_filter and normalized in exclude_filter:
-                logger.info(
-                    "Marketplace: skipping excluded plugin '%s'", entry.name
-                )
+                logger.info("Marketplace: skipping excluded plugin '%s'", entry.name)
                 continue
             result.append(entry)
         return result

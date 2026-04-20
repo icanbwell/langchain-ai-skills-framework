@@ -311,9 +311,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         if not self._snapshot_cache_store:
             return
         data = serialize_snapshot(snapshot)
-        await self._snapshot_cache_store.put(
-            self._SNAPSHOT_CACHE_KEY, data, ttl=self._reload_ttl_seconds
-        )
+        await self._snapshot_cache_store.put(self._SNAPSHOT_CACHE_KEY, data, ttl=self._reload_ttl_seconds)
         logger.debug(
             "MarketplaceDirectoryLoader wrote snapshot to cache (%d skills)",
             len(snapshot.ordered_summaries),

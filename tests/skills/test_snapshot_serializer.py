@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType
 
-import pytest
 
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
@@ -138,7 +137,7 @@ class TestSnapshotSerializer:
         entry = PluginMcpServerEntry(
             server_key="minimal",
             plugin_name="plugin",
-            plugin_root=Path("/tmp"),
+            plugin_root=Path("/plugins/minimal"),
             url=None,
             command=None,
         )

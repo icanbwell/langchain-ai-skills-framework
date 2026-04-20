@@ -77,6 +77,7 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
             try:
                 snapshot_cache_store = c.resolve(BaseStore)
             except Exception:
+                logger.debug("SnapshotCacheStore not available; proceeding without cache.")
                 pass
 
             marketplace_loader = MarketplaceDirectoryLoader(

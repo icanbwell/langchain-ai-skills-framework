@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 import time
 from html import escape
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from types import MappingProxyType
-from typing import Sequence, Any
+from typing import TYPE_CHECKING, Sequence, Any
 from uuid import UUID, uuid4
 
 from langchain_core.tools import BaseTool
@@ -44,6 +46,13 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
+from langchain_ai_skills_framework.utilities.snapshot_serializer import (
+    deserialize_snapshot,
+    serialize_snapshot,
+)
+
+if TYPE_CHECKING:
+    from key_value.aio.stores.base import BaseStore
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["CONFIG"])
@@ -97,6 +106,7 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
         *,
         environment_variables: SkillLoaderEnvironmentVariables,
         github_skill_downloader: GithubSkillDownloader,
+        snapshot_cache_store: BaseStore | None = None,
     ) -> None:
         self._identifier: UUID = uuid4()
         if environment_variables is None:
@@ -131,6 +141,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
                 "github_skill_downloader must be an instance of GithubSkillDownloader:"
                 f" {type(github_skill_downloader)} "
             )
+        self._snapshot_cache_store = snapshot_cache_store
+        self._snapshot_cache_collection = environment_variables.snapshot_cache_skills_collection
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
@@ -171,11 +183,17 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Fallback: directory loader has no user skills, delegate to shared."""
-        return self.list_skill_summaries(allowed_skills)
+        snapshot = await self._get_snapshot_async()
+        return snapshot.ordered_summaries
 
     async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
         """Fallback: directory loader has no user skills, delegate to shared."""
-        return self.get_skill_details(skill_name)
+        normalized = self._normalize_skill_name(skill_name)
+        snapshot = await self._get_snapshot_async()
+        try:
+            return snapshot.details_by_name[normalized]
+        except KeyError as exc:
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found") from exc
 
     def refresh(self) -> None:
         """Force an immediate reload regardless of TTL."""
@@ -373,6 +391,8 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
 
     # Snapshot lifecycle
 
+    _SNAPSHOT_CACHE_KEY = "skillkit_snapshot"
+
     def _get_snapshot(self) -> SkillSnapshot:
         # Fast path: use the in-memory snapshot while TTL is still valid.
         with self._lock:
@@ -396,6 +416,88 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             self._snapshot = self._build_snapshot()
             self._snapshot_loaded_at = time.monotonic()
             return self._snapshot
+
+    async def _get_snapshot_async(self) -> SkillSnapshot:
+        """Async variant that checks MongoDB snapshot cache before building."""
+        with self._lock:
+            if self._is_snapshot_valid_unlocked():
+                snapshot = self._snapshot
+                if snapshot is not None:
+                    return snapshot
+
+        # Check MongoDB snapshot cache
+        snapshot = await self._read_from_snapshot_cache()
+        if snapshot is not None:
+            with self._lock:
+                self._snapshot = snapshot
+                self._snapshot_loaded_at = time.monotonic()
+            return snapshot
+
+        with self._lock:
+            if self._is_snapshot_valid_unlocked():
+                snapshot = self._snapshot
+                if snapshot is not None:
+                    return snapshot
+
+            logger.info(
+                "SkillkitDirectoryLoader %s cache expired or empty; loading skills",
+                self._identifier,
+            )
+            self._reload_manager(force=False)
+            self._snapshot = self._build_snapshot()
+            self._snapshot_loaded_at = time.monotonic()
+            await self._write_to_snapshot_cache(self._snapshot)
+            return self._snapshot
+
+    async def _read_from_snapshot_cache(self) -> SkillSnapshot | None:
+        """Best-effort: any store or deserialization error returns None."""
+        if not self._snapshot_cache_store:
+            return None
+        try:
+            data = await self._snapshot_cache_store.get(
+                self._SNAPSHOT_CACHE_KEY,
+                collection=self._snapshot_cache_collection,
+            )
+            if data is None:
+                return None
+            snapshot = deserialize_snapshot(data)
+            logger.info(
+                "SkillkitDirectoryLoader %s loaded snapshot from cache (%d skills)",
+                self._identifier,
+                len(snapshot.ordered_summaries),
+            )
+            return snapshot
+        except Exception:
+            logger.debug(
+                "SkillkitDirectoryLoader %s snapshot cache read failed",
+                self._identifier,
+                exc_info=True,
+            )
+            return None
+
+    async def _write_to_snapshot_cache(self, snapshot: SkillSnapshot) -> None:
+        """Best-effort: a write failure must not prevent returning the snapshot."""
+        if not self._snapshot_cache_store:
+            return
+        try:
+            data = serialize_snapshot(snapshot)
+            await self._snapshot_cache_store.put(
+                self._SNAPSHOT_CACHE_KEY,
+                data,
+                ttl=self._reload_ttl_seconds,
+                collection=self._snapshot_cache_collection,
+            )
+            logger.debug(
+                "SkillkitDirectoryLoader %s wrote snapshot to cache (%d skills)",
+                self._identifier,
+                len(snapshot.ordered_summaries),
+            )
+        except Exception:
+            logger.debug(
+                "SkillkitDirectoryLoader %s snapshot cache write failed",
+                self._identifier,
+                exc_info=True,
+            )
 
     def _build_snapshot(self) -> SkillSnapshot:
         """Build a normalized, exclusion-aware snapshot from the loaded manager."""

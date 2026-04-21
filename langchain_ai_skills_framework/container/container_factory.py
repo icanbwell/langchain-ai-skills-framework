@@ -114,13 +114,22 @@ class LangchainAISkillsFrameworkContainerFactory:
         container.singleton(GithubDirectoryDownloader, lambda c: GithubDirectoryDownloader())
 
         # GitHub/filesystem skills are always loaded first.
-        container.singleton(
-            SkillkitDirectoryLoader,
-            lambda c: SkillkitDirectoryLoader(
+        def _build_skillkit_loader(c: IContainer) -> SkillkitDirectoryLoader:
+            from key_value.aio.stores.base import BaseStore
+
+            snapshot_cache_store: BaseStore | None = None
+            try:
+                snapshot_cache_store = c.resolve(BaseStore)
+            except Exception:
+                logger.debug("SnapshotCacheStore not available for SkillkitDirectoryLoader.")
+
+            return SkillkitDirectoryLoader(
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
                 github_skill_downloader=c.resolve(GithubSkillDownloader),
-            ),
-        )
+                snapshot_cache_store=snapshot_cache_store,
+            )
+
+        container.singleton(SkillkitDirectoryLoader, _build_skillkit_loader)
 
         container.singleton(
             MongoDatabaseFactory,

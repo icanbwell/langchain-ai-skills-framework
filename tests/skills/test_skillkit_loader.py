@@ -164,6 +164,14 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
     def skills_cache_timeout_seconds(self) -> int:
         return self._skills_cache_timeout_seconds
 
+    @property
+    def snapshot_cache_skills_collection(self) -> str | None:
+        return None
+
+    @property
+    def snapshot_cache_plugins_collection(self) -> str | None:
+        return None
+
 
 def _build_loader(
     monkeypatch: pytest.MonkeyPatch,

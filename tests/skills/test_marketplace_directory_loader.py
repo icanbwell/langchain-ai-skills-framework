@@ -33,6 +33,8 @@ class FakeEnvVars:
     excluded_skill_groups: set[str] = field(default_factory=set)
     plugins_marketplace_include: set[str] | None = None
     plugins_marketplace_exclude: set[str] = field(default_factory=set)
+    snapshot_cache_skills_collection: str | None = None
+    snapshot_cache_plugins_collection: str | None = None
 
 
 def _write_marketplace_skill(

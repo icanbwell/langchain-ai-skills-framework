@@ -64,6 +64,28 @@ class SkillLoaderEnvironmentVariables(Protocol):
         ...
 
     @property
+    def snapshot_cache_skills_collection(self) -> str | None:
+        """Optional MongoDB collection for skillkit directory snapshots.
+
+        When set, SkillkitDirectoryLoader stores its snapshot in this
+        collection instead of the store's default collection.
+
+        Expected environment variable: SNAPSHOT_CACHE_SKILLS_COLLECTION
+        """
+        ...
+
+    @property
+    def snapshot_cache_plugins_collection(self) -> str | None:
+        """Optional MongoDB collection for marketplace plugin snapshots.
+
+        When set, MarketplaceDirectoryLoader stores its snapshot in this
+        collection instead of the store's default collection.
+
+        Expected environment variable: SNAPSHOT_CACHE_PLUGINS_COLLECTION
+        """
+        ...
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated GitSkillsRegistry loading.
 

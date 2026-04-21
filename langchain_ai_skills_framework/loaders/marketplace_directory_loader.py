@@ -88,6 +88,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         self._github_directory_downloader = github_directory_downloader
 
         self._snapshot_cache_store = snapshot_cache_store
+        self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
 
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
@@ -288,12 +289,16 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             return self._snapshot
 
     async def _read_from_snapshot_cache(self) -> SkillSnapshot | None:
+        """Best-effort: any store or deserialization error returns None."""
         if not self._snapshot_cache_store:
             return None
-        data = await self._snapshot_cache_store.get(self._SNAPSHOT_CACHE_KEY)
-        if data is None:
-            return None
         try:
+            data = await self._snapshot_cache_store.get(
+                self._SNAPSHOT_CACHE_KEY,
+                collection=self._snapshot_cache_collection,
+            )
+            if data is None:
+                return None
             snapshot = deserialize_snapshot(data)
             logger.info(
                 "MarketplaceDirectoryLoader loaded snapshot from cache (%d skills)",
@@ -302,20 +307,32 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             return snapshot
         except Exception:
             logger.debug(
-                "MarketplaceDirectoryLoader failed to deserialize snapshot cache",
+                "MarketplaceDirectoryLoader snapshot cache read failed",
                 exc_info=True,
             )
             return None
 
     async def _write_to_snapshot_cache(self, snapshot: SkillSnapshot) -> None:
+        """Best-effort: a write failure must not prevent returning the snapshot."""
         if not self._snapshot_cache_store:
             return
-        data = serialize_snapshot(snapshot)
-        await self._snapshot_cache_store.put(self._SNAPSHOT_CACHE_KEY, data, ttl=self._reload_ttl_seconds)
-        logger.debug(
-            "MarketplaceDirectoryLoader wrote snapshot to cache (%d skills)",
-            len(snapshot.ordered_summaries),
-        )
+        try:
+            data = serialize_snapshot(snapshot)
+            await self._snapshot_cache_store.put(
+                self._SNAPSHOT_CACHE_KEY,
+                data,
+                ttl=self._reload_ttl_seconds,
+                collection=self._snapshot_cache_collection,
+            )
+            logger.debug(
+                "MarketplaceDirectoryLoader wrote snapshot to cache (%d skills)",
+                len(snapshot.ordered_summaries),
+            )
+        except Exception:
+            logger.debug(
+                "MarketplaceDirectoryLoader snapshot cache write failed",
+                exc_info=True,
+            )
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         snapshot = self._get_snapshot()

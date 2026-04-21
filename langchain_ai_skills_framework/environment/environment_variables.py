@@ -42,6 +42,14 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return ttl_seconds
 
     @property
+    def snapshot_cache_skills_collection(self) -> str | None:
+        return os.environ.get("SNAPSHOT_CACHE_SKILLS_COLLECTION") or None
+
+    @property
+    def snapshot_cache_plugins_collection(self) -> str | None:
+        return os.environ.get("SNAPSHOT_CACHE_PLUGINS_COLLECTION") or None
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated github:// skill loading.
 

@@ -62,6 +62,9 @@ class StubLoader(SkillLoaderProtocol):
     def refresh(self) -> None:
         self.refresh_count += 1
 
+    async def refresh_async(self) -> None:
+        self.refresh_count += 1
+
     async def get_instructions(self) -> str:
         return "<available_skills>primary-only</available_skills>"
 

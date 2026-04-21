@@ -65,6 +65,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def refresh(self) -> None:
         return None
 
+    async def refresh_async(self) -> None:
+        return None
+
     async def get_instructions(self) -> str:  # pragma: no cover
         return ""
 

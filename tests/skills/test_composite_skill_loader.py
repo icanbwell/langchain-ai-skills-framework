@@ -64,6 +64,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def refresh(self) -> None:
         pass
 
+    async def refresh_async(self) -> None:
+        pass
+
     async def get_instructions(self) -> str:
         return "<available_skills></available_skills>"
 

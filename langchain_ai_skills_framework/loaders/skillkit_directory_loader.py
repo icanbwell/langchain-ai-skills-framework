@@ -31,6 +31,9 @@ from langchain_ai_skills_framework.loaders.skill_loader_environment_variables im
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.snapshot_cache_mixin import (
+    SnapshotCacheMixin,
+)
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -45,10 +48,6 @@ from langchain_ai_skills_framework.tools.run_skill_script_tool import RunSkillSc
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
-)
-from langchain_ai_skills_framework.utilities.snapshot_serializer import (
-    deserialize_snapshot,
-    serialize_snapshot,
 )
 
 if TYPE_CHECKING:
@@ -96,10 +95,14 @@ LOAD_SKILL_TEMPLATE = """<skill>
 """
 
 
-class SkillkitDirectoryLoader(SkillLoaderProtocol):
+class SkillkitDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     """Loads Agent Skills from local directories using skillkit."""
 
     # Public API
+
+    @property
+    def _loader_display_name(self) -> str:
+        return f"SkillkitDirectoryLoader {self._identifier}"
 
     def __init__(
         self,
@@ -203,6 +206,16 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             self._reload_manager(force=True)
             self._snapshot = self._build_snapshot()
             self._snapshot_loaded_at = time.monotonic()
+
+    async def refresh_async(self) -> None:
+        """Force reload and persist the new snapshot to MongoDB cache."""
+        with self._lock:
+            logger.info("SkillkitDirectoryLoader %s refreshing cache (async)", self._identifier)
+            self._reload_manager(force=True)
+            self._snapshot = self._build_snapshot()
+            self._snapshot_loaded_at = time.monotonic()
+            snapshot = self._snapshot
+        await self._write_to_snapshot_cache(snapshot)
 
     def _build_skills_prompt(self, *, summaries: Sequence[SkillSummary]) -> str:
         if not summaries:
@@ -449,56 +462,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             await self._write_to_snapshot_cache(self._snapshot)
             return self._snapshot
 
-    async def _read_from_snapshot_cache(self) -> SkillSnapshot | None:
-        """Best-effort: any store or deserialization error returns None."""
-        if not self._snapshot_cache_store:
-            return None
-        try:
-            data = await self._snapshot_cache_store.get(
-                self._SNAPSHOT_CACHE_KEY,
-                collection=self._snapshot_cache_collection,
-            )
-            if data is None:
-                return None
-            snapshot = deserialize_snapshot(data)
-            logger.info(
-                "SkillkitDirectoryLoader %s loaded snapshot from cache (%d skills)",
-                self._identifier,
-                len(snapshot.ordered_summaries),
-            )
-            return snapshot
-        except Exception:
-            logger.debug(
-                "SkillkitDirectoryLoader %s snapshot cache read failed",
-                self._identifier,
-                exc_info=True,
-            )
-            return None
-
-    async def _write_to_snapshot_cache(self, snapshot: SkillSnapshot) -> None:
-        """Best-effort: a write failure must not prevent returning the snapshot."""
-        if not self._snapshot_cache_store:
-            return
-        try:
-            data = serialize_snapshot(snapshot)
-            await self._snapshot_cache_store.put(
-                self._SNAPSHOT_CACHE_KEY,
-                data,
-                ttl=self._reload_ttl_seconds,
-                collection=self._snapshot_cache_collection,
-            )
-            logger.debug(
-                "SkillkitDirectoryLoader %s wrote snapshot to cache (%d skills)",
-                self._identifier,
-                len(snapshot.ordered_summaries),
-            )
-        except Exception:
-            logger.debug(
-                "SkillkitDirectoryLoader %s snapshot cache write failed",
-                self._identifier,
-                exc_info=True,
-            )
-
     def _build_snapshot(self) -> SkillSnapshot:
         """Build a normalized, exclusion-aware snapshot from the loaded manager."""
 
@@ -576,35 +539,6 @@ class SkillkitDirectoryLoader(SkillLoaderProtocol):
             additional_search_paths=[],
         )
         return manager
-
-    # TTL helpers
-
-    def _is_snapshot_valid_unlocked(self) -> bool:
-        """Lock-held validity check based on snapshot presence and TTL age."""
-
-        if self._snapshot is None:
-            return False
-        if self._reload_ttl_seconds is None:
-            return True
-        if self._snapshot_loaded_at is None:
-            return False
-        return (time.monotonic() - self._snapshot_loaded_at) < self._reload_ttl_seconds
-
-    @staticmethod
-    def _resolve_reload_ttl_seconds(
-        environment_variables: SkillLoaderEnvironmentVariables,
-    ) -> float | None:
-        """Resolve loader TTL from environment, defaulting to one hour."""
-
-        configured = environment_variables.skills_cache_timeout_seconds
-        if isinstance(configured, bool):
-            return 3600.0
-        if not isinstance(configured, (int, float)):
-            return 3600.0
-        configured_seconds = float(configured)
-        if configured_seconds <= 0:
-            return None
-        return configured_seconds
 
     # Skill mapping and validation
 

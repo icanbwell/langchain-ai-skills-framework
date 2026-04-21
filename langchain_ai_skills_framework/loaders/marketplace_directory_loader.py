@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
 from typing import Any, Sequence, TYPE_CHECKING
+from uuid import UUID, uuid4
 
 from langchain_core.tools import BaseTool
 from skillkit import SkillManager, SkillMetadata, Skill
@@ -33,6 +34,9 @@ from langchain_ai_skills_framework.loaders.skill_loader_environment_variables im
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.snapshot_cache_mixin import (
+    SnapshotCacheMixin,
+)
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -42,10 +46,6 @@ from langchain_ai_skills_framework.models.skills_model import (
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
-from langchain_ai_skills_framework.utilities.snapshot_serializer import (
-    deserialize_snapshot,
-    serialize_snapshot,
-)
 
 if TYPE_CHECKING:
     from key_value.aio.stores.base import BaseStore
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class MarketplaceDirectoryLoader(SkillLoaderProtocol):
+class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     """Loads Agent Skills from a Claude plugin marketplace GitHub repository.
 
     The marketplace structure is:
@@ -72,6 +72,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         plugin_manager: MarketplacePluginManager | None = None,
         snapshot_cache_store: BaseStore | None = None,
     ) -> None:
+        self._identifier: UUID = uuid4()
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
         self._environment_variables = environment_variables
@@ -96,9 +97,14 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(environment_variables)
 
         logger.info(
-            "MarketplaceDirectoryLoader initialized for %s",
+            "MarketplaceDirectoryLoader %s initialized for %s",
+            self._identifier,
             self._marketplace_uri,
         )
+
+    @property
+    def _loader_display_name(self) -> str:
+        return f"MarketplaceDirectoryLoader {self._identifier}"
 
     def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         snapshot = self._get_snapshot()
@@ -129,6 +135,15 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             logger.info("MarketplaceDirectoryLoader refreshing cache")
             self._snapshot = self._build_snapshot(force_download=True)
             self._snapshot_loaded_at = time.monotonic()
+
+    async def refresh_async(self) -> None:
+        """Force reload and persist the new snapshot to MongoDB cache."""
+        with self._lock:
+            logger.info("MarketplaceDirectoryLoader refreshing cache (async)")
+            self._snapshot = self._build_snapshot(force_download=True)
+            self._snapshot_loaded_at = time.monotonic()
+            snapshot = self._snapshot
+        await self._write_to_snapshot_cache(snapshot)
 
     async def get_instructions(self) -> str:
         return ""
@@ -232,19 +247,19 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
 
-    _SNAPSHOT_CACHE_KEY = "skill_snapshot"
+    _SNAPSHOT_CACHE_KEY = "marketplace_snapshot"
 
     # --- Private implementation ------------------------------------------------
 
     def _get_snapshot(self) -> SkillSnapshot:
         with self._lock:
-            if self._is_snapshot_valid():
+            if self._is_snapshot_valid_unlocked():
                 snapshot = self._snapshot
                 if snapshot is not None:
                     return snapshot
 
         with self._lock:
-            if self._is_snapshot_valid():
+            if self._is_snapshot_valid_unlocked():
                 snapshot = self._snapshot
                 if snapshot is not None:
                     return snapshot
@@ -260,7 +275,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
     async def _get_snapshot_async(self) -> SkillSnapshot:
         """Async variant that checks MongoDB snapshot cache before building."""
         with self._lock:
-            if self._is_snapshot_valid():
+            if self._is_snapshot_valid_unlocked():
                 snapshot = self._snapshot
                 if snapshot is not None:
                     return snapshot
@@ -274,7 +289,7 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             return snapshot
 
         with self._lock:
-            if self._is_snapshot_valid():
+            if self._is_snapshot_valid_unlocked():
                 snapshot = self._snapshot
                 if snapshot is not None:
                     return snapshot
@@ -287,52 +302,6 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
             self._snapshot_loaded_at = time.monotonic()
             await self._write_to_snapshot_cache(self._snapshot)
             return self._snapshot
-
-    async def _read_from_snapshot_cache(self) -> SkillSnapshot | None:
-        """Best-effort: any store or deserialization error returns None."""
-        if not self._snapshot_cache_store:
-            return None
-        try:
-            data = await self._snapshot_cache_store.get(
-                self._SNAPSHOT_CACHE_KEY,
-                collection=self._snapshot_cache_collection,
-            )
-            if data is None:
-                return None
-            snapshot = deserialize_snapshot(data)
-            logger.info(
-                "MarketplaceDirectoryLoader loaded snapshot from cache (%d skills)",
-                len(snapshot.ordered_summaries),
-            )
-            return snapshot
-        except Exception:
-            logger.debug(
-                "MarketplaceDirectoryLoader snapshot cache read failed",
-                exc_info=True,
-            )
-            return None
-
-    async def _write_to_snapshot_cache(self, snapshot: SkillSnapshot) -> None:
-        """Best-effort: a write failure must not prevent returning the snapshot."""
-        if not self._snapshot_cache_store:
-            return
-        try:
-            data = serialize_snapshot(snapshot)
-            await self._snapshot_cache_store.put(
-                self._SNAPSHOT_CACHE_KEY,
-                data,
-                ttl=self._reload_ttl_seconds,
-                collection=self._snapshot_cache_collection,
-            )
-            logger.debug(
-                "MarketplaceDirectoryLoader wrote snapshot to cache (%d skills)",
-                len(snapshot.ordered_summaries),
-            )
-        except Exception:
-            logger.debug(
-                "MarketplaceDirectoryLoader snapshot cache write failed",
-                exc_info=True,
-            )
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         snapshot = self._get_snapshot()
@@ -487,29 +456,6 @@ class MarketplaceDirectoryLoader(SkillLoaderProtocol):
                     return candidate
 
         return None
-
-    def _is_snapshot_valid(self) -> bool:
-        if self._snapshot is None:
-            return False
-        if self._reload_ttl_seconds is None:
-            return True
-        if self._snapshot_loaded_at is None:
-            return False
-        return (time.monotonic() - self._snapshot_loaded_at) < self._reload_ttl_seconds
-
-    @staticmethod
-    def _resolve_reload_ttl_seconds(
-        environment_variables: SkillLoaderEnvironmentVariables,
-    ) -> float | None:
-        configured = environment_variables.skills_cache_timeout_seconds
-        if isinstance(configured, bool):
-            return 3600.0
-        if not isinstance(configured, (int, float)):
-            return 3600.0
-        configured_seconds = float(configured)
-        if configured_seconds <= 0:
-            return None
-        return configured_seconds
 
     @staticmethod
     def _map_skill(metadata: SkillMetadata, content: str) -> SkillDetails:

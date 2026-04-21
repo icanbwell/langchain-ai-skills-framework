@@ -129,6 +129,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     def refresh(self) -> None:
         self._shared_loader.refresh()
 
+    async def refresh_async(self) -> None:
+        await self._shared_loader.refresh_async()
+
     async def get_instructions(self) -> str:
         """Return shared skill instructions (no user context available here)."""
         return await self._shared_loader.get_instructions()

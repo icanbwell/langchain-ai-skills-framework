@@ -70,6 +70,10 @@ class MultiSourceSkillLoader(SkillLoaderProtocol):
         for loader in self._loaders:
             loader.refresh()
 
+    async def refresh_async(self) -> None:
+        for loader in self._loaders:
+            await loader.refresh_async()
+
     async def get_instructions(self) -> str:
         # Build instructions from the merged view so all sources are discoverable
         summaries = self.list_skill_summaries(allowed_skills=set())

@@ -146,6 +146,10 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         await self._write_to_snapshot_cache(snapshot)
 
     async def get_instructions(self) -> str:
+        # Marketplace plugins don't contribute system-prompt instructions,
+        # but we trigger the async snapshot path here so the snapshot is
+        # written to L2 (MongoDB) for cross-worker sharing.
+        await self._get_snapshot_async()
         return ""
 
     def get_tools(self) -> list[BaseTool]:

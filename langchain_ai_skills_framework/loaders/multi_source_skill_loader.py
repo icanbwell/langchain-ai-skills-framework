@@ -52,7 +52,14 @@ class MultiSourceSkillLoader(SkillLoaderProtocol):
         return sorted(merged, key=lambda s: s.name)
 
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
-        return self.list_skill_summaries(allowed_skills)
+        seen: set[str] = set()
+        merged: list[SkillSummary] = []
+        for loader in self._loaders:
+            for summary in await loader.list_all_summaries(user_id=user_id, allowed_skills=allowed_skills):
+                if summary.name not in seen:
+                    seen.add(summary.name)
+                    merged.append(summary)
+        return sorted(merged, key=lambda s: s.name)
 
     def get_skill_details(self, skill_name: str) -> SkillDetails:
         last_exc: SkillNotFoundError | None = None
@@ -75,7 +82,13 @@ class MultiSourceSkillLoader(SkillLoaderProtocol):
             await loader.refresh_async()
 
     async def get_instructions(self) -> str:
-        # Build instructions from the merged view so all sources are discoverable
+        # Trigger async snapshot population on all child loaders.
+        # Each child's get_instructions() uses _get_snapshot_async()
+        # which reads from / writes to L2 (MongoDB).
+        for loader in self._loaders:
+            await loader.get_instructions()
+
+        # Build merged instructions from all sources (L1 is now populated).
         summaries = self.list_skill_summaries(allowed_skills=set())
         if not summaries:
             return ""

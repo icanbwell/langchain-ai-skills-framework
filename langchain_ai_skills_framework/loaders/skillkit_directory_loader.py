@@ -230,19 +230,25 @@ class SkillkitDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         return f"<skill><name> {escaped_name} </name> <description> {escaped_description} </description> </skill>"
 
     async def get_instructions(self) -> str:
-        """Return `<available_skills>` block used by middleware system prompts."""
+        """Return `<available_skills>` block used by middleware system prompts.
+
+        Uses the async snapshot path so the snapshot is written to L2
+        (MongoDB) on first load, making it available to other workers.
+        """
+        snapshot = await self._get_snapshot_async()
+        if not snapshot.ordered_summaries:
+            return ""
 
         # Build skills list in XML format
         skills_list_lines: list[str] = []
         skill: SkillSummary
-        for skill in self.list_skill_summaries(allowed_skills=set()):
+        for skill in snapshot.ordered_summaries:
             skills_list_lines.append("<skill>")
             skills_list_lines.append(f"<name>{skill.name}</name>")
             skills_list_lines.append(f"<description>{skill.description}</description>")
             skills_list_lines.append("</skill>")
         skills_list = "\n".join(skills_list_lines)
 
-        # Use custom template if provided, otherwise use default
         return _INSTRUCTION_SKILLS_HEADER.format(skills_list=skills_list)
 
     def get_tools(self) -> list[BaseTool]:

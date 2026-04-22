@@ -84,6 +84,17 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return value
 
     @property
+    def plugins_marketplace_cache_folder(self) -> str | None:
+        """Local directory for caching github:// marketplace downloads.
+
+        Supports {pid} substitution for per-worker isolation.
+        """
+        value = self._resolve_path(os.environ.get("PLUGINS_MARKETPLACE_CACHE_FOLDER"))
+        if not value or not value.strip():
+            return None
+        return value.strip()
+
+    @property
     def plugins_marketplace(self) -> str | None:
         """Optional github:// URI to a Claude plugin marketplace repository."""
         value = self._resolve_path(os.environ.get("PLUGINS_MARKETPLACE"))

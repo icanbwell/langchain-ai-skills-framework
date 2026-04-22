@@ -26,6 +26,7 @@ class FakeEnvVars:
     """Minimal implementation of SkillLoaderEnvironmentVariables for tests."""
 
     plugins_marketplace: str | None = "/var/data/marketplace"  # nosec B108
+    plugins_marketplace_cache_folder: str | None = None
     skills_github_token: str | None = None
     skills_cache_timeout_seconds: int = 3600
     excluded_skills: set[str] = field(default_factory=set)

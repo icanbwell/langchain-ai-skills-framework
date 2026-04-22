@@ -7,6 +7,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.skills_model import SkillSummary
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -58,8 +59,14 @@ class SkillSync:
                 logger.exception("SkillSync: failed to sync skill '%s'; skipping.", skill_name)
                 result.errors += 1
 
+        # Sync plugin definitions to the plugins collection
+        await self._sync_plugins(result=result)
+
         logger.info(
-            "SkillSync: complete. skills_added=%d resources_added=%d scripts_added=%d skills_skipped=%d errors=%d",
+            "SkillSync: complete. plugins_synced=%d "
+            "skills_added=%d resources_added=%d scripts_added=%d "
+            "skills_skipped=%d errors=%d",
+            result.plugins_synced,
             result.skills_added,
             result.resources_added,
             result.scripts_added,
@@ -200,11 +207,58 @@ class SkillSync:
                 )
                 result.errors += 1
 
+    async def _sync_plugins(self, *, result: SyncResult) -> None:
+        """Write plugin definitions (name, description, skills, MCP config) to MongoDB."""
+        try:
+            plugin_defs: Sequence[PluginDefinition] = self._shared.list_plugin_definitions()
+        except Exception:
+            logger.debug("SkillSync: could not list plugin definitions; skipping plugin sync.")
+            return
+
+        for plugin in plugin_defs:
+            try:
+                mcp_server_dicts: list[dict[str, object]] = []
+                for mcp in plugin.mcp_servers:
+                    mcp_dict: dict[str, object] = {
+                        "server_key": mcp.server_key,
+                        "plugin_name": mcp.plugin_name,
+                    }
+                    if mcp.url:
+                        mcp_dict["url"] = mcp.url
+                    if mcp.command:
+                        mcp_dict["command"] = mcp.command
+                    if mcp.args:
+                        mcp_dict["args"] = list(mcp.args)
+                    if mcp.env:
+                        mcp_dict["env"] = dict(mcp.env)
+                    if mcp.headers:
+                        mcp_dict["headers"] = dict(mcp.headers)
+                    if mcp.description:
+                        mcp_dict["description"] = mcp.description
+                    if mcp.display_name:
+                        mcp_dict["display_name"] = mcp.display_name
+                    if mcp.auth:
+                        mcp_dict["auth"] = mcp.auth
+                    mcp_server_dicts.append(mcp_dict)
+
+                await self._store.save_plugin(
+                    plugin_name=plugin.name,
+                    description=plugin.description or "",
+                    skills=[s.name for s in plugin.skills],
+                    mcp_servers=mcp_server_dicts,
+                )
+                result.plugins_synced += 1
+                logger.debug("SkillSync: synced plugin '%s'.", plugin.name)
+            except Exception:
+                logger.exception("SkillSync: failed to sync plugin '%s'.", plugin.name)
+                result.errors += 1
+
 
 class SyncResult:
     """Tracks what was added during a sync operation."""
 
     def __init__(self) -> None:
+        self.plugins_synced: int = 0
         self.skills_added: int = 0
         self.skills_skipped: int = 0
         self.resources_added: int = 0

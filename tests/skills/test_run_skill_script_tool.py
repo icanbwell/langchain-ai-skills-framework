@@ -19,6 +19,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -124,6 +125,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
         return self.list_skill_resource_names(skill_name)
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        return []
+
+    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
         return []
 
 

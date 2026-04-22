@@ -333,6 +333,10 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         snapshot = self._get_snapshot()
         return snapshot.mcp_servers
 
+    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
+        self._get_snapshot()  # ensure _plugin_definitions is populated
+        return list(self._plugin_definitions)
+
     def _build_snapshot(self, *, force_download: bool) -> SkillSnapshot:
         cache_path = self._resolve_marketplace_path(force=force_download)
 
@@ -490,7 +494,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         # GitHub URI — download via the directory downloader with TTL-awareness.
         # When force=False, delegate freshness checks to the downloader's
         # cache_ttl_seconds parameter so expired caches trigger re-downloads.
-        cache_path = Path(".marketplace-git-cache")
+        cache_folder = self._environment_variables.plugins_marketplace_cache_folder
+        cache_path = Path(cache_folder) if cache_folder else Path(".marketplace-git-cache")
         cache_ttl = 0 if force else int(self._reload_ttl_seconds or 0)
 
         try:

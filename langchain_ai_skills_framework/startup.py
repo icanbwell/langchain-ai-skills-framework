@@ -26,14 +26,20 @@ async def initialize_skills(
     await user_store.ensure_indexes()
 
     logger.info("Skills startup: syncing shared skills to MongoDB...")
-    result = await skill_sync.sync()
-    logger.info(
-        "Skills startup: sync complete — "
-        "skills_added=%d resources_added=%d scripts_added=%d "
-        "skills_skipped=%d errors=%d",
-        result.skills_added,
-        result.resources_added,
-        result.scripts_added,
-        result.skills_skipped,
-        result.errors,
-    )
+    try:
+        result = await skill_sync.sync()
+        logger.info(
+            "Skills startup: sync complete — "
+            "plugins_synced=%d skills_added=%d resources_added=%d "
+            "scripts_added=%d skills_skipped=%d errors=%d",
+            result.plugins_synced,
+            result.skills_added,
+            result.resources_added,
+            result.scripts_added,
+            result.skills_skipped,
+            result.errors,
+        )
+    except Exception:
+        logger.exception(
+            "Skills startup: marketplace sync failed — the gateway will continue with previously synced skills"
+        )

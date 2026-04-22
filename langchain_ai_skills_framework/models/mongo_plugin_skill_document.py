@@ -197,6 +197,46 @@ class MongoPluginScriptDocument(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class MongoPluginDefinitionDocument(BaseModel):
+    """A plugin definition stored in the ``plugins`` collection.
+
+    Captures the plugin manifest metadata, skill list, and MCP server
+    configuration so the gateway has a queryable catalog of available plugins.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plugin_name: str = Field(description="Canonical plugin name (directory name)")
+    description: str = Field(default="", description="Human-readable description")
+    skills: list[str] = Field(default_factory=list, description="Skill names provided by this plugin")
+    mcp_servers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="MCP server configurations from the plugin's .mcp.json",
+    )
+    date_created: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When the plugin was first registered",
+    )
+    date_modified: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When the plugin was last updated",
+    )
+
+    def to_mongo_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    @classmethod
+    def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginDefinitionDocument:
+        return cls(
+            plugin_name=data["plugin_name"],
+            description=data.get("description", ""),
+            skills=data.get("skills", []),
+            mcp_servers=data.get("mcp_servers", []),
+            date_created=data.get("date_created", datetime.now(timezone.utc)),
+            date_modified=data.get("date_modified", datetime.now(timezone.utc)),
+        )
+
+
 class MongoPluginSkillUsageDocument(BaseModel):
     """A single usage event for a skill within a plugin."""
 

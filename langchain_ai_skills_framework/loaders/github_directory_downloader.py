@@ -76,13 +76,24 @@ class GithubDirectoryDownloader:
             )
             return target_dir.resolve()
 
-        self._download_with_retry(
-            git_location=git_location,
-            source_path=source_path,
-            github_token=github_token,
-            target_dir=target_dir,
-        )
-        self._mark_cache_fresh(target_dir)
+        try:
+            self._download_with_retry(
+                git_location=git_location,
+                source_path=source_path,
+                github_token=github_token,
+                target_dir=target_dir,
+            )
+            self._mark_cache_fresh(target_dir)
+        except ValueError:
+            # Download failed — fall back to stale cache if it exists.
+            if target_dir.is_dir():
+                logger.warning(
+                    "Download failed for %s — serving stale cache from %s",
+                    source_uri,
+                    target_dir,
+                )
+            else:
+                raise
         return target_dir.resolve()
 
     @staticmethod

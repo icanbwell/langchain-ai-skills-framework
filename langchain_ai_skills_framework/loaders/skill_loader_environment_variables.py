@@ -100,6 +100,20 @@ class SkillLoaderEnvironmentVariables(Protocol):
         ...
 
     @property
+    def plugins_marketplace_cache_folder(self) -> str | None:
+        """Local directory for caching github:// marketplace downloads.
+
+        When set, the marketplace downloader stores its git cache here
+        instead of the default ``.marketplace-git-cache`` relative path.
+        Supports ``{pid}`` placeholder for per-worker isolation under
+        multi-worker deployments.
+
+        Expected environment variable: PLUGINS_MARKETPLACE_CACHE_FOLDER
+        Example: "/usr/src/marketplace_cache/{pid}"
+        """
+        ...
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated GitSkillsRegistry loading.
 

@@ -25,6 +25,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
     SkillNotFoundError,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
     MongoPluginScriptDocument,
     MongoPluginSkillDocument,
@@ -53,6 +54,7 @@ DEFAULT_SKILLS_COLLECTION = "plugin_skills"
 DEFAULT_REFERENCES_COLLECTION = "plugin_references"
 DEFAULT_SCRIPTS_COLLECTION = "plugin_scripts"
 DEFAULT_USAGE_COLLECTION = "plugin_skill_usage"
+DEFAULT_PLUGINS_COLLECTION = "plugins"
 
 
 class MongoPluginSkillLoader:
@@ -68,6 +70,7 @@ class MongoPluginSkillLoader:
     SCRIPT_INDEX_NAME = "ux_plugin_skill_script"
     PATH_INDEX_NAME = "ix_plugin_path"
     USAGE_INDEX_NAME = "ix_plugin_skill_usage_lookup"
+    PLUGIN_INDEX_NAME = "ux_plugin_name"
 
     def __init__(
         self,
@@ -77,12 +80,14 @@ class MongoPluginSkillLoader:
         references_collection_name: str = DEFAULT_REFERENCES_COLLECTION,
         scripts_collection_name: str = DEFAULT_SCRIPTS_COLLECTION,
         usage_collection_name: str = DEFAULT_USAGE_COLLECTION,
+        plugins_collection_name: str = DEFAULT_PLUGINS_COLLECTION,
     ) -> None:
         self._database = database
         self._skills_collection: AsyncIOMotorCollection[dict[str, object]] = database[skills_collection_name]
         self._resources_collection: AsyncIOMotorCollection[dict[str, object]] = database[references_collection_name]
         self._scripts_collection: AsyncIOMotorCollection[dict[str, object]] = database[scripts_collection_name]
         self._usage_collection: AsyncIOMotorCollection[dict[str, object]] = database[usage_collection_name]
+        self._plugins_collection: AsyncIOMotorCollection[dict[str, object]] = database[plugins_collection_name]
 
     # --- Index management ---------------------------------------------------
 
@@ -111,6 +116,11 @@ class MongoPluginSkillLoader:
         await self._usage_collection.create_index(
             [("skill_name", 1), ("user_id", 1), ("date_used", -1)],
             name=self.USAGE_INDEX_NAME,
+        )
+        await self._plugins_collection.create_index(
+            [("plugin_name", 1)],
+            unique=True,
+            name=self.PLUGIN_INDEX_NAME,
         )
 
     # --- Skill write operations ----------------------------------------------
@@ -607,3 +617,39 @@ class MongoPluginSkillLoader:
                 return stripped[:200]
 
         return "Plugin skill"
+
+    # --- Plugin catalog -------------------------------------------------------
+
+    async def save_plugin(
+        self,
+        *,
+        plugin_name: str,
+        description: str,
+        skills: Sequence[str],
+        mcp_servers: Sequence[dict[str, object]],
+    ) -> MongoPluginDefinitionDocument:
+        """Upsert a plugin definition document."""
+        now = datetime.now(timezone.utc)
+        doc = MongoPluginDefinitionDocument(
+            plugin_name=plugin_name,
+            description=description,
+            skills=list(skills),
+            mcp_servers=[dict(s) for s in mcp_servers],
+            date_modified=now,
+        )
+        raw = await self._plugins_collection.find_one_and_update(
+            {"plugin_name": plugin_name},
+            {
+                "$set": doc.to_mongo_dict(),
+                "$setOnInsert": {"date_created": now},
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        assert raw is not None
+        return MongoPluginDefinitionDocument.from_mongo_dict(raw)
+
+    async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
+        """Return all plugin definitions."""
+        cursor = self._plugins_collection.find().sort("plugin_name", 1)
+        return [MongoPluginDefinitionDocument.from_mongo_dict(doc) async for doc in cursor]

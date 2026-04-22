@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Mapping, Protocol, Sequence, runtime_checkable
 
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
     MongoPluginScriptDocument,
     MongoPluginSkillDocument,
@@ -178,3 +179,16 @@ class PluginSkillStore(Protocol):
     async def get_skill_usage_count(self, *, skill_name: str) -> int: ...
 
     async def get_skill_usage_counts(self, *, skill_names: Sequence[str]) -> Mapping[str, int]: ...
+
+    # --- Plugin catalog ---
+
+    async def save_plugin(
+        self,
+        *,
+        plugin_name: str,
+        description: str,
+        skills: Sequence[str],
+        mcp_servers: Sequence[dict[str, object]],
+    ) -> MongoPluginDefinitionDocument: ...
+
+    async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]: ...

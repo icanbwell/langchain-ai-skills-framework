@@ -12,6 +12,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
     SkillNotFoundError,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
     MongoPluginScriptDocument,
     MongoPluginSkillDocument,
@@ -206,3 +207,18 @@ class NullPluginSkillStore:
 
     async def get_skill_usage_counts(self, *, skill_names: Sequence[str]) -> Mapping[str, int]:
         return {name: 0 for name in skill_names}
+
+    # --- Plugin catalog ---
+
+    async def save_plugin(
+        self,
+        *,
+        plugin_name: str,
+        description: str,
+        skills: Sequence[str],
+        mcp_servers: Sequence[dict[str, object]],
+    ) -> MongoPluginDefinitionDocument:
+        raise RuntimeError(_NOT_CONFIGURED_MSG)
+
+    async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
+        return ()

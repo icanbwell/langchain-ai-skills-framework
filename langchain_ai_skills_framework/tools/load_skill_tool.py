@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.load_skill_service import LoadSkillService
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.text_humanizer import Humanizer
@@ -24,6 +24,9 @@ class LoadSkillInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+    plugin_name: str = Field(
+        description="Name of the plugin containing the skill.",
+    )
     skill_name: str = Field(
         description="Name of the skill to load (e.g., 'sales_analytics').",
     )
@@ -41,11 +44,12 @@ class LoadSkillTool(BaseTool):
     args_schema: Type[BaseModel] = LoadSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
-    user_skill_store: UserSkillStore | None = None
+    user_skill_store: PluginSkillStore | None = None
 
     def _run(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
@@ -55,6 +59,7 @@ class LoadSkillTool(BaseTool):
     async def _arun(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
@@ -67,7 +72,7 @@ class LoadSkillTool(BaseTool):
             user_skill_store=self.user_skill_store,
         )
         try:
-            content = await service.execute(user_id=user_id, skill_name=skill_name)
+            content = await service.execute(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
             return content, content
         except SkillOperationError as exc:
             raise ToolException(str(exc)) from exc

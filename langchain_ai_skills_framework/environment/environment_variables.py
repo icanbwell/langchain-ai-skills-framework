@@ -54,6 +54,18 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return os.environ.get("PLUGINS_COLLECTION") or "plugins"
 
     @property
+    def plugin_skills_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_SKILLS_COLLECTION") or "plugin_skills"
+
+    @property
+    def plugin_references_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_REFERENCES_COLLECTION") or "plugin_references"
+
+    @property
+    def plugin_scripts_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_SCRIPTS_COLLECTION") or "plugin_scripts"
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated github:// skill loading.
 

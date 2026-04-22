@@ -23,6 +23,9 @@ class ReadSkillResourceInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+    plugin_name: str = Field(
+        description="Name of the plugin containing the skill.",
+    )
     skill_name: str = Field(
         description="Name of the skill containing the resource.",
     )
@@ -57,6 +60,7 @@ class ReadSkillResourceTool(BaseTool):
     def _run(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         resource_name: str,
         runtime: ToolRuntime,
@@ -67,6 +71,7 @@ class ReadSkillResourceTool(BaseTool):
     async def _arun(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         resource_name: str,
         runtime: ToolRuntime,
@@ -79,6 +84,7 @@ class ReadSkillResourceTool(BaseTool):
         try:
             return await service.execute(
                 user_id=user_id,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
             )

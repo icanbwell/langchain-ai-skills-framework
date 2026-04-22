@@ -51,7 +51,8 @@ def _serialize_summary(summary: SkillSummary) -> dict[str, Any]:
     return {
         "name": summary.name,
         "description": summary.description,
-        "source_path": str(summary.source_path),
+        "plugin_name": summary.plugin_name,
+        "source_path": str(summary.source_path) if summary.source_path else None,
         "license": summary.license,
         "compatibility": summary.compatibility,
         "metadata": dict(summary.metadata),
@@ -62,10 +63,12 @@ def _serialize_summary(summary: SkillSummary) -> dict[str, Any]:
 def _deserialize_summary(data: dict[str, Any]) -> SkillSummary:
     metadata_raw = data.get("metadata", {})
     metadata: Mapping[str, object] = metadata_raw if isinstance(metadata_raw, dict) else {}
+    source_path_raw = data.get("source_path")
     return SkillSummary(
         name=data["name"],
         description=data["description"],
-        source_path=Path(data["source_path"]),
+        plugin_name=data.get("plugin_name", ""),
+        source_path=Path(source_path_raw) if source_path_raw else None,
         license=data.get("license"),
         compatibility=data.get("compatibility"),
         metadata=metadata,
@@ -77,15 +80,16 @@ def _serialize_details(details: SkillDetails) -> dict[str, Any]:
     return {
         "summary": _serialize_summary(details.summary),
         "content": details.content,
-        "source_path": str(details.source_path),
+        "source_path": str(details.source_path) if details.source_path else None,
     }
 
 
 def _deserialize_details(data: dict[str, Any]) -> SkillDetails:
+    source_path_raw = data.get("source_path")
     return SkillDetails(
         summary=_deserialize_summary(data["summary"]),
         content=data["content"],
-        source_path=Path(data["source_path"]),
+        source_path=Path(source_path_raw) if source_path_raw else None,
     )
 
 

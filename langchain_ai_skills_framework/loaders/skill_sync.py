@@ -6,7 +6,7 @@ from typing import Sequence
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.models.skills_model import SkillSummary
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -30,7 +30,7 @@ class SkillSync:
         self,
         *,
         shared_loader: SkillLoaderProtocol,
-        user_store: UserSkillStore,
+        user_store: PluginSkillStore,
     ) -> None:
         self._shared = shared_loader
         self._store = user_store
@@ -51,8 +51,9 @@ class SkillSync:
 
         for summary in summaries:
             skill_name = summary.name
+            plugin_name = summary.plugin_name
             try:
-                await self._sync_skill(skill_name=skill_name, result=result)
+                await self._sync_skill(skill_name=skill_name, plugin_name=plugin_name, result=result)
             except Exception:
                 logger.exception("SkillSync: failed to sync skill '%s'; skipping.", skill_name)
                 result.errors += 1
@@ -67,28 +68,33 @@ class SkillSync:
         )
         return result
 
-    async def _sync_skill(self, *, skill_name: str, result: SyncResult) -> None:
+    async def _sync_skill(self, *, skill_name: str, plugin_name: str, result: SyncResult) -> None:
         """Sync a single skill and its resources/scripts."""
         # Sync the skill content
-        skill_exists = await self._store.skill_exists(user_id=SYSTEM_USER_ID, skill_name=skill_name)
+        skill_exists = await self._store.skill_exists(
+            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name
+        )
         if skill_exists:
             result.skills_skipped += 1
         else:
-            details = self._shared.get_skill_details(skill_name)
+            details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
             await self._store.save_skill(
                 user_id=SYSTEM_USER_ID,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=details.content,
                 modified_by=SYSTEM_USER_ID,
             )
             # Mark seeded skills as shared so all users can see them
-            await self._store.set_skill_shared(user_id=SYSTEM_USER_ID, skill_name=skill_name, shared=True)
+            await self._store.set_skill_shared(
+                user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, shared=True
+            )
             result.skills_added += 1
-            logger.debug("SkillSync: added skill '%s'.", skill_name)
+            logger.debug("SkillSync: added skill '%s' from plugin '%s'.", skill_name, plugin_name)
 
         # Sync resources
         try:
-            resource_names = self._shared.list_skill_resource_names(skill_name)
+            resource_names = self._shared.list_skill_resource_names(skill_name, plugin_name=plugin_name)
         except Exception:
             logger.debug("SkillSync: could not list resources for skill '%s'.", skill_name)
             resource_names = []
@@ -97,14 +103,16 @@ class SkillSync:
             try:
                 exists = await self._store.resource_exists(
                     user_id=SYSTEM_USER_ID,
+                    plugin_name=plugin_name,
                     skill_name=skill_name,
                     resource_name=resource_name,
                 )
                 if exists:
                     continue
-                content = self._shared.read_skill_resource(skill_name, resource_name)
+                content = self._shared.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)
                 await self._store.save_resource(
                     user_id=SYSTEM_USER_ID,
+                    plugin_name=plugin_name,
                     skill_name=skill_name,
                     resource_name=resource_name,
                     content=content,
@@ -126,7 +134,7 @@ class SkillSync:
 
         # Sync scripts
         try:
-            script_names = self._shared.list_skill_script_names(skill_name)
+            script_names = self._shared.list_skill_script_names(skill_name, plugin_name=plugin_name)
         except Exception:
             logger.debug("SkillSync: could not list scripts for skill '%s'.", skill_name)
             script_names = []
@@ -135,6 +143,7 @@ class SkillSync:
             try:
                 exists = await self._store.script_exists(
                     user_id=SYSTEM_USER_ID,
+                    plugin_name=plugin_name,
                     skill_name=skill_name,
                     script_name=script_name,
                 )
@@ -142,31 +151,39 @@ class SkillSync:
                     continue
                 # Read script content from the filesystem via the shared loader's
                 # skill directory structure.
-                details = self._shared.get_skill_details(skill_name)
-                script_path = details.source_path.parent / f"{script_name}.py"
-                if not script_path.is_file():
-                    # Try without .py extension
-                    script_path = details.source_path.parent / script_name
-                if script_path.is_file():
-                    content = script_path.read_text(encoding="utf-8")
-                    await self._store.save_script(
-                        user_id=SYSTEM_USER_ID,
-                        skill_name=skill_name,
-                        script_name=script_name,
-                        content=content,
-                        modified_by=SYSTEM_USER_ID,
-                    )
-                    result.scripts_added += 1
-                    logger.debug(
-                        "SkillSync: added script '%s' for skill '%s'.",
-                        script_name,
-                        skill_name,
-                    )
+                details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
+                if details.source_path:
+                    script_path = details.source_path.parent / f"{script_name}.py"
+                    if not script_path.is_file():
+                        # Try without .py extension
+                        script_path = details.source_path.parent / script_name
+                    if script_path.is_file():
+                        content = script_path.read_text(encoding="utf-8")
+                        await self._store.save_script(
+                            user_id=SYSTEM_USER_ID,
+                            plugin_name=plugin_name,
+                            skill_name=skill_name,
+                            script_name=script_name,
+                            content=content,
+                            modified_by=SYSTEM_USER_ID,
+                        )
+                        result.scripts_added += 1
+                        logger.debug(
+                            "SkillSync: added script '%s' for skill '%s'.",
+                            script_name,
+                            skill_name,
+                        )
+                    else:
+                        logger.debug(
+                            "SkillSync: script file for '%s' in skill '%s' not found on disk.",
+                            script_name,
+                            skill_name,
+                        )
                 else:
                     logger.debug(
-                        "SkillSync: script file for '%s' in skill '%s' not found on disk.",
-                        script_name,
+                        "SkillSync: no source path for skill '%s'; cannot sync script '%s'.",
                         skill_name,
+                        script_name,
                     )
             except Exception:
                 logger.exception(

@@ -23,8 +23,11 @@ class RunSkillScriptInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+    plugin_name: str = Field(
+        description="Name of the plugin containing the skill.",
+    )
     skill_name: str = Field(
-        description="Name of the skill containing the resource.",
+        description="Name of the skill containing the script.",
     )
     script_name: str = Field(
         description=(
@@ -75,6 +78,7 @@ class RunSkillScriptTool(BaseTool):
     def _run(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
@@ -87,6 +91,7 @@ class RunSkillScriptTool(BaseTool):
     async def _arun(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
@@ -101,6 +106,7 @@ class RunSkillScriptTool(BaseTool):
         try:
             return await service.execute(
                 user_id=user_id,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=script_name,
                 arguments=arguments,

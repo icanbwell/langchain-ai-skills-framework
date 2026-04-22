@@ -29,6 +29,7 @@ class ReadSkillResourceService:
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         resource_name: str,
     ) -> tuple[str, str]:
@@ -44,6 +45,7 @@ class ReadSkillResourceService:
         content = await self._load_resource(
             skill_name=normalized_name,
             resource_name=normalized_resource_name,
+            plugin_name=plugin_name,
             user_id=user_id,
         )
         logger.debug(
@@ -58,6 +60,7 @@ class ReadSkillResourceService:
         *,
         skill_name: str,
         resource_name: str,
+        plugin_name: str,
         user_id: str,
     ) -> str:
         normalized_name = skill_name.strip()
@@ -68,11 +71,14 @@ class ReadSkillResourceService:
             if user_id:
                 resource: str = await self._loader.read_skill_resource_for_user(
                     user_id=user_id,
+                    plugin_name=plugin_name,
                     skill_name=normalized_name,
                     resource_name=resource_name,
                 )
             else:
-                resource = self._loader.read_skill_resource(skill_name=normalized_name, resource_name=resource_name)
+                resource = self._loader.read_skill_resource(
+                    skill_name=normalized_name, resource_name=resource_name, plugin_name=plugin_name
+                )
             return resource
         except SkillNotFoundError:
             return await format_resource_availability(
@@ -80,6 +86,7 @@ class ReadSkillResourceService:
                 normalized_name,
                 resource_name,
                 user_id=user_id,
+                plugin_name=plugin_name,
             )
         except Exception as exc:
             logger.exception(

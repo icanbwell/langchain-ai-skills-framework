@@ -120,7 +120,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         snapshot = await self._get_snapshot_async()
         return snapshot.ordered_summaries
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, skill_name: str, *, plugin_name: str = "") -> SkillDetails:
         normalized = normalize_skill_name(skill_name)
         snapshot = self._get_snapshot()
         try:
@@ -128,7 +128,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         except KeyError as exc:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in marketplace") from exc
 
-    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
+    async def get_skill_details_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> SkillDetails:
         normalized = normalize_skill_name(skill_name)
         snapshot = await self._get_snapshot_async()
         try:
@@ -163,7 +165,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     def get_tools(self) -> list[BaseTool]:
         return []
 
-    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         details = self.get_skill_details(skill_name)
         references_dir = details.source_path.parent / "references"
         candidate_path = references_dir / resource_name
@@ -189,10 +191,12 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                 f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"
             ) from exc
 
-    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
-        return self.read_skill_resource(skill_name, resource_name)
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str, resource_name: str
+    ) -> str:
+        return self.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)
 
-    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         try:
             details = self.get_skill_details(skill_name)
         except SkillNotFoundError:
@@ -202,10 +206,12 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             return []
         return sorted(f.name for f in references_dir.iterdir() if f.is_file())
 
-    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
-        return self.list_skill_resource_names(skill_name)
+    async def list_skill_resource_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
+        return self.list_skill_resource_names(skill_name, plugin_name=plugin_name)
 
-    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         try:
             details = self.get_skill_details(skill_name)
         except SkillNotFoundError:
@@ -221,11 +227,13 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             return []
         return sorted(f.stem for f in scripts_dir.iterdir() if f.is_file() and f.suffix in (".py", ".sh"))
 
-    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
-        return self.list_skill_script_names(skill_name)
+    async def list_skill_script_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
+        return self.list_skill_script_names(skill_name, plugin_name=plugin_name)
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
         details = self.get_skill_details(skill_name)
         script_path = self._resolve_script_path(details, script_name)
@@ -253,11 +261,12 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
-        return await self.run_skill_script(skill_name, script_name, arguments)
+        return await self.run_skill_script(skill_name, script_name, arguments, plugin_name=plugin_name)
 
     _SNAPSHOT_CACHE_KEY = "marketplace_snapshot"
 
@@ -389,7 +398,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                     continue
                 try:
                     skill: Skill = manager.load_skill(name=metadata.name)
-                    definition = self._map_skill(metadata=metadata, content=skill.content)
+                    definition = self._map_skill(metadata=metadata, content=skill.content, plugin_name=entry.name)
                 except Exception:
                     logger.exception(
                         "Marketplace: failed to load skill '%s' from plugin '%s'",
@@ -525,7 +534,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         return None
 
     @staticmethod
-    def _map_skill(metadata: SkillMetadata, content: str) -> SkillDetails:
+    def _map_skill(metadata: SkillMetadata, content: str, plugin_name: str = "") -> SkillDetails:
         normalized_name = normalize_skill_name(metadata.name)
         if not normalized_name:
             raise SkillValidationError("Skill name must not be empty")
@@ -537,10 +546,11 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         summary = SkillSummary(
             name=normalized_name,
             description=description,
+            plugin_name=plugin_name,
             source_path=metadata.skill_path,
             license=None,
             compatibility=None,
-            metadata={"source": "marketplace"},
+            metadata={"source": "marketplace", "plugin_name": plugin_name},
             allowed_tools=metadata.allowed_tools,
         )
         return SkillDetails(

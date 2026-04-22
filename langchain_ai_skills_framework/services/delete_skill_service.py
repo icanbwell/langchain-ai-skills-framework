@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -13,10 +13,10 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class DeleteSkillService:
     """Delete a user-saved skill from the store."""
 
-    def __init__(self, *, mongo_skill_loader: UserSkillStore | None) -> None:
+    def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
         self._store = mongo_skill_loader
 
-    async def execute(self, *, user_id: str, skill_name: str) -> str:
+    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> str:
         if not user_id:
             raise SkillOperationError("user_id is required for delete_skill")
         if not skill_name or not skill_name.strip():
@@ -27,6 +27,7 @@ class DeleteSkillService:
         try:
             deleted = await self._store.delete_skill(
                 user_id=user_id,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
             )
             if deleted:

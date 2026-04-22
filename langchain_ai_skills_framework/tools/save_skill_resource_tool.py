@@ -10,8 +10,8 @@ from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
-from langchain_ai_skills_framework.loaders.user_skill_store import (
-    UserSkillStore,
+from langchain_ai_skills_framework.loaders.plugin_skill_store import (
+    PluginSkillStore,
 )
 from langchain_ai_skills_framework.services.save_skill_resource_service import SaveSkillResourceService
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
@@ -22,6 +22,9 @@ class SaveSkillResourceInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+    plugin_name: str = Field(
+        description="Name of the plugin containing the skill.",
+    )
     skill_name: str = Field(
         description="Name of the skill to save the resource for (e.g., 'my-custom-skill').",
     )
@@ -46,12 +49,13 @@ class SaveSkillResourceTool(BaseTool):
     )
     args_schema: Type[BaseModel] = SaveSkillResourceInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
-    mongo_skill_loader: Optional[UserSkillStore] = None
+    mongo_skill_loader: Optional[PluginSkillStore] = None
 
     @override
     def _run(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         resource_name: str,
         content: str,
@@ -64,6 +68,7 @@ class SaveSkillResourceTool(BaseTool):
     async def _arun(
         self,
         *,
+        plugin_name: str,
         skill_name: str,
         resource_name: str,
         content: str,
@@ -77,6 +82,7 @@ class SaveSkillResourceTool(BaseTool):
         try:
             message = await service.execute(
                 user_id=user_id,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
                 content=content,

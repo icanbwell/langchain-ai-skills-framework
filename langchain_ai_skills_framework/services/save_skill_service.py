@@ -6,7 +6,7 @@ from skills_ref.errors import ParseError
 from skills_ref.parser import parse_frontmatter
 from skills_ref.validator import validate_metadata
 
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -17,13 +17,14 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class SaveSkillService:
     """Save or update a skill in the user skill store."""
 
-    def __init__(self, *, mongo_skill_loader: UserSkillStore | None) -> None:
+    def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
         self._store = mongo_skill_loader
 
     async def execute(
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         content: str,
     ) -> str:
@@ -57,6 +58,7 @@ class SaveSkillService:
         try:
             doc = await self._store.save_skill(
                 user_id=user_id,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=content,
                 modified_by=user_id,

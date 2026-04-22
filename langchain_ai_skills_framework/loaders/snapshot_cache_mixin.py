@@ -1,9 +1,9 @@
 """Shared snapshot caching behaviour for directory-based skill loaders.
 
-Both ``SkillkitDirectoryLoader`` and ``MarketplaceDirectoryLoader`` need
-identical logic for reading/writing snapshots to a persistent store
-(MongoDB, file, or in-memory) and for TTL-based validity checks.  This
-mixin extracts that common logic so it lives in one place.
+``MarketplaceDirectoryLoader`` uses identical logic for reading/writing
+snapshots to a persistent store (MongoDB, file, or in-memory) and for
+TTL-based validity checks.  This mixin extracts that common logic so it
+lives in one place.
 
 Subclasses must provide these instance attributes (set in ``__init__``):
 
@@ -53,7 +53,7 @@ class SnapshotCacheMixin:
 
     @property
     def _loader_display_name(self) -> str:
-        """Human-readable name for log messages (e.g. 'SkillkitDirectoryLoader abc123')."""
+        """Human-readable name for log messages (e.g. 'MarketplaceDirectoryLoader abc123')."""
         return self.__class__.__name__
 
     # -- Snapshot cache I/O --

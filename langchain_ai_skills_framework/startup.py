@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from langchain_ai_skills_framework.loaders.skill_sync import SkillSync
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 async def initialize_skills(
     *,
-    user_store: UserSkillStore,
+    user_store: PluginSkillStore,
     skill_sync: SkillSync,
 ) -> None:
     """Run skill framework initialization on server startup.

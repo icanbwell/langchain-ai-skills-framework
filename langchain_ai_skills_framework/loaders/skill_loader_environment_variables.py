@@ -65,10 +65,7 @@ class SkillLoaderEnvironmentVariables(Protocol):
 
     @property
     def snapshot_cache_skills_collection(self) -> str | None:
-        """Optional MongoDB collection for skillkit directory snapshots.
-
-        When set, SkillkitDirectoryLoader stores its snapshot in this
-        collection instead of the store's default collection.
+        """Optional MongoDB collection for skill directory snapshots (legacy).
 
         Expected environment variable: SNAPSHOT_CACHE_SKILLS_COLLECTION
         """
@@ -94,6 +91,33 @@ class SkillLoaderEnvironmentVariables(Protocol):
 
         Expected environment variable: PLUGINS_COLLECTION
         Default: "plugins"
+        """
+        ...
+
+    @property
+    def plugin_skills_collection(self) -> str | None:
+        """MongoDB collection name for plugin-scoped skill documents.
+
+        Expected environment variable: PLUGIN_SKILLS_COLLECTION
+        Default: "plugin_skills"
+        """
+        ...
+
+    @property
+    def plugin_references_collection(self) -> str | None:
+        """MongoDB collection name for plugin-scoped resource documents.
+
+        Expected environment variable: PLUGIN_REFERENCES_COLLECTION
+        Default: "plugin_references"
+        """
+        ...
+
+    @property
+    def plugin_scripts_collection(self) -> str | None:
+        """MongoDB collection name for plugin-scoped script documents.
+
+        Expected environment variable: PLUGIN_SCRIPTS_COLLECTION
+        Default: "plugin_scripts"
         """
         ...
 

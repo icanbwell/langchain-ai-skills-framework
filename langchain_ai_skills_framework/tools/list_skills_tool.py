@@ -8,7 +8,7 @@ from langchain_core.callbacks import (
 )
 from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
@@ -22,6 +22,10 @@ class ListSkillsInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+    plugin_name: str = Field(
+        default="",
+        description="Optional plugin name to filter skills by. If empty, lists skills from all plugins.",
+    )
     runtime: ToolRuntime
 
 
@@ -41,6 +45,7 @@ class ListSkillsTool(BaseTool):
     def _run(
         self,
         *,
+        plugin_name: str = "",
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -50,6 +55,7 @@ class ListSkillsTool(BaseTool):
     async def _arun(
         self,
         *,
+        plugin_name: str = "",
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -58,7 +64,7 @@ class ListSkillsTool(BaseTool):
 
         service = ListSkillsService(skill_loader=self.skill_loader)
         try:
-            skills = await service.execute(user_id=user_id)
+            skills = await service.execute(user_id=user_id, plugin_name=plugin_name)
             message = ListSkillsService.format_as_text(skills)
             return message, message
         except SkillOperationError as exc:

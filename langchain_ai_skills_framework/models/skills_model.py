@@ -13,7 +13,8 @@ class SkillSummary:
 
     name: str
     description: str
-    source_path: Path
+    plugin_name: str = ""
+    source_path: Path | None = None
     license: str | None = None
     compatibility: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
@@ -26,7 +27,7 @@ class SkillDetails:
 
     summary: SkillSummary
     content: str
-    source_path: Path
+    source_path: Path | None = None
 
     @property
     def name(self) -> str:

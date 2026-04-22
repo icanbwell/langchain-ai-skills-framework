@@ -37,6 +37,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.loaders.snapshot_cache_mixin import (
     SnapshotCacheMixin,
 )
+from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -45,6 +46,9 @@ from langchain_ai_skills_framework.models.skills_model import (
 )
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
+)
+from langchain_ai_skills_framework.utilities.snapshot_serializer import (
+    serialize_plugin_definition,
 )
 
 if TYPE_CHECKING:
@@ -90,10 +94,12 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
+        self._plugins_collection = environment_variables.plugins_collection
 
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
         self._snapshot_loaded_at: float | None = None
+        self._plugin_definitions: tuple[PluginDefinition, ...] = ()
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(environment_variables)
 
         logger.info(
@@ -143,7 +149,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             self._snapshot = self._build_snapshot(force_download=True)
             self._snapshot_loaded_at = time.monotonic()
             snapshot = self._snapshot
+            plugin_defs = self._plugin_definitions
         await self._write_to_snapshot_cache(snapshot)
+        await self._write_plugins_to_collection(plugin_defs)
 
     async def get_instructions(self) -> str:
         # Marketplace plugins don't contribute system-prompt instructions,
@@ -305,6 +313,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             self._snapshot = self._build_snapshot(force_download=False)
             self._snapshot_loaded_at = time.monotonic()
             await self._write_to_snapshot_cache(self._snapshot)
+            await self._write_plugins_to_collection(self._plugin_definitions)
             return self._snapshot
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
@@ -316,6 +325,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
+        all_mcp_servers: list[PluginMcpServerEntry] = []
+        plugin_defs: list[PluginDefinition] = []
 
         excluded_skills = self._normalize_set(self._environment_variables.excluded_skills)
         excluded_groups = self._normalize_set(self._environment_variables.excluded_skill_groups)
@@ -332,12 +343,22 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             exclude_filter=combined_exclude or None,
         )
 
-        # Collect MCP server configs from all discovered plugins
-        mcp_servers = self._plugin_manager.collect_all_mcp_configs(plugin_entries)
-
         for entry in plugin_entries:
+            # Collect MCP configs per plugin (avoids a second pass)
+            plugin_mcp = self._plugin_manager.read_mcp_configs(entry)
+            all_mcp_servers.extend(plugin_mcp)
+
+            plugin_skills: list[SkillSummary] = []
+
             skills_dir = entry.path / "skills"
             if not skills_dir.is_dir():
+                plugin_defs.append(
+                    PluginDefinition(
+                        name=entry.name,
+                        description=entry.description,
+                        mcp_servers=tuple(plugin_mcp),
+                    )
+                )
                 continue
 
             try:
@@ -352,6 +373,13 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                 logger.exception(
                     "Marketplace: failed to discover skills in plugin '%s'",
                     entry.name,
+                )
+                plugin_defs.append(
+                    PluginDefinition(
+                        name=entry.name,
+                        description=entry.description,
+                        mcp_servers=tuple(plugin_mcp),
+                    )
                 )
                 continue
 
@@ -383,20 +411,55 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
                 details_map[definition.name] = definition
                 summaries.append(definition.summary)
+                plugin_skills.append(definition.summary)
+
+            plugin_defs.append(
+                PluginDefinition(
+                    name=entry.name,
+                    description=entry.description,
+                    skills=tuple(sorted(plugin_skills, key=lambda s: s.name)),
+                    mcp_servers=tuple(plugin_mcp),
+                )
+            )
+
+        self._plugin_definitions = tuple(plugin_defs)
 
         ordered = tuple(sorted(summaries, key=lambda s: s.name))
         snapshot = SkillSnapshot(
             details_by_name=MappingProxyType(details_map),
             ordered_summaries=ordered,
-            mcp_servers=tuple(mcp_servers),
+            mcp_servers=tuple(all_mcp_servers),
         )
         logger.info(
             "Marketplace: loaded %d skills and %d MCP servers from %d plugins",
             len(ordered),
-            len(mcp_servers),
+            len(all_mcp_servers),
             len(plugin_entries),
         )
         return snapshot
+
+    async def _write_plugins_to_collection(
+        self,
+        plugin_definitions: tuple[PluginDefinition, ...],
+    ) -> None:
+        """Write each plugin as an individual document to the plugins collection."""
+        if not self._snapshot_cache_store or not self._plugins_collection:
+            return
+        for plugin in plugin_definitions:
+            try:
+                data = serialize_plugin_definition(plugin)
+                await self._snapshot_cache_store.put(
+                    plugin.name,
+                    data,
+                    ttl=self._reload_ttl_seconds,
+                    collection=self._plugins_collection,
+                )
+            except Exception:
+                logger.debug(
+                    "MarketplaceDirectoryLoader: failed to write plugin '%s' to collection",
+                    plugin.name,
+                    exc_info=True,
+                )
 
     def _resolve_marketplace_path(self, *, force: bool) -> Path:
         """Resolve the marketplace to a local path.

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 
+from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -13,7 +14,9 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
 )
 from langchain_ai_skills_framework.utilities.snapshot_serializer import (
+    deserialize_plugin_definition,
     deserialize_snapshot,
+    serialize_plugin_definition,
     serialize_snapshot,
 )
 
@@ -132,6 +135,34 @@ class TestSnapshotSerializer:
         assert len(restored.details_by_name) == 0
         assert len(restored.ordered_summaries) == 0
         assert len(restored.mcp_servers) == 0
+
+    def test_round_trip_plugin_definition(self) -> None:
+        plugin = PluginDefinition(
+            name="test-plugin",
+            description="A test plugin",
+            skills=(_make_summary("skill-a"), _make_summary("skill-b")),
+            mcp_servers=(_make_mcp_entry(),),
+        )
+        serialized = serialize_plugin_definition(plugin)
+        restored = deserialize_plugin_definition(serialized)
+
+        assert restored.name == "test-plugin"
+        assert restored.description == "A test plugin"
+        assert len(restored.skills) == 2
+        assert restored.skills[0].name == "skill-a"
+        assert restored.skills[1].name == "skill-b"
+        assert len(restored.mcp_servers) == 1
+        assert restored.mcp_servers[0].server_key == "my-server"
+
+    def test_round_trip_plugin_definition_minimal(self) -> None:
+        plugin = PluginDefinition(name="bare-plugin")
+        serialized = serialize_plugin_definition(plugin)
+        restored = deserialize_plugin_definition(serialized)
+
+        assert restored.name == "bare-plugin"
+        assert restored.description is None
+        assert restored.skills == ()
+        assert restored.mcp_servers == ()
 
     def test_mcp_entry_without_optional_fields(self) -> None:
         entry = PluginMcpServerEntry(

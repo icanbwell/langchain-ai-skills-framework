@@ -172,6 +172,10 @@ class FakeEnvironmentVariables(SkillLoaderEnvironmentVariables):
     def snapshot_cache_plugins_collection(self) -> str | None:
         return None
 
+    @property
+    def plugins_collection(self) -> str | None:
+        return "plugins"
+
 
 def _build_loader(
     monkeypatch: pytest.MonkeyPatch,

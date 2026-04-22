@@ -86,6 +86,18 @@ class SkillLoaderEnvironmentVariables(Protocol):
         ...
 
     @property
+    def plugins_collection(self) -> str | None:
+        """MongoDB collection for individual plugin definition documents.
+
+        Each plugin discovered from the marketplace is written as a
+        separate document to this collection (keyed by plugin name).
+
+        Expected environment variable: PLUGINS_COLLECTION
+        Default: "plugins"
+        """
+        ...
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated GitSkillsRegistry loading.
 

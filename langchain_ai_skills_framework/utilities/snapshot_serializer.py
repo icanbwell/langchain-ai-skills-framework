@@ -12,6 +12,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -117,4 +118,27 @@ def _deserialize_mcp_entry(data: dict[str, Any]) -> PluginMcpServerEntry:
         description=data.get("description"),
         display_name=data.get("display_name"),
         auth=data.get("auth"),
+    )
+
+
+# --- Plugin definition serialization ----------------------------------------
+
+
+def serialize_plugin_definition(plugin: PluginDefinition) -> dict[str, Any]:
+    """Convert a PluginDefinition to a JSON-serializable dict."""
+    return {
+        "name": plugin.name,
+        "description": plugin.description,
+        "skills": [_serialize_summary(s) for s in plugin.skills],
+        "mcp_servers": [_serialize_mcp_entry(e) for e in plugin.mcp_servers],
+    }
+
+
+def deserialize_plugin_definition(data: dict[str, Any]) -> PluginDefinition:
+    """Reconstruct a PluginDefinition from a serialized dict."""
+    return PluginDefinition(
+        name=data["name"],
+        description=data.get("description"),
+        skills=tuple(_deserialize_summary(s) for s in data.get("skills", [])),
+        mcp_servers=tuple(_deserialize_mcp_entry(e) for e in data.get("mcp_servers", [])),
     )

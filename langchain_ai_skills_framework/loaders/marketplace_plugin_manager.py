@@ -258,12 +258,13 @@ class MarketplacePluginManager:
         Supports relative paths (starting with ``./`` or ``../``), absolute
         paths, and bare relative paths.  Other source types (git URLs, npm
         packages) are not yet supported and return None.
+
+        Explicit relative paths (``./``, ``../``) resolve from ``marketplace_root``
+        directly — they already carry their own directory context.
+        ``pluginRoot`` is only prepended for bare relative paths (no leading dot).
         """
         if source.startswith("./") or source.startswith("../"):
-            base = marketplace_root
-            if plugin_root:
-                base = marketplace_root / plugin_root
-            return (base / source).resolve()
+            return (marketplace_root / source).resolve()
 
         # Absolute local path
         if source.startswith("/"):

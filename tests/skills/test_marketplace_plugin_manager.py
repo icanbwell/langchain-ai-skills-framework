@@ -85,16 +85,33 @@ class TestDiscoverPlugins:
         assert "beta" not in names
         assert "alpha" in names
 
-    def test_plugin_root_in_metadata(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
-        # Plugin lives under a nested base dir
+    def test_plugin_root_in_metadata_bare_path(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
+        # pluginRoot applies to bare relative paths (no ./ prefix)
         plugin_dir = tmp_path / "packages" / "my-plugin"
         plugin_dir.mkdir(parents=True)
 
         manifest_dir = tmp_path / ".claude-plugin"
         manifest_dir.mkdir()
         manifest = {
-            "plugins": [{"name": "my-plugin", "source": "./my-plugin"}],
+            "plugins": [{"name": "my-plugin", "source": "my-plugin"}],
             "metadata": {"pluginRoot": "packages"},
+        }
+        (manifest_dir / "marketplace.json").write_text(json.dumps(manifest))
+
+        entries = manager.discover_plugins(tmp_path)
+        assert len(entries) == 1
+        assert entries[0].path == plugin_dir.resolve()
+
+    def test_dot_slash_source_ignores_plugin_root(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
+        # Explicit ./ paths resolve from marketplace root, not pluginRoot
+        plugin_dir = tmp_path / "packages" / "my-plugin"
+        plugin_dir.mkdir(parents=True)
+
+        manifest_dir = tmp_path / ".claude-plugin"
+        manifest_dir.mkdir()
+        manifest = {
+            "plugins": [{"name": "my-plugin", "source": "./packages/my-plugin"}],
+            "metadata": {"pluginRoot": "should-not-be-used"},
         }
         (manifest_dir / "marketplace.json").write_text(json.dumps(manifest))
 

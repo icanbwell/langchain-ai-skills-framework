@@ -559,11 +559,38 @@ class TestMarketplaceJsonDiscovery:
         summaries_correct = loader_correct.list_skill_summaries(allowed_skills=set())
         assert len(summaries_correct) == 0
 
-    def test_plugin_root_resolves_relative_paths(self, tmp_path: Path) -> None:
-        """metadata.pluginRoot is prepended to relative source paths."""
-        # Skill lives at <root>/custom-root/plugins/plugin-a/skills/deep-skill/SKILL.md
+    def test_plugin_root_resolves_bare_relative_paths(self, tmp_path: Path) -> None:
+        """metadata.pluginRoot is prepended to bare relative paths (no ./ prefix)."""
+        # Skill lives at <root>/custom-root/plugin-a/skills/deep-skill/SKILL.md
         deep_root = tmp_path / "custom-root"
-        skill_dir = deep_root / "plugins" / "plugin-a" / "skills" / "deep-skill"
+        skill_dir = deep_root / "plugin-a" / "skills" / "deep-skill"
+        skill_dir.mkdir(parents=True)
+        frontmatter = yaml.safe_dump(
+            {"name": "deep-skill", "description": "Deeply nested"},
+            sort_keys=False,
+        ).strip()
+        (skill_dir / "SKILL.md").write_text(f"---\n{frontmatter}\n---\nBody.\n")
+
+        _write_marketplace_json(
+            tmp_path,
+            [{"name": "plugin-a", "source": "plugin-a"}],
+            metadata={"pluginRoot": "custom-root"},
+        )
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        summaries = loader.list_skill_summaries(allowed_skills=set())
+        assert len(summaries) == 1
+        assert summaries[0].name == "deep-skill"
+
+    def test_dot_slash_source_ignores_plugin_root(self, tmp_path: Path) -> None:
+        """Explicit ./ paths resolve from marketplace root, ignoring pluginRoot."""
+        # Skill lives at <root>/plugins/plugin-a/skills/deep-skill/SKILL.md
+        skill_dir = tmp_path / "plugins" / "plugin-a" / "skills" / "deep-skill"
         skill_dir.mkdir(parents=True)
         frontmatter = yaml.safe_dump(
             {"name": "deep-skill", "description": "Deeply nested"},
@@ -574,7 +601,7 @@ class TestMarketplaceJsonDiscovery:
         _write_marketplace_json(
             tmp_path,
             [{"name": "plugin-a", "source": "./plugins/plugin-a"}],
-            metadata={"pluginRoot": "custom-root"},
+            metadata={"pluginRoot": "should-not-be-used"},
         )
 
         env = FakeEnvVars(plugins_marketplace=str(tmp_path))

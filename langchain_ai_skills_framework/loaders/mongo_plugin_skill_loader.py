@@ -630,18 +630,21 @@ class MongoPluginSkillLoader:
     ) -> MongoPluginDefinitionDocument:
         """Upsert a plugin definition document."""
         now = datetime.now(timezone.utc)
-        doc = MongoPluginDefinitionDocument(
-            plugin_name=plugin_name,
-            description=description,
-            skills=list(skills),
-            mcp_servers=[dict(s) for s in mcp_servers],
-            date_modified=now,
+        logger.info(
+            "save_plugin: upserting plugin '%s' to collection '%s'",
+            plugin_name,
+            self._plugins_collection.name,
         )
         raw = await self._plugins_collection.find_one_and_update(
             {"plugin_name": plugin_name},
             {
-                "$set": doc.to_mongo_dict(),
-                "$setOnInsert": {"date_created": now},
+                "$set": {
+                    "description": description,
+                    "skills": list(skills),
+                    "mcp_servers": [dict(s) for s in mcp_servers],
+                    "date_modified": now,
+                },
+                "$setOnInsert": {"plugin_name": plugin_name, "date_created": now},
             },
             upsert=True,
             return_document=ReturnDocument.AFTER,

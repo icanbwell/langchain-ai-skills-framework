@@ -335,6 +335,10 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
     def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
         self._get_snapshot()  # ensure _plugin_definitions is populated
+        logger.info(
+            "list_plugin_definitions: returning %d plugin definitions",
+            len(self._plugin_definitions),
+        )
         return list(self._plugin_definitions)
 
     def _build_snapshot(self, *, force_download: bool) -> SkillSnapshot:
@@ -440,6 +444,11 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             )
 
         self._plugin_definitions = tuple(plugin_defs)
+        logger.info(
+            "_build_snapshot: built %d plugin definitions: %s",
+            len(plugin_defs),
+            [p.name for p in plugin_defs],
+        )
 
         ordered = tuple(sorted(summaries, key=lambda s: s.name))
         snapshot = SkillSnapshot(

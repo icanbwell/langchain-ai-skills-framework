@@ -188,8 +188,8 @@ class SkillSync:
             logger.exception("SkillSync: could not list plugin definitions; skipping plugin sync.")
             return
 
+        logger.info("SkillSync: found %d plugin definitions to sync.", len(plugin_defs))
         if not plugin_defs:
-            logger.info("SkillSync: no plugin definitions found; skipping plugin sync.")
             return
 
         for plugin in plugin_defs:
@@ -225,7 +225,12 @@ class SkillSync:
                     mcp_servers=mcp_server_dicts,
                 )
                 result.plugins_synced += 1
-                logger.debug("SkillSync: synced plugin '%s'.", plugin.name)
+                logger.info(
+                    "SkillSync: synced plugin '%s' (skills=%d, mcp_servers=%d).",
+                    plugin.name,
+                    len(plugin.skills),
+                    len(mcp_server_dicts),
+                )
             except Exception:
                 logger.exception("SkillSync: failed to sync plugin '%s'.", plugin.name)
                 result.errors += 1

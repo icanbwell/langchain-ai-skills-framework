@@ -36,6 +36,9 @@ class FakeEnvVars:
     snapshot_cache_skills_collection: str | None = None
     snapshot_cache_plugins_collection: str | None = None
     plugins_collection: str | None = "plugins"
+    plugin_skills_collection: str | None = "plugin_skills"
+    plugin_references_collection: str | None = "plugin_references"
+    plugin_scripts_collection: str | None = "plugin_scripts"
 
 
 def _write_marketplace_skill(

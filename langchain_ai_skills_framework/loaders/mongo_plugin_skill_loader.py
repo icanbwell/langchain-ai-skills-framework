@@ -175,9 +175,7 @@ class MongoPluginSkillLoader:
             return_document=ReturnDocument.AFTER,
         )
         if raw is None:
-            raise SkillNotFoundError(
-                f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'"
-            )
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'")
         return MongoPluginSkillDocument.from_mongo_dict(raw)
 
     async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
@@ -492,9 +490,7 @@ class MongoPluginSkillLoader:
             {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}
         )
         if raw is None:
-            raise SkillNotFoundError(
-                f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'"
-            )
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)
         summary = SkillSummary(
             name=doc.skill_name,

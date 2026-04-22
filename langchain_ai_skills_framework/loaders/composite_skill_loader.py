@@ -105,9 +105,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """Get skill details from shared loader only (sync)."""
         return self._shared_loader.get_skill_details(skill_name, plugin_name=plugin_name)
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
         """Get skill details checking user skills first, then shared DB, then GitHub."""
         normalized = normalize_skill_name(skill_name)
         # 1. User's own skills (highest precedence)
@@ -252,9 +250,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     async def run_skill_script(
         self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
-        return await self._shared_loader.run_skill_script(
-            skill_name, script_name, arguments, plugin_name=plugin_name
-        )
+        return await self._shared_loader.run_skill_script(skill_name, script_name, arguments, plugin_name=plugin_name)
 
     async def run_skill_script_for_user(
         self,
@@ -309,9 +305,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                     pass
 
         # Fall back to shared filesystem loader
-        return await self._shared_loader.run_skill_script(
-            normalized, script_name, arguments, plugin_name=plugin_name
-        )
+        return await self._shared_loader.run_skill_script(normalized, script_name, arguments, plugin_name=plugin_name)
 
     def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return self._shared_loader.list_skill_script_names(skill_name, plugin_name=plugin_name)

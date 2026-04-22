@@ -53,13 +53,13 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, skill_name: str, *, plugin_name: str = "") -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError from exc
 
-    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -74,11 +74,11 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def get_tools(self) -> list[BaseTool]:
         return []
 
-    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         raise NotImplementedError()
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
         self.calls.append((skill_name, script_name, arguments))
         if skill_name not in self._details:
@@ -91,29 +91,36 @@ class _StubSkillLoader(SkillLoaderProtocol):
             success=True,
         )
 
-    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str, resource_name: str
+    ) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script_for_user(
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
 
-    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return self._script_names_by_skill.get(skill_name, [])
 
-    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+    async def list_skill_script_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
         return self.list_skill_script_names(skill_name)
 
-    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return []
 
-    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+    async def list_skill_resource_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
@@ -122,7 +129,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
 class _FailingScriptLoader(_StubSkillLoader):
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
         self.calls.append((skill_name, script_name, arguments))
         return MyScriptExecutionResult(
@@ -136,7 +143,7 @@ class _FailingScriptLoader(_StubSkillLoader):
 
 class _ScriptNotFoundLoader(_StubSkillLoader):
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
         self.calls.append((skill_name, script_name, arguments))
         raise ScriptNotFoundError(f"Script '{script_name}' not found")
@@ -162,6 +169,7 @@ async def test_arun_executes_script_with_named_arguments() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     message, output = await tool._arun(
+        plugin_name="test-plugin",
         skill_name="alpha",
         script_name="analyze.py",
         arguments={"threshold": 0.5},
@@ -179,6 +187,7 @@ async def test_arun_returns_not_found_message_when_skill_missing() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     result = await tool._arun(
+        plugin_name="test-plugin",
         skill_name="missing",
         script_name="analyze.py",
         arguments=None,
@@ -193,6 +202,7 @@ async def test_arun_returns_error_output_when_script_fails() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     message, artifact = await tool._arun(
+        plugin_name="test-plugin",
         skill_name="alpha",
         script_name="analyze.py",
         arguments=None,
@@ -221,6 +231,7 @@ async def test_arun_validates_parameters_raises(
 
     with pytest.raises(ToolException, match=message):
         await tool._arun(
+            plugin_name="test-plugin",
             skill_name=skill_name,
             script_name=script_name,
             arguments=arguments,
@@ -237,6 +248,7 @@ async def test_arun_script_not_found_lists_available_scripts() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     result, artifact = await tool._arun(
+        plugin_name="test-plugin",
         skill_name="alpha",
         script_name="missing.py",
         arguments=None,
@@ -254,6 +266,7 @@ async def test_arun_script_not_found_no_scripts_shows_none() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     result, artifact = await tool._arun(
+        plugin_name="test-plugin",
         skill_name="alpha",
         script_name="missing.py",
         arguments=None,
@@ -268,7 +281,7 @@ def test_sync_run_raises() -> None:
     tool = RunSkillScriptTool(skill_loader=loader)
 
     with pytest.raises(NotImplementedError):
-        tool._run(skill_name="alpha", script_name="analyze.py", runtime=_make_runtime())
+        tool._run(plugin_name="test-plugin", skill_name="alpha", script_name="analyze.py", runtime=_make_runtime())
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

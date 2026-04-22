@@ -71,9 +71,7 @@ async def format_resource_availability(
 
     try:
         if user_id:
-            await loader.get_skill_details_for_user(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
-            )
+            await loader.get_skill_details_for_user(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
         else:
             loader.get_skill_details(skill_name, plugin_name=plugin_name)
     except SkillNotFoundError:

@@ -25,6 +25,7 @@ def _make_summary(name: str = "test_skill") -> SkillSummary:
     return SkillSummary(
         name=name,
         description="A test skill",
+        plugin_name="test-plugin",
         source_path=Path("/plugins/test-plugin/skills/test_skill/SKILL.md"),
         license="MIT",
         compatibility="1.0",

@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # Path builders — Materialized Paths pattern
 # ---------------------------------------------------------------------------
 
+
 def build_skill_path(plugin_name: str, skill_name: str) -> str:
     """Return the canonical path for a skill's ``SKILL.md``."""
     return f"{plugin_name}/skills/{skill_name}/SKILL.md"
@@ -38,6 +39,7 @@ def build_script_path(plugin_name: str, skill_name: str, script_name: str) -> st
 # ---------------------------------------------------------------------------
 # Skill document
 # ---------------------------------------------------------------------------
+
 
 class MongoPluginSkillDocument(BaseModel):
     """A skill stored in the ``plugin_skills`` collection."""
@@ -106,6 +108,7 @@ class MongoPluginSkillDocument(BaseModel):
 # Resource document
 # ---------------------------------------------------------------------------
 
+
 class MongoPluginResourceDocument(BaseModel):
     """A resource file stored in the ``plugin_references`` collection."""
 
@@ -149,6 +152,7 @@ class MongoPluginResourceDocument(BaseModel):
 # Script document
 # ---------------------------------------------------------------------------
 
+
 class MongoPluginScriptDocument(BaseModel):
     """An executable script stored in the ``plugin_scripts`` collection."""
 
@@ -191,6 +195,7 @@ class MongoPluginScriptDocument(BaseModel):
 # ---------------------------------------------------------------------------
 # Usage document (unchanged structure, kept for continuity)
 # ---------------------------------------------------------------------------
+
 
 class MongoPluginSkillUsageDocument(BaseModel):
     """A single usage event for a skill within a plugin."""

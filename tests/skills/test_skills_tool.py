@@ -40,13 +40,13 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, skill_name: str, *, plugin_name: str = "") -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError from exc
 
-    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -61,14 +61,16 @@ class _StubSkillLoader(SkillLoaderProtocol):
     def get_tools(self) -> list[BaseTool]:
         return []
 
-    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         raise NotImplementedError()
 
-    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str, resource_name: str
+    ) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
@@ -76,22 +78,27 @@ class _StubSkillLoader(SkillLoaderProtocol):
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
 
-    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return []
 
-    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+    async def list_skill_script_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
         return self.list_skill_script_names(skill_name)
 
-    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return []
 
-    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+    async def list_skill_resource_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
@@ -115,7 +122,7 @@ async def test_load_skill_tool_returns_availability_for_empty_name() -> None:
     tool = LoadSkillTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided"):
-        await tool._arun(skill_name="", runtime=_make_runtime())
+        await tool._arun(plugin_name="test-plugin", skill_name="", runtime=_make_runtime())
 
 
 @pytest.mark.asyncio
@@ -125,7 +132,7 @@ async def test_load_skill_tool_returns_availability_when_missing() -> None:
     loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    result, _ = await tool._arun(skill_name="gamma", runtime=_make_runtime())
+    result, _ = await tool._arun(plugin_name="test-plugin", skill_name="gamma", runtime=_make_runtime())
 
     assert "Skill 'gamma' not found" in result
     assert "Available skills: alpha, beta" in result
@@ -135,7 +142,7 @@ async def test_load_skill_tool_returns_availability_when_missing() -> None:
 async def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
-    result, _ = await tool._arun(skill_name="alpha", runtime=_make_runtime())
+    result, _ = await tool._arun(plugin_name="test-plugin", skill_name="alpha", runtime=_make_runtime())
 
     assert "Skill 'alpha' not found" in result
     assert "Available skills: None configured" in result
@@ -147,7 +154,7 @@ async def test_load_skill_tool_returns_skill_content() -> None:
     loader = _StubSkillLoader({"alpha": details})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message, _ = await tool._arun(skill_name=" alpha ", runtime=_make_runtime())
+    message, _ = await tool._arun(plugin_name="test-plugin", skill_name=" alpha ", runtime=_make_runtime())
 
     assert message == "Body for alpha"
 
@@ -159,14 +166,14 @@ async def test_arun_validates_empty_skill_name() -> None:
     tool = LoadSkillTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided."):
-        await tool._arun(skill_name="", runtime=_make_runtime())
+        await tool._arun(plugin_name="test-plugin", skill_name="", runtime=_make_runtime())
 
 
 def test_sync_run_raises() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
     with pytest.raises(NotImplementedError):
-        tool._run(skill_name="test", runtime=_make_runtime())
+        tool._run(plugin_name="test-plugin", skill_name="test", runtime=_make_runtime())
 
 
 def test_get_friendly_name_casts_skill_name_to_string() -> None:

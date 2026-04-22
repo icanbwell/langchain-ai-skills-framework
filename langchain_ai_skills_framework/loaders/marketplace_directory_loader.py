@@ -128,9 +128,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         except KeyError as exc:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in marketplace") from exc
 
-    async def get_skill_details_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str
-    ) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
         normalized = normalize_skill_name(skill_name)
         snapshot = await self._get_snapshot_async()
         try:
@@ -167,6 +165,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         details = self.get_skill_details(skill_name)
+        if details.source_path is None:
+            raise SkillNotFoundError(f"Skill '{skill_name}' has no source path")
         references_dir = details.source_path.parent / "references"
         candidate_path = references_dir / resource_name
         try:
@@ -201,6 +201,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             details = self.get_skill_details(skill_name)
         except SkillNotFoundError:
             return []
+        if details.source_path is None:
+            return []
         references_dir = details.source_path.parent / "references"
         if not references_dir.is_dir():
             return []
@@ -217,6 +219,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         except SkillNotFoundError:
             return []
         # Check for scripts in the skill's own directory
+        if details.source_path is None:
+            return []
         scripts_dir = details.source_path.parent / "scripts"
         if not scripts_dir.is_dir():
             # Also check the plugin-level scripts directory
@@ -501,6 +505,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
     def _find_plugin_dir_for_skill(self, details: SkillDetails) -> Path | None:
         """Walk up from the skill's source_path to find the plugin root."""
+        if details.source_path is None:
+            return None
         current = details.source_path.parent
         for _ in range(5):
             if (current / ".claude-plugin").is_dir() or (current / "scripts").is_dir():
@@ -513,6 +519,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
     def _resolve_script_path(self, details: SkillDetails, script_name: str) -> Path | None:
         """Find a script file for the given skill."""
+        if details.source_path is None:
+            return None
         cleaned = script_name.removesuffix(".py").removesuffix(".sh")
 
         # Check skill-level scripts directory

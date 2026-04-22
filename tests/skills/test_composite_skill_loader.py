@@ -17,8 +17,8 @@ from langchain_ai_skills_framework.loaders.composite_skill_loader import (
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
-from langchain_ai_skills_framework.loaders.user_skill_store import (
-    UserSkillStore,
+from langchain_ai_skills_framework.loaders.plugin_skill_store import (
+    PluginSkillStore,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
@@ -52,13 +52,13 @@ class _StubSharedLoader(SkillLoaderProtocol):
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
-    def get_skill_details(self, skill_name: str) -> SkillDetails:
+    def get_skill_details(self, skill_name: str, *, plugin_name: str = "") -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError(f"'{skill_name}' not found") from exc
 
-    async def get_skill_details_for_user(self, *, user_id: str, skill_name: str) -> SkillDetails:
+    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -73,37 +73,44 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def get_tools(self) -> list[BaseTool]:
         return []
 
-    def read_skill_resource(self, skill_name: str, resource_name: str) -> str:
+    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         raise NotImplementedError
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
     ) -> MyScriptExecutionResult:
         raise NotImplementedError
 
-    def list_skill_script_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return []
 
-    async def list_skill_script_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+    async def list_skill_script_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
         return self.list_skill_script_names(skill_name)
 
-    async def read_skill_resource_for_user(self, *, user_id: str, skill_name: str, resource_name: str) -> str:
+    async def read_skill_resource_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str, resource_name: str
+    ) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script_for_user(
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
 
-    def list_skill_resource_names(self, skill_name: str) -> Sequence[str]:
+    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
         return []
 
-    async def list_skill_resource_names_for_user(self, *, user_id: str, skill_name: str) -> Sequence[str]:
+    async def list_skill_resource_names_for_user(
+        self, *, user_id: str, plugin_name: str, skill_name: str
+    ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
 
     def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
@@ -113,9 +120,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
 def _make_user_loader_mock(
     user_skills: dict[str, SkillDetails] | None = None,
     shared_skills: dict[str, SkillDetails] | None = None,
-) -> UserSkillStore:
-    """Create a mock UserSkillStore that returns a snapshot."""
-    loader = AsyncMock(spec=UserSkillStore)
+) -> PluginSkillStore:
+    """Create a mock PluginSkillStore that returns a snapshot."""
+    loader = AsyncMock(spec=PluginSkillStore)
     skills = user_skills or {}
     shared = shared_skills or {}
     snapshot = SkillSnapshot(
@@ -130,7 +137,7 @@ def _make_user_loader_mock(
     loader.load_shared_snapshot.return_value = shared_snapshot
     loader.get_skill_usage_count.return_value = 0
     loader.get_skill_usage_counts.return_value = {}
-    loader.get_skill_details.side_effect = lambda *, user_id, skill_name: (
+    loader.get_skill_details.side_effect = lambda *, user_id, plugin_name, skill_name: (
         skills[skill_name]
         if skill_name in skills
         else (_ for _ in ()).throw(SkillNotFoundError(f"'{skill_name}' not found"))
@@ -190,7 +197,9 @@ class TestGetSkillDetailsForUser:
         user_loader = _make_user_loader_mock({"my-skill": user_skill})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(user_id="user-1", skill_name="my-skill")
+        detail = await composite.get_skill_details_for_user(
+            user_id="user-1", plugin_name="test-plugin", skill_name="my-skill"
+        )
 
         assert detail.content == "user version"
 
@@ -201,7 +210,9 @@ class TestGetSkillDetailsForUser:
         user_loader = _make_user_loader_mock({})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(user_id="user-1", skill_name="shared-skill")
+        detail = await composite.get_skill_details_for_user(
+            user_id="user-1", plugin_name="test-plugin", skill_name="shared-skill"
+        )
 
         assert detail.content == "shared version"
 
@@ -212,7 +223,9 @@ class TestGetSkillDetailsForUser:
         user_loader = _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill})
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(user_id="different-user", skill_name="health-news-monitor")
+        detail = await composite.get_skill_details_for_user(
+            user_id="different-user", plugin_name="test-plugin", skill_name="health-news-monitor"
+        )
 
         assert detail.content == "shared db version"
 
@@ -227,7 +240,9 @@ class TestGetSkillDetailsForUser:
         )
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
-        detail = await composite.get_skill_details_for_user(user_id="user-1", skill_name="my-skill")
+        detail = await composite.get_skill_details_for_user(
+            user_id="user-1", plugin_name="test-plugin", skill_name="my-skill"
+        )
 
         assert detail.content == "user version"
 
@@ -238,7 +253,9 @@ class TestGetSkillDetailsForUser:
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
 
         with pytest.raises(SkillNotFoundError):
-            await composite.get_skill_details_for_user(user_id="user-1", skill_name="nonexistent")
+            await composite.get_skill_details_for_user(
+                user_id="user-1", plugin_name="test-plugin", skill_name="nonexistent"
+            )
 
 
 class TestGetTools:

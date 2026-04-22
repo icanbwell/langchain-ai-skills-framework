@@ -28,8 +28,7 @@ _EMPTY_SNAPSHOT = SkillSnapshot(
 )
 
 _NOT_CONFIGURED_MSG = (
-    "Plugin skill storage is not configured. "
-    "Set MONGO_SKILLS_URI or MONGO_URL to enable plugin skills."
+    "Plugin skill storage is not configured. Set MONGO_SKILLS_URI or MONGO_URL to enable plugin skills."
 )
 
 
@@ -117,9 +116,7 @@ class NullPluginSkillStore:
         skill_name: str,
         resource_name: str,
     ) -> str:
-        raise SkillNotFoundError(
-            f"Resource '{resource_name}' not found — plugin skill storage is not configured."
-        )
+        raise SkillNotFoundError(f"Resource '{resource_name}' not found — plugin skill storage is not configured.")
 
     async def list_resource_names(
         self,
@@ -172,9 +169,7 @@ class NullPluginSkillStore:
         skill_name: str,
         script_name: str,
     ) -> str:
-        raise SkillNotFoundError(
-            f"Script '{script_name}' not found — plugin skill storage is not configured."
-        )
+        raise SkillNotFoundError(f"Script '{script_name}' not found — plugin skill storage is not configured.")
 
     async def list_script_names(
         self,

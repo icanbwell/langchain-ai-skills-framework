@@ -9,8 +9,8 @@ from langchain_ai_skills_framework.loaders.skill_sync import (
     SYSTEM_USER_ID,
     SkillSync,
 )
-from langchain_ai_skills_framework.models.mongo_skill_document import (
-    MongoSkillDocument,
+from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginSkillDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -44,12 +44,16 @@ def _make_shared_loader(
     loader = MagicMock()
     loader.list_skill_summaries.return_value = summaries or []
     _details = details or {}
-    loader.get_skill_details.side_effect = lambda skill_name: _details.get(skill_name, _make_details(skill_name))
+    loader.get_skill_details.side_effect = lambda skill_name, *, plugin_name="": _details.get(
+        skill_name, _make_details(skill_name)
+    )
     _resources = resource_names or {}
-    loader.list_skill_resource_names.side_effect = lambda skill_name: _resources.get(skill_name, [])
+    loader.list_skill_resource_names.side_effect = lambda skill_name, *, plugin_name="": _resources.get(skill_name, [])
     _scripts = script_names or {}
-    loader.list_skill_script_names.side_effect = lambda skill_name: _scripts.get(skill_name, [])
-    loader.read_skill_resource.side_effect = lambda skill_name, resource_name: f"content of {resource_name}"
+    loader.list_skill_script_names.side_effect = lambda skill_name, *, plugin_name="": _scripts.get(skill_name, [])
+    loader.read_skill_resource.side_effect = lambda skill_name, resource_name, *, plugin_name="": (
+        f"content of {resource_name}"
+    )
     return loader
 
 
@@ -58,9 +62,11 @@ def _make_store() -> AsyncMock:
     store.skill_exists.return_value = False
     store.resource_exists.return_value = False
     store.script_exists.return_value = False
-    store.save_skill.return_value = MongoSkillDocument(
+    store.save_skill.return_value = MongoPluginSkillDocument(
+        plugin_name="test-plugin",
         user_id=SYSTEM_USER_ID,
         skill_name="test",
+        path="test-plugin/skills/test/SKILL.md",
         description="test",
         content="test",
         modified_by=SYSTEM_USER_ID,

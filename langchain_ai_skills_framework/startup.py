@@ -30,13 +30,12 @@ async def initialize_skills(
         result = await skill_sync.sync()
         logger.info(
             "Skills startup: sync complete — "
-            "plugins_synced=%d skills_added=%d resources_added=%d "
-            "scripts_added=%d skills_skipped=%d errors=%d",
+            "plugins_synced=%d skills_synced=%d resources_synced=%d "
+            "scripts_synced=%d errors=%d",
             result.plugins_synced,
             result.skills_added,
             result.resources_added,
             result.scripts_added,
-            result.skills_skipped,
             result.errors,
         )
     except Exception:

@@ -63,41 +63,34 @@ class SkillSync:
         await self._sync_plugins(result=result)
 
         logger.info(
-            "SkillSync: complete. plugins_synced=%d "
-            "skills_added=%d resources_added=%d scripts_added=%d "
-            "skills_skipped=%d errors=%d",
+            "SkillSync: complete. plugins_synced=%d skills_synced=%d resources_synced=%d scripts_synced=%d errors=%d",
             result.plugins_synced,
             result.skills_added,
             result.resources_added,
             result.scripts_added,
-            result.skills_skipped,
             result.errors,
         )
         return result
 
     async def _sync_skill(self, *, skill_name: str, plugin_name: str, result: SyncResult) -> None:
-        """Sync a single skill and its resources/scripts."""
-        # Sync the skill content
-        skill_exists = await self._store.skill_exists(
-            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name
+        """Sync a single skill and its resources/scripts.
+
+        Always upserts — replaces existing content with the latest from
+        the marketplace so that updates to shared skills propagate on restart.
+        """
+        details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
+        await self._store.save_skill(
+            user_id=SYSTEM_USER_ID,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+            content=details.content,
+            modified_by=SYSTEM_USER_ID,
         )
-        if skill_exists:
-            result.skills_skipped += 1
-        else:
-            details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
-            await self._store.save_skill(
-                user_id=SYSTEM_USER_ID,
-                plugin_name=plugin_name,
-                skill_name=skill_name,
-                content=details.content,
-                modified_by=SYSTEM_USER_ID,
-            )
-            # Mark seeded skills as shared so all users can see them
-            await self._store.set_skill_shared(
-                user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, shared=True
-            )
-            result.skills_added += 1
-            logger.debug("SkillSync: added skill '%s' from plugin '%s'.", skill_name, plugin_name)
+        await self._store.set_skill_shared(
+            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, shared=True
+        )
+        result.skills_added += 1
+        logger.debug("SkillSync: upserted skill '%s' from plugin '%s'.", skill_name, plugin_name)
 
         # Sync resources
         try:
@@ -108,14 +101,6 @@ class SkillSync:
 
         for resource_name in resource_names:
             try:
-                exists = await self._store.resource_exists(
-                    user_id=SYSTEM_USER_ID,
-                    plugin_name=plugin_name,
-                    skill_name=skill_name,
-                    resource_name=resource_name,
-                )
-                if exists:
-                    continue
                 content = self._shared.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)
                 await self._store.save_resource(
                     user_id=SYSTEM_USER_ID,
@@ -127,7 +112,7 @@ class SkillSync:
                 )
                 result.resources_added += 1
                 logger.debug(
-                    "SkillSync: added resource '%s' for skill '%s'.",
+                    "SkillSync: upserted resource '%s' for skill '%s'.",
                     resource_name,
                     skill_name,
                 )
@@ -148,18 +133,6 @@ class SkillSync:
 
         for script_name in script_names:
             try:
-                exists = await self._store.script_exists(
-                    user_id=SYSTEM_USER_ID,
-                    plugin_name=plugin_name,
-                    skill_name=skill_name,
-                    script_name=script_name,
-                )
-                if exists:
-                    continue
-                # Read script content from the filesystem via the shared loader's
-                # skill directory structure.  Scripts live in a ``scripts/``
-                # subdirectory under the skill folder, matching the plugin
-                # directory layout: <plugin>/skills/<skill>/scripts/<script>.py
                 details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
                 if details.source_path:
                     skill_dir = details.source_path.parent
@@ -183,7 +156,7 @@ class SkillSync:
                         )
                         result.scripts_added += 1
                         logger.debug(
-                            "SkillSync: added script '%s' for skill '%s'.",
+                            "SkillSync: upserted script '%s' for skill '%s'.",
                             script_name,
                             skill_name,
                         )
@@ -264,7 +237,6 @@ class SyncResult:
     def __init__(self) -> None:
         self.plugins_synced: int = 0
         self.skills_added: int = 0
-        self.skills_skipped: int = 0
         self.resources_added: int = 0
         self.scripts_added: int = 0
         self.errors: int = 0

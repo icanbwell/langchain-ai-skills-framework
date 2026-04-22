@@ -142,11 +142,14 @@ class TestSkillSync:
 
     @pytest.mark.asyncio
     async def test_syncs_missing_scripts(self, tmp_path: Path) -> None:
+        """Scripts in the ``scripts/`` subdirectory are found and synced."""
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
         skill_md.write_text("# My Skill")
-        script_file = skill_dir / "analyze.py"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir()
+        script_file = scripts_dir / "analyze.py"
         script_file.write_text("print('hello')")
 
         summary = _make_summary("my-skill", source_path=skill_md)
@@ -168,12 +171,40 @@ class TestSkillSync:
         assert call_kwargs["modified_by"] == SYSTEM_USER_ID
 
     @pytest.mark.asyncio
+    async def test_syncs_scripts_from_skill_root_fallback(self, tmp_path: Path) -> None:
+        """Scripts at the skill root (legacy layout) are found via fallback."""
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        skill_md = skill_dir / "SKILL.md"
+        skill_md.write_text("# My Skill")
+        script_file = skill_dir / "analyze.py"
+        script_file.write_text("print('legacy')")
+
+        summary = _make_summary("my-skill", source_path=skill_md)
+        details = SkillDetails(summary=summary, content="# My Skill", source_path=skill_md)
+        shared = _make_shared_loader(
+            summaries=[summary],
+            details={"my-skill": details},
+            script_names={"my-skill": ["analyze"]},
+        )
+        store = _make_store()
+        sync = SkillSync(shared_loader=shared, user_store=store)
+
+        result = await sync.sync()
+
+        assert result.scripts_added == 1
+        call_kwargs = store.save_script.call_args.kwargs
+        assert call_kwargs["content"] == "print('legacy')"
+
+    @pytest.mark.asyncio
     async def test_skips_existing_scripts(self, tmp_path: Path) -> None:
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
         skill_md.write_text("# My Skill")
-        (skill_dir / "analyze.py").write_text("print('hello')")
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "analyze.py").write_text("print('hello')")
 
         summary = _make_summary("my-skill", source_path=skill_md)
         details = SkillDetails(summary=summary, content="# My Skill", source_path=skill_md)

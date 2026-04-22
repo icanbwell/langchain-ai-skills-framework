@@ -150,13 +150,20 @@ class SkillSync:
                 if exists:
                     continue
                 # Read script content from the filesystem via the shared loader's
-                # skill directory structure.
+                # skill directory structure.  Scripts live in a ``scripts/``
+                # subdirectory under the skill folder, matching the plugin
+                # directory layout: <plugin>/skills/<skill>/scripts/<script>.py
                 details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
                 if details.source_path:
-                    script_path = details.source_path.parent / f"{script_name}.py"
+                    skill_dir = details.source_path.parent
+                    script_path = skill_dir / "scripts" / f"{script_name}.py"
                     if not script_path.is_file():
-                        # Try without .py extension
-                        script_path = details.source_path.parent / script_name
+                        script_path = skill_dir / "scripts" / f"{script_name}.sh"
+                    if not script_path.is_file():
+                        # Fallback: check skill directory root (legacy layout)
+                        script_path = skill_dir / f"{script_name}.py"
+                    if not script_path.is_file():
+                        script_path = skill_dir / script_name
                     if script_path.is_file():
                         content = script_path.read_text(encoding="utf-8")
                         await self._store.save_script(

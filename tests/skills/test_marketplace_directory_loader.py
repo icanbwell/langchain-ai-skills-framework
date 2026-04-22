@@ -25,7 +25,6 @@ from langchain_ai_skills_framework.loaders.marketplace_directory_loader import (
 class FakeEnvVars:
     """Minimal implementation of SkillLoaderEnvironmentVariables for tests."""
 
-    skills_directory: str = "/unused"
     plugins_marketplace: str | None = "/var/data/marketplace"  # nosec B108
     skills_github_token: str | None = None
     skills_cache_timeout_seconds: int = 3600
@@ -33,7 +32,6 @@ class FakeEnvVars:
     excluded_skill_groups: set[str] = field(default_factory=set)
     plugins_marketplace_include: set[str] | None = None
     plugins_marketplace_exclude: set[str] = field(default_factory=set)
-    snapshot_cache_skills_collection: str | None = None
     snapshot_cache_plugins_collection: str | None = None
     plugins_collection: str | None = "plugins"
     plugin_skills_collection: str | None = "plugin_skills"

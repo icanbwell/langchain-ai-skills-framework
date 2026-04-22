@@ -1,6 +1,5 @@
 import os
 import logging
-from pathlib import Path
 
 from simple_container.environment.environment_variables import EnvironmentVariables
 
@@ -40,10 +39,6 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
             )
             return _DEFAULT_SKILLS_CACHE_TIMEOUT_SECONDS
         return ttl_seconds
-
-    @property
-    def snapshot_cache_skills_collection(self) -> str | None:
-        return os.environ.get("SNAPSHOT_CACHE_SKILLS_COLLECTION") or None
 
     @property
     def snapshot_cache_plugins_collection(self) -> str | None:
@@ -87,39 +82,6 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         if value and "{pid}" in value:
             return value.replace("{pid}", str(os.getpid()))
         return value
-
-    @property
-    def skills_directory(self) -> str | None:
-        """Return the absolute path to the Agent Skills directory.
-
-        Returns None when no directory is configured or discoverable,
-        allowing the system to operate with marketplace-only or user-only skills.
-        """
-
-        configured = self._resolve_path(os.environ.get("SKILLS_DIRECTORY"))
-        if configured and configured.strip():
-            return configured
-
-        # Attempt to infer a sensible default based on the current package layout.
-        # This file lives at: <repo_root>/langchain_ai_skills_framework/environment/environment_variables.py
-        package_root = Path(__file__).resolve().parents[1]
-        repo_root = package_root.parent
-
-        candidate_dirs = [
-            repo_root / "skills",
-            repo_root / "skills" / "skills",
-            package_root / "skills",
-        ]
-
-        for candidate in candidate_dirs:
-            if candidate.is_dir():
-                return str(candidate)
-
-        _LOGGER.info(
-            "SKILLS_DIRECTORY is not set and no default skills directory found. "
-            "Skills will be loaded from other sources (marketplace, user store) if configured."
-        )
-        return None
 
     @property
     def plugins_marketplace(self) -> str | None:

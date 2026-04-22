@@ -7,9 +7,6 @@ from langchain_ai_skills_framework.loaders.composite_skill_loader import (
 from langchain_ai_skills_framework.loaders.github_directory_downloader import (
     GithubDirectoryDownloader,
 )
-from langchain_ai_skills_framework.loaders.github_skill_downloader import (
-    GithubSkillDownloader,
-)
 from langchain_ai_skills_framework.loaders.marketplace_directory_loader import (
     MarketplaceDirectoryLoader,
 )
@@ -78,7 +75,6 @@ class LangchainAISkillsFrameworkContainerFactory:
         container: SimpleContainer,
     ) -> SimpleContainer:
 
-        container.singleton(GithubSkillDownloader, lambda c: GithubSkillDownloader())
         container.singleton(GithubDirectoryDownloader, lambda c: GithubDirectoryDownloader())
 
         container.singleton(

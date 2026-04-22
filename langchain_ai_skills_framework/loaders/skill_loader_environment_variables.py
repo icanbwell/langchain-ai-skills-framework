@@ -15,25 +15,11 @@ class SkillLoaderEnvironmentVariables(Protocol):
     def excluded_skill_groups(self) -> set[str]: ...
 
     @property
-    def skills_directory(self) -> str | None:
-        """Base location where skills are discovered.
-
-        Returns None when no directory is configured, allowing the system
-        to operate with marketplace-only or user-only skills.
-
-        Examples:
-        - Local filesystem: "/opt/app/skills"
-        - GitHub via pydantic-ai-skills: "github://my-org/private-skills/skills?ref=main"
-        - None: no primary skills directory configured
-        """
-        ...
-
-    @property
     def plugins_marketplace(self) -> str | None:
-        """Optional github:// URI to a Claude plugin marketplace repository.
+        """URI to a Claude plugin marketplace repository.
 
-        When set, skills are also loaded from the marketplace structure
-        (plugins/*/skills/) in addition to the primary skills_directory.
+        Skills are loaded from the marketplace structure
+        (plugins/*/skills/).
 
         Example:
         - "github://my-org/claude-plugin-marketplace/plugins?ref=main"
@@ -60,14 +46,6 @@ class SkillLoaderEnvironmentVariables(Protocol):
         Applied after the include list (if set).
 
         Expected environment variable: PLUGINS_MARKETPLACE_EXCLUDE (comma-separated)
-        """
-        ...
-
-    @property
-    def snapshot_cache_skills_collection(self) -> str | None:
-        """Optional MongoDB collection for skill directory snapshots (legacy).
-
-        Expected environment variable: SNAPSHOT_CACHE_SKILLS_COLLECTION
         """
         ...
 

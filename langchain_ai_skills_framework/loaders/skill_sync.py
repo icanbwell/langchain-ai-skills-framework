@@ -45,21 +45,21 @@ class SkillSync:
 
         summaries: Sequence[SkillSummary] = self._shared.list_skill_summaries(allowed_skills=set())
         if not summaries:
-            logger.info("SkillSync: no shared skills found; nothing to sync.")
-            return result
+            logger.info("SkillSync: no shared skills found; skipping skill sync.")
+        else:
+            logger.info("SkillSync: checking %d shared skills against MongoDB.", len(summaries))
 
-        logger.info("SkillSync: checking %d shared skills against MongoDB.", len(summaries))
+            for summary in summaries:
+                skill_name = summary.name
+                plugin_name = summary.plugin_name
+                try:
+                    await self._sync_skill(skill_name=skill_name, plugin_name=plugin_name, result=result)
+                except Exception:
+                    logger.exception("SkillSync: failed to sync skill '%s'; skipping.", skill_name)
+                    result.errors += 1
 
-        for summary in summaries:
-            skill_name = summary.name
-            plugin_name = summary.plugin_name
-            try:
-                await self._sync_skill(skill_name=skill_name, plugin_name=plugin_name, result=result)
-            except Exception:
-                logger.exception("SkillSync: failed to sync skill '%s'; skipping.", skill_name)
-                result.errors += 1
-
-        # Sync plugin definitions to the plugins collection
+        # Sync plugin definitions regardless of whether skills were found —
+        # plugins carry MCP server configs, descriptions, and other metadata.
         await self._sync_plugins(result=result)
 
         logger.info(
@@ -212,7 +212,11 @@ class SkillSync:
         try:
             plugin_defs: Sequence[PluginDefinition] = self._shared.list_plugin_definitions()
         except Exception:
-            logger.debug("SkillSync: could not list plugin definitions; skipping plugin sync.")
+            logger.exception("SkillSync: could not list plugin definitions; skipping plugin sync.")
+            return
+
+        if not plugin_defs:
+            logger.info("SkillSync: no plugin definitions found; skipping plugin sync.")
             return
 
         for plugin in plugin_defs:

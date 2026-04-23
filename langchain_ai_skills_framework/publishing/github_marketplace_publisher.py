@@ -219,14 +219,26 @@ class GitHubMarketplacePublisher:
         payload = {"ref": f"refs/heads/{branch}", "sha": sha}
         resp = await client.post(url, headers=self._headers, json=payload)
         if resp.status_code == 422:
-            await self._update_branch(client, branch, sha)
+            await self._update_branch(client, branch, sha, force=True)
         else:
             resp.raise_for_status()
 
-    async def _update_branch(self, client: httpx.AsyncClient, branch: str, sha: str) -> None:
+    async def _update_branch(
+        self,
+        client: httpx.AsyncClient,
+        branch: str,
+        sha: str,
+        force: bool = False,
+    ) -> None:
         url = f"{self._base_url}/repos/{self._repo}/git/refs/heads/{branch}"
-        payload = {"sha": sha, "force": True}
+        payload = {"sha": sha, "force": force}
         resp = await client.patch(url, headers=self._headers, json=payload)
+        if not force and resp.status_code in {409, 422}:
+            raise RuntimeError(
+                f"Failed to update branch '{branch}' with a fast-forward-only update "
+                "because the branch advanced on GitHub. Re-read the branch ref, rebuild "
+                "the commit, and retry the publish operation."
+            )
         resp.raise_for_status()
 
     # ------------------------------------------------------------------

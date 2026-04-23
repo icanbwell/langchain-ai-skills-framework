@@ -138,6 +138,17 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return {item.strip() for item in raw_value.split(",") if item.strip()}
 
     @property
+    def plugins_marketplace_publish_branch(self) -> str:
+        """Base branch for marketplace skill publish commits/PRs."""
+        return os.environ.get("PLUGINS_MARKETPLACE_PUBLISH_BRANCH", "main")
+
+    @property
+    def plugins_marketplace_publish_use_branch(self) -> bool:
+        """True = create PR on branch, False = commit directly to base."""
+        raw = os.environ.get("PLUGINS_MARKETPLACE_PUBLISH_USE_BRANCH", "true")
+        return raw.strip().lower() in ("true", "1", "yes")
+
+    @property
     def mongo_skills_uri(self) -> str:
         """MongoDB connection URI for skills storage.
 

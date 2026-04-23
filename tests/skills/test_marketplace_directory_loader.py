@@ -33,6 +33,8 @@ class FakeEnvVars:
     excluded_skill_groups: set[str] = field(default_factory=set)
     plugins_marketplace_include: set[str] | None = None
     plugins_marketplace_exclude: set[str] = field(default_factory=set)
+    plugins_marketplace_publish_branch: str = "main"
+    plugins_marketplace_publish_use_branch: bool = True
     snapshot_cache_plugins_collection: str | None = None
     plugins_collection: str | None = "plugins"
     plugin_skills_collection: str | None = "plugin_skills"

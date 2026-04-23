@@ -29,6 +29,9 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
+)
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
@@ -74,6 +77,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         *,
         shared_loader: SkillLoaderProtocol,
         user_loader: PluginSkillStore,
+        marketplace_publisher: GitHubMarketplacePublisher | None = None,
     ) -> None:
         if shared_loader is None:
             raise ValueError("shared_loader must not be None")
@@ -82,6 +86,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         self._shared_loader = shared_loader
         self._user_loader = user_loader
+        self._marketplace_publisher = marketplace_publisher
 
     @property
     def shared_loader(self) -> SkillLoaderProtocol:
@@ -202,7 +207,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             SaveSkillResourceTool(mongo_skill_loader=self._user_loader),
             SaveSkillScriptTool(mongo_skill_loader=self._user_loader),
             DeleteSkillTool(mongo_skill_loader=self._user_loader),
-            ToggleSkillSharingTool(mongo_skill_loader=self._user_loader),
+            ToggleSkillSharingTool(
+                mongo_skill_loader=self._user_loader,
+                marketplace_publisher=self._marketplace_publisher,
+            ),
         ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:

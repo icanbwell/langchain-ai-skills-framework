@@ -13,6 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     PluginSkillStore,
 )
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
+)
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.services.toggle_skill_sharing_service import ToggleSkillSharingService
 
@@ -44,6 +47,7 @@ class ToggleSkillSharingTool(BaseTool):
     args_schema: Type[BaseModel] = ToggleSkillSharingInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     mongo_skill_loader: Optional[PluginSkillStore] = None
+    marketplace_publisher: Optional[GitHubMarketplacePublisher] = None
 
     @override
     def _run(
@@ -70,7 +74,10 @@ class ToggleSkillSharingTool(BaseTool):
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 
-        service = ToggleSkillSharingService(mongo_skill_loader=self.mongo_skill_loader)
+        service = ToggleSkillSharingService(
+            mongo_skill_loader=self.mongo_skill_loader,
+            marketplace_publisher=self.marketplace_publisher,
+        )
         try:
             message = await service.execute(
                 user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, shared=shared

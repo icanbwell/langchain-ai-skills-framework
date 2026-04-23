@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
+)
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -11,10 +15,22 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class ToggleSkillSharingService:
-    """Toggle a skill between shared and private."""
+    """Toggle a skill between shared and private.
 
-    def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
+    When a ``marketplace_publisher`` is configured, sharing a skill also
+    fires off a background task that publishes (or unpublishes) the skill
+    to the GitHub marketplace repo.  The background task never blocks the
+    local sharing operation.
+    """
+
+    def __init__(
+        self,
+        *,
+        mongo_skill_loader: PluginSkillStore | None,
+        marketplace_publisher: GitHubMarketplacePublisher | None = None,
+    ) -> None:
         self._store = mongo_skill_loader
+        self._publisher = marketplace_publisher
 
     async def execute(self, *, user_id: str, plugin_name: str, skill_name: str, shared: bool) -> str:
         if not user_id:
@@ -34,6 +50,18 @@ class ToggleSkillSharingService:
             state = "shared" if doc.shared else "private"
             message = f"Skill '{doc.skill_name}' is now {state}."
             logger.info("ToggleSkillSharingService: %s (user=%s)", message, user_id)
+
+            if self._publisher is not None:
+                asyncio.create_task(
+                    self._try_publish(
+                        user_id=user_id,
+                        plugin_name=plugin_name,
+                        skill_name=skill_name,
+                        shared=shared,
+                    ),
+                    name=f"marketplace-{'publish' if shared else 'unpublish'}-{plugin_name}/{skill_name}",
+                )
+
             return message
         except Exception as exc:
             logger.exception(
@@ -44,3 +72,104 @@ class ToggleSkillSharingService:
             raise SkillOperationError(
                 f"Unable to update sharing for skill '{skill_name}' due to an internal error."
             ) from exc
+
+    # ------------------------------------------------------------------
+    # Background publish logic
+    # ------------------------------------------------------------------
+
+    async def _try_publish(
+        self,
+        *,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+        shared: bool,
+    ) -> None:
+        """Best-effort publish/unpublish. Exceptions are logged, never raised."""
+        assert self._publisher is not None
+        assert self._store is not None
+        try:
+            if shared:
+                await self._publish_skill(
+                    user_id=user_id,
+                    plugin_name=plugin_name,
+                    skill_name=skill_name,
+                )
+            else:
+                result = await self._publisher.unpublish_skill(
+                    plugin_name=plugin_name,
+                    skill_name=skill_name,
+                    user_id=user_id,
+                )
+                logger.info(
+                    "Skill '%s/%s' removal result: %s",
+                    plugin_name,
+                    skill_name,
+                    result,
+                )
+        except Exception:
+            logger.exception(
+                "Failed to %s skill '%s/%s' in marketplace",
+                "publish" if shared else "unpublish",
+                plugin_name,
+                skill_name,
+            )
+
+    async def _publish_skill(
+        self,
+        *,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+    ) -> None:
+        assert self._publisher is not None
+        assert self._store is not None
+
+        details = await self._store.get_skill_details(
+            user_id=user_id,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+        )
+
+        resource_names = await self._store.list_resource_names(
+            user_id=user_id,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+        )
+        resources: dict[str, str] = {}
+        for name in resource_names:
+            resources[name] = await self._store.read_resource(
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
+                resource_name=name,
+            )
+
+        script_names = await self._store.list_script_names(
+            user_id=user_id,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+        )
+        scripts: dict[str, str] = {}
+        for name in script_names:
+            scripts[name] = await self._store.read_script(
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
+                script_name=name,
+            )
+
+        result = await self._publisher.publish_skill(
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+            skill_content=details.content,
+            resources=resources,
+            scripts=scripts,
+            user_id=user_id,
+        )
+        logger.info(
+            "Skill '%s/%s' publish result: %s",
+            plugin_name,
+            skill_name,
+            result,
+        )

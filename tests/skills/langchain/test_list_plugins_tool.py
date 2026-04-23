@@ -9,7 +9,7 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkill
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
 )
-from langchain_ai_skills_framework.tools.list_plugins_tool import ListPluginsTool
+from langchain_ai_skills_framework.langchain.tools.list_plugins_tool import ListPluginsTool
 
 
 def _make_loader_mock(

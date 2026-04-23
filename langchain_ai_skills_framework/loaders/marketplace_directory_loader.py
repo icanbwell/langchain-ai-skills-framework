@@ -8,7 +8,6 @@ from types import MappingProxyType
 from typing import Any, Sequence, TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from langchain_core.tools import BaseTool
 from skillkit import SkillManager, SkillMetadata, Skill
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -159,9 +158,6 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         # written to L2 (MongoDB) for cross-worker sharing.
         await self._get_snapshot_async()
         return ""
-
-    def get_tools(self) -> list[BaseTool]:
-        return []
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         details = self.get_skill_details(skill_name)

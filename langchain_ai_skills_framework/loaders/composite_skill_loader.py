@@ -6,8 +6,6 @@ from html import escape
 from types import MappingProxyType
 from typing import Any, Sequence
 
-from langchain_core.tools import BaseTool
-
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
@@ -19,7 +17,6 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 )
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
-from langchain_ai_skills_framework.tools.list_skills_tool import ListSkillsTool
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
@@ -36,27 +33,6 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
-)
-from langchain_ai_skills_framework.tools.delete_skill_tool import DeleteSkillTool
-from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
-from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
-    ReadSkillResourceTool,
-)
-from langchain_ai_skills_framework.tools.run_skill_script_tool import (
-    RunSkillScriptTool,
-)
-from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
-from langchain_ai_skills_framework.tools.save_skill_resource_tool import (
-    SaveSkillResourceTool,
-)
-from langchain_ai_skills_framework.tools.save_skill_script_tool import (
-    SaveSkillScriptTool,
-)
-from langchain_ai_skills_framework.tools.list_plugins_tool import (
-    ListPluginsTool,
-)
-from langchain_ai_skills_framework.tools.publish_skill_tool import (
-    PublishSkillTool,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -193,30 +169,6 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "All skill tools require a `plugin_name` parameter to scope the operation to a specific plugin.\n"
             "Use progressive disclosure: load only what you need, when you need it."
         )
-
-    def get_tools(self) -> list[BaseTool]:
-        """Return tools that resolve skills through this composite loader.
-
-        Tools are constructed with ``skill_loader=self`` so that
-        ``load_skill`` and availability lists include both shared and
-        user-persisted skills, consistent with what
-        ``get_instructions_for_user`` advertises.
-        """
-        return [
-            ListPluginsTool(mongo_skill_loader=self._user_loader),
-            ListSkillsTool(skill_loader=self),
-            LoadSkillTool(skill_loader=self, user_skill_store=self._user_loader),
-            ReadSkillResourceTool(skill_loader=self),
-            RunSkillScriptTool(skill_loader=self),
-            SaveSkillTool(mongo_skill_loader=self._user_loader),
-            SaveSkillResourceTool(mongo_skill_loader=self._user_loader),
-            SaveSkillScriptTool(mongo_skill_loader=self._user_loader),
-            DeleteSkillTool(mongo_skill_loader=self._user_loader),
-            PublishSkillTool(
-                mongo_skill_loader=self._user_loader,
-                marketplace_publisher=self._marketplace_publisher,
-            ),
-        ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         return self._shared_loader.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)

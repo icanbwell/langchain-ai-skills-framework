@@ -9,7 +9,7 @@ from langchain_core.tools import ToolException
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
-from langchain_ai_skills_framework.tools.run_python_script_tool import (
+from langchain_ai_skills_framework.langchain.tools.run_python_script_tool import (
     RunPythonScriptTool,
 )
 

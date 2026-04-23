@@ -5,7 +5,6 @@ from typing import Any, Mapping, Sequence
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.tools import BaseTool
 from langchain_core.tools import ToolException
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -20,7 +19,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
+from langchain_ai_skills_framework.langchain.tools.read_skill_resource_tool import (
     ReadSkillResourceTool,
 )
 
@@ -66,9 +65,6 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
     async def get_instructions(self) -> str:  # pragma: no cover
         return ""
-
-    def get_tools(self) -> list[BaseTool]:
-        return []
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         self.calls.append((skill_name, resource_name))

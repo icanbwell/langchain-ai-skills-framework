@@ -6,7 +6,6 @@ from typing import Any, Mapping, Sequence
 from unittest.mock import AsyncMock
 
 import pytest
-from langchain_core.tools import BaseTool
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -70,9 +69,6 @@ class _StubSharedLoader(SkillLoaderProtocol):
 
     async def get_instructions(self) -> str:
         return "<available_skills></available_skills>"
-
-    def get_tools(self) -> list[BaseTool]:
-        return []
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         raise NotImplementedError
@@ -260,19 +256,6 @@ class TestGetSkillDetailsForUser:
             await composite.get_skill_details_for_user(
                 user_id="user-1", plugin_name="test-plugin", skill_name="nonexistent"
             )
-
-
-class TestGetTools:
-    def test_includes_shared_tools_plus_save_and_delete(self) -> None:
-        shared = _StubSharedLoader({})
-        user_loader = _make_user_loader_mock()
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
-
-        tools = composite.get_tools()
-        tool_names = [t.name for t in tools]
-
-        assert "save_skill" in tool_names
-        assert "delete_skill" in tool_names
 
 
 class TestGetInstructionsForUser:

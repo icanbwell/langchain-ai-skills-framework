@@ -1,6 +1,4 @@
-from typing import Protocol, Sequence, runtime_checkable, Any
-
-from langchain_core.tools import BaseTool
+from typing import Any, Protocol, Sequence, runtime_checkable
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -25,8 +23,6 @@ class SkillLoaderProtocol(Protocol):
     async def refresh_async(self) -> None: ...
 
     async def get_instructions(self) -> str: ...
-
-    def get_tools(self) -> list[BaseTool]: ...
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str: ...
 

@@ -12,7 +12,7 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillDocument,
 )
-from langchain_ai_skills_framework.tools.publish_skill_tool import (
+from langchain_ai_skills_framework.langchain.tools.publish_skill_tool import (
     PublishSkillTool,
 )
 

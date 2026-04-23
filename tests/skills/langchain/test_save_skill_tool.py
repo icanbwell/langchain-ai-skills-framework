@@ -12,7 +12,7 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillDocument,
 )
-from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
+from langchain_ai_skills_framework.langchain.tools.save_skill_tool import SaveSkillTool
 
 VALID_SKILL_CONTENT = "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
 

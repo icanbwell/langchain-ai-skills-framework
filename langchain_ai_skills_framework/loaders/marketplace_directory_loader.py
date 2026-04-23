@@ -55,6 +55,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_EMPTY_SNAPSHOT = SkillSnapshot(
+    details_by_name=MappingProxyType({}),
+    ordered_summaries=(),
+)
+
 
 class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     """Loads Agent Skills from a Claude plugin marketplace GitHub repository.
@@ -81,9 +86,15 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._environment_variables = environment_variables
 
         marketplace_uri = environment_variables.plugins_marketplace
-        if not marketplace_uri or not marketplace_uri.strip():
-            raise SkillValidationError("plugins_marketplace is not configured")
-        self._marketplace_uri = marketplace_uri.strip()
+        self._marketplace_uri = marketplace_uri.strip() if marketplace_uri else ""
+        self._configured = bool(self._marketplace_uri)
+
+        if not self._configured:
+            logger.warning(
+                "MarketplaceDirectoryLoader %s: PLUGINS_MARKETPLACE is not set; "
+                "shared plugin skills will not be loaded.",
+                self._identifier,
+            )
 
         self._plugin_manager = plugin_manager or MarketplacePluginManager()
 
@@ -101,11 +112,12 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._plugin_definitions: tuple[PluginDefinition, ...] = ()
         self._reload_ttl_seconds = self._resolve_reload_ttl_seconds(environment_variables)
 
-        logger.info(
-            "MarketplaceDirectoryLoader %s initialized for %s",
-            self._identifier,
-            self._marketplace_uri,
-        )
+        if self._configured:
+            logger.info(
+                "MarketplaceDirectoryLoader %s initialized for %s",
+                self._identifier,
+                self._marketplace_uri,
+            )
 
     @property
     def _loader_display_name(self) -> str:
@@ -136,6 +148,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in marketplace") from exc
 
     def refresh(self) -> None:
+        if not self._configured:
+            return
         with self._lock:
             logger.info("MarketplaceDirectoryLoader refreshing cache")
             self._snapshot = self._build_snapshot(force_download=True)
@@ -143,6 +157,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
     async def refresh_async(self) -> None:
         """Force reload and persist the new snapshot to MongoDB cache."""
+        if not self._configured:
+            return
         with self._lock:
             logger.info("MarketplaceDirectoryLoader refreshing cache (async)")
             self._snapshot = self._build_snapshot(force_download=True)
@@ -273,6 +289,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     # --- Private implementation ------------------------------------------------
 
     def _get_snapshot(self) -> SkillSnapshot:
+        if not self._configured:
+            return _EMPTY_SNAPSHOT
+
         with self._lock:
             if self._is_snapshot_valid_unlocked():
                 snapshot = self._snapshot
@@ -295,6 +314,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
     async def _get_snapshot_async(self) -> SkillSnapshot:
         """Async variant that checks MongoDB snapshot cache before building."""
+        if not self._configured:
+            return _EMPTY_SNAPSHOT
+
         with self._lock:
             if self._is_snapshot_valid_unlocked():
                 snapshot = self._snapshot

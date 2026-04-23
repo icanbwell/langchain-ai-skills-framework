@@ -86,21 +86,21 @@ def _write_marketplace_json(
 
 
 class TestMarketplaceDirectoryLoaderInit:
-    def test_rejects_missing_marketplace_uri(self) -> None:
+    def test_missing_marketplace_uri_returns_empty(self) -> None:
         env = FakeEnvVars(plugins_marketplace=None)
-        with pytest.raises(SkillValidationError, match="plugins_marketplace is not configured"):
-            MarketplaceDirectoryLoader(
-                environment_variables=env,
-                github_directory_downloader=MagicMock(),
-            )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+        assert loader.list_skill_summaries(allowed_skills=set()) == ()
 
-    def test_rejects_blank_marketplace_uri(self) -> None:
+    def test_blank_marketplace_uri_returns_empty(self) -> None:
         env = FakeEnvVars(plugins_marketplace="   ")
-        with pytest.raises(SkillValidationError, match="plugins_marketplace is not configured"):
-            MarketplaceDirectoryLoader(
-                environment_variables=env,
-                github_directory_downloader=MagicMock(),
-            )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+        assert loader.list_skill_summaries(allowed_skills=set()) == ()
 
 
 class TestLocalMarketplaceDiscovery:

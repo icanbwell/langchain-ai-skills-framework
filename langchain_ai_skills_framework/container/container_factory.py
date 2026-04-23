@@ -47,12 +47,6 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     """
     env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
 
-    marketplace_uri = env_vars.plugins_marketplace
-    if not marketplace_uri:
-        raise RuntimeError(
-            "PLUGINS_MARKETPLACE is not configured. A marketplace URI is required since skills are loaded from plugins."
-        )
-
     # BaseStore is registered by language-model-common's container
     # factory.  It may not be available at this point if the skills
     # framework container runs first; treat as optional.

@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
-class ToggleSkillSharingService:
-    """Toggle a skill between shared and private.
+class PublishSkillService:
+    """Toggle a skill between published and unpublished in the marketplace.
 
-    When a ``marketplace_publisher`` is configured, sharing a skill also
+    When a ``marketplace_publisher`` is configured, publishing a skill also
     fires off a background task that publishes (or unpublishes) the skill
     to the GitHub marketplace repo.  The background task never blocks the
-    local sharing operation.
+    local operation.
     """
 
     def __init__(
@@ -34,7 +34,7 @@ class ToggleSkillSharingService:
 
     async def execute(self, *, user_id: str, plugin_name: str, skill_name: str, shared: bool) -> str:
         if not user_id:
-            raise SkillOperationError("user_id is required for toggle_skill_sharing")
+            raise SkillOperationError("user_id is required for publish_skill")
         if not skill_name or not skill_name.strip():
             raise SkillOperationError("skill_name must be a non-empty string.")
         if self._store is None:
@@ -47,9 +47,9 @@ class ToggleSkillSharingService:
                 skill_name=skill_name,
                 shared=shared,
             )
-            state = "shared" if doc.shared else "private"
+            state = "published" if doc.shared else "unpublished"
             message = f"Skill '{doc.skill_name}' is now {state}."
-            logger.info("ToggleSkillSharingService: %s (user=%s)", message, user_id)
+            logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
             if self._publisher is not None:
                 asyncio.create_task(
@@ -65,12 +65,12 @@ class ToggleSkillSharingService:
             return message
         except Exception as exc:
             logger.exception(
-                "ToggleSkillSharingService failed for skill_name=%s user=%s",
+                "PublishSkillService failed for skill_name=%s user=%s",
                 skill_name,
                 user_id,
             )
             raise SkillOperationError(
-                f"Unable to update sharing for skill '{skill_name}' due to an internal error."
+                f"Unable to update publishing for skill '{skill_name}' due to an internal error."
             ) from exc
 
     # ------------------------------------------------------------------

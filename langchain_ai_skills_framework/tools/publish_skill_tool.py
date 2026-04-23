@@ -17,11 +17,11 @@ from langchain_ai_skills_framework.publishing.github_marketplace_publisher impor
     GitHubMarketplacePublisher,
 )
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
-from langchain_ai_skills_framework.services.toggle_skill_sharing_service import ToggleSkillSharingService
+from langchain_ai_skills_framework.services.publish_skill_service import PublishSkillService
 
 
-class ToggleSkillSharingInput(BaseModel):
-    """Input schema for the toggle_skill_sharing tool."""
+class PublishSkillInput(BaseModel):
+    """Input schema for the publish_skill tool."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -29,22 +29,20 @@ class ToggleSkillSharingInput(BaseModel):
         description="Name of the plugin containing the skill.",
     )
     skill_name: str = Field(
-        description="Name of the skill to toggle sharing for.",
+        description="Name of the skill to publish or unpublish.",
     )
     shared: bool = Field(
-        description="True to share the skill with all users, False to make it private.",
+        description="True to publish the skill to the marketplace, False to unpublish it.",
     )
     runtime: ToolRuntime
 
 
-class ToggleSkillSharingTool(BaseTool):
-    """LangChain tool that toggles a skill between shared and private."""
+class PublishSkillTool(BaseTool):
+    """LangChain tool that publishes or unpublishes a skill in the marketplace."""
 
-    name: str = "toggle_skill_sharing"
-    description: str = (
-        "Toggle whether a saved skill is shared with all users or private to the owner. The skill must already exist."
-    )
-    args_schema: Type[BaseModel] = ToggleSkillSharingInput
+    name: str = "publish_skill"
+    description: str = "Publish or unpublish a saved skill to the marketplace. The skill must already exist."
+    args_schema: Type[BaseModel] = PublishSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     mongo_skill_loader: Optional[PluginSkillStore] = None
     marketplace_publisher: Optional[GitHubMarketplacePublisher] = None
@@ -74,7 +72,7 @@ class ToggleSkillSharingTool(BaseTool):
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 
-        service = ToggleSkillSharingService(
+        service = PublishSkillService(
             mongo_skill_loader=self.mongo_skill_loader,
             marketplace_publisher=self.marketplace_publisher,
         )
@@ -89,4 +87,4 @@ class ToggleSkillSharingTool(BaseTool):
     @staticmethod
     def get_friendly_name(*, tool_input: dict[str, Any]) -> str:
         skill_name = str(tool_input.get("skill_name", "")) if tool_input else ""
-        return f"Toggle Skill Sharing: {skill_name}" if skill_name else "Toggle Skill Sharing"
+        return f"Publish Skill: {skill_name}" if skill_name else "Publish Skill"

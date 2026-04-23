@@ -222,3 +222,6 @@ class NullPluginSkillStore:
 
     async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
         return ()
+
+    async def has_plugins(self) -> bool:
+        return False

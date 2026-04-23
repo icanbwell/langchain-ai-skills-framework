@@ -656,3 +656,8 @@ class MongoPluginSkillLoader:
         """Return all plugin definitions."""
         cursor = self._plugins_collection.find().sort("plugin_name", 1)
         return [MongoPluginDefinitionDocument.from_mongo_dict(doc) async for doc in cursor]
+
+    async def has_plugins(self) -> bool:
+        """Return True if the plugins collection has at least one document."""
+        count = await self._plugins_collection.count_documents({}, limit=1)
+        return count > 0

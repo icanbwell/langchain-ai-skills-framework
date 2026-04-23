@@ -7,7 +7,12 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkill
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
-from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
+from langchain_ai_skills_framework.services.skill_operation_error import (
+    SkillOperationError,
+    require_non_empty,
+    require_store,
+    require_user_id,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -27,6 +32,13 @@ class PublishSkillService:
     in-flight task for that skill before scheduling the replacement.
     """
 
+    # Intentionally class-level and shared across all instances.
+    # PublishSkillService is instantiated per-request by PublishSkillTool,
+    # but rapid publish/unpublish toggles for the *same* skill must be
+    # serialized globally — a per-instance dict would lose track of the
+    # previous task.  All access is single-threaded within one asyncio
+    # event loop, so no mutex is needed.  The done-callback in execute()
+    # removes completed entries to prevent unbounded growth.
     _pending_tasks: dict[str, asyncio.Task[None]] = {}
 
     def __init__(
@@ -39,15 +51,12 @@ class PublishSkillService:
         self._publisher = marketplace_publisher
 
     async def execute(self, *, user_id: str, plugin_name: str, skill_name: str, shared: bool) -> str:
-        if not user_id:
-            raise SkillOperationError("user_id is required for publish_skill")
-        if not skill_name or not skill_name.strip():
-            raise SkillOperationError("skill_name must be a non-empty string.")
-        if self._store is None:
-            raise SkillOperationError("mongo_skill_loader is not configured.")
+        require_user_id(user_id, "publish_skill")
+        require_non_empty(skill_name, "skill_name")
+        store = require_store(self._store)
 
         try:
-            doc = await self._store.set_skill_shared(
+            doc = await store.set_skill_shared(
                 user_id=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,

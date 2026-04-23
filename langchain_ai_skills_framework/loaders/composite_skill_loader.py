@@ -52,6 +52,9 @@ from langchain_ai_skills_framework.tools.save_skill_resource_tool import (
 from langchain_ai_skills_framework.tools.save_skill_script_tool import (
     SaveSkillScriptTool,
 )
+from langchain_ai_skills_framework.tools.list_plugins_tool import (
+    ListPluginsTool,
+)
 from langchain_ai_skills_framework.tools.publish_skill_tool import (
     PublishSkillTool,
 )
@@ -177,15 +180,16 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "Each skill provides specialized instructions for specific tasks.\n\n"
             f"<available_skills>\n{skills_list}\n</available_skills>\n\n"
             "When a task falls within a skill's domain:\n"
-            "1. Use `load_skill` with plugin_name to read the complete skill instructions\n"
-            "2. Follow the skill's guidance to complete the task\n"
-            "3. Use `read_skill_resource` with plugin_name to read files referenced by the skill\n"
-            "4. Use `run_skill_script` with plugin_name to run scripts provided by the skill\n"
-            "5. Use `save_skill` with plugin_name to save a new or updated skill for the current user\n"
-            "6. Use `save_skill_resource` with plugin_name to save a resource file for a skill\n"
-            "7. Use `save_skill_script` with plugin_name to save a script file for a skill\n"
-            "8. Use `delete_skill` with plugin_name to remove a previously saved skill\n"
-            "9. Use `publish_skill` with plugin_name to publish a skill to the marketplace or unpublish it\n\n"
+            "1. Use `list_plugins` to see all registered plugins\n"
+            "2. Use `load_skill` with plugin_name to read the complete skill instructions\n"
+            "3. Follow the skill's guidance to complete the task\n"
+            "4. Use `read_skill_resource` with plugin_name to read files referenced by the skill\n"
+            "5. Use `run_skill_script` with plugin_name to run scripts provided by the skill\n"
+            "6. Use `save_skill` with plugin_name to save a new or updated skill for the current user\n"
+            "7. Use `save_skill_resource` with plugin_name to save a resource file for a skill\n"
+            "8. Use `save_skill_script` with plugin_name to save a script file for a skill\n"
+            "9. Use `delete_skill` with plugin_name to remove a previously saved skill\n"
+            "10. Use `publish_skill` with plugin_name to publish a skill to the marketplace or unpublish it\n\n"
             "All skill tools require a `plugin_name` parameter to scope the operation to a specific plugin.\n"
             "Use progressive disclosure: load only what you need, when you need it."
         )
@@ -199,6 +203,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         ``get_instructions_for_user`` advertises.
         """
         return [
+            ListPluginsTool(mongo_skill_loader=self._user_loader),
             ListSkillsTool(skill_loader=self),
             LoadSkillTool(skill_loader=self, user_skill_store=self._user_loader),
             ReadSkillResourceTool(skill_loader=self),

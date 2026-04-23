@@ -7,7 +7,10 @@ from typing import Any
 
 import httpx
 
+from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+
 logger = logging.getLogger(__name__)
+logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class GitHubMarketplacePublisher:

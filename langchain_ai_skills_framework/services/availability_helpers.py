@@ -40,12 +40,15 @@ async def format_script_availability(
     script_name: str,
     *,
     user_id: str,
+    plugin_name: str = "",
 ) -> str:
     """Return a message listing available scripts for a given skill."""
     if user_id:
-        script_names = await loader.list_skill_script_names_for_user(user_id=user_id, skill_name=skill_name)
+        script_names = await loader.list_skill_script_names_for_user(
+            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+        )
     else:
-        script_names = loader.list_skill_script_names(skill_name)
+        script_names = loader.list_skill_script_names(skill_name, plugin_name=plugin_name)
     available_scripts = ", ".join(script_names)
     return f"Script '{script_name}' not found in skill '{skill_name}'. Available scripts: {available_scripts or 'none'}"
 
@@ -56,6 +59,7 @@ async def format_resource_availability(
     resource_name: str,
     *,
     user_id: str,
+    plugin_name: str = "",
 ) -> str:
     """Return a message listing available resources for a given skill.
 
@@ -67,16 +71,18 @@ async def format_resource_availability(
 
     try:
         if user_id:
-            await loader.get_skill_details_for_user(user_id=user_id, skill_name=skill_name)
+            await loader.get_skill_details_for_user(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
         else:
-            loader.get_skill_details(skill_name)
+            loader.get_skill_details(skill_name, plugin_name=plugin_name)
     except SkillNotFoundError:
         return await format_skill_availability(loader, skill_name, user_id=user_id)
 
     if user_id:
-        resource_names = await loader.list_skill_resource_names_for_user(user_id=user_id, skill_name=skill_name)
+        resource_names = await loader.list_skill_resource_names_for_user(
+            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+        )
     else:
-        resource_names = loader.list_skill_resource_names(skill_name)
+        resource_names = loader.list_skill_resource_names(skill_name, plugin_name=plugin_name)
     available_resources = ", ".join(resource_names)
     return (
         f"Resource '{resource_name}' not found in skill '{skill_name}'. "

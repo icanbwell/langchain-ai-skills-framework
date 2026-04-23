@@ -35,6 +35,7 @@ class RunSkillScriptService:
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
@@ -65,6 +66,7 @@ class RunSkillScriptService:
                 skill_name=normalized_name,
                 script_name=normalized_script_name,
                 arguments=arguments,
+                plugin_name=plugin_name,
                 user_id=user_id,
             )
             logger.debug(
@@ -89,6 +91,7 @@ class RunSkillScriptService:
                     normalized_name,
                     normalized_script_name,
                     user_id=user_id,
+                    plugin_name=plugin_name,
                 ),
                 "",
             )
@@ -115,6 +118,7 @@ class RunSkillScriptService:
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        plugin_name: str,
         user_id: str,
     ) -> MyScriptExecutionResult:
         normalized_name = skill_name.strip()
@@ -125,6 +129,7 @@ class RunSkillScriptService:
             if user_id:
                 result: MyScriptExecutionResult = await self._loader.run_skill_script_for_user(
                     user_id=user_id,
+                    plugin_name=plugin_name,
                     skill_name=normalized_name,
                     script_name=script_name,
                     arguments=arguments,
@@ -134,6 +139,7 @@ class RunSkillScriptService:
                     skill_name=normalized_name,
                     script_name=script_name,
                     arguments=arguments,
+                    plugin_name=plugin_name,
                 )
             return result
         except (SkillOperationError, SkillNotFoundError, ScriptNotFoundError):

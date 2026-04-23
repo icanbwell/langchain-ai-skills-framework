@@ -8,7 +8,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.availability_helpers import (
     format_skill_availability,
 )
@@ -26,12 +26,12 @@ class LoadSkillService:
         self,
         *,
         skill_loader: SkillLoaderProtocol,
-        user_skill_store: UserSkillStore | None = None,
+        user_skill_store: PluginSkillStore | None = None,
     ) -> None:
         self._loader = skill_loader
         self._user_skill_store = user_skill_store
 
-    async def execute(self, *, user_id: str, skill_name: str) -> str:
+    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> str:
         """Return the skill content string.
 
         On not-found, returns an availability message (soft error).
@@ -41,12 +41,14 @@ class LoadSkillService:
         if not normalized_name:
             raise SkillOperationError(await format_skill_availability(self._loader, normalized_name, user_id=user_id))
 
-        content = await self._load_skill(normalized_name, user_id=user_id)
+        content = await self._load_skill(normalized_name, plugin_name=plugin_name, user_id=user_id)
         logger.debug("LoadSkillService: loaded skill_name=%s", normalized_name)
 
         if self._user_skill_store and user_id:
             try:
-                await self._user_skill_store.record_skill_usage(skill_name=normalized_name, user_id=user_id)
+                await self._user_skill_store.record_skill_usage(
+                    plugin_name=plugin_name, skill_name=normalized_name, user_id=user_id
+                )
             except Exception:
                 logger.debug(
                     "Failed to record skill usage for skill_name=%s",
@@ -56,16 +58,18 @@ class LoadSkillService:
 
         return content
 
-    async def _load_skill(self, skill_name: str, *, user_id: str) -> str:
+    async def _load_skill(self, skill_name: str, *, plugin_name: str, user_id: str) -> str:
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise SkillOperationError(await format_skill_availability(self._loader, normalized_name, user_id=user_id))
 
         try:
             if user_id:
-                skill = await self._loader.get_skill_details_for_user(user_id=user_id, skill_name=normalized_name)
+                skill = await self._loader.get_skill_details_for_user(
+                    user_id=user_id, plugin_name=plugin_name, skill_name=normalized_name
+                )
             else:
-                skill = self._loader.get_skill_details(skill_name=normalized_name)
+                skill = self._loader.get_skill_details(skill_name=normalized_name, plugin_name=plugin_name)
             author = skill.summary.metadata.get("user_id") if skill.summary.metadata else None
             if author:
                 return f"Author: {author}\n\n{skill.content}"

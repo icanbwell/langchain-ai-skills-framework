@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from langchain_ai_skills_framework.loaders.user_skill_store import UserSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -13,13 +13,14 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 class SaveSkillResourceService:
     """Save or update a resource attached to a skill."""
 
-    def __init__(self, *, mongo_skill_loader: UserSkillStore | None) -> None:
+    def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
         self._store = mongo_skill_loader
 
     async def execute(
         self,
         *,
         user_id: str,
+        plugin_name: str,
         skill_name: str,
         resource_name: str,
         content: str,
@@ -38,6 +39,7 @@ class SaveSkillResourceService:
         try:
             doc = await self._store.save_resource(
                 user_id=user_id,
+                plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
                 content=content,

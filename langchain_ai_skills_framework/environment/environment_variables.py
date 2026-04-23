@@ -1,6 +1,5 @@
 import os
 import logging
-from pathlib import Path
 
 from simple_container.environment.environment_variables import EnvironmentVariables
 
@@ -42,6 +41,26 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return ttl_seconds
 
     @property
+    def snapshot_cache_plugins_collection(self) -> str | None:
+        return os.environ.get("SNAPSHOT_CACHE_PLUGINS_COLLECTION") or None
+
+    @property
+    def plugins_collection(self) -> str | None:
+        return os.environ.get("PLUGINS_COLLECTION") or "plugins"
+
+    @property
+    def plugin_skills_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_SKILLS_COLLECTION") or "plugin_skills"
+
+    @property
+    def plugin_references_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_REFERENCES_COLLECTION") or "plugin_references"
+
+    @property
+    def plugin_scripts_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_SCRIPTS_COLLECTION") or "plugin_scripts"
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated github:// skill loading.
 
@@ -65,33 +84,42 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return value
 
     @property
-    def skills_directory(self) -> str:
-        """Return the absolute path to the Agent Skills directory."""
+    def plugins_marketplace_cache_folder(self) -> str | None:
+        """Local directory for caching github:// marketplace downloads.
 
-        configured = self._resolve_path(os.environ.get("SKILLS_DIRECTORY"))
-        if configured and configured.strip():
-            return configured
+        Supports {pid} substitution for per-worker isolation.
+        """
+        value = self._resolve_path(os.environ.get("PLUGINS_MARKETPLACE_CACHE_FOLDER"))
+        if not value or not value.strip():
+            return None
+        return value.strip()
 
-        # Attempt to infer a sensible default based on the current package layout.
-        # This file lives at: <repo_root>/langchain_ai_skills_framework/environment/environment_variables.py
-        package_root = Path(__file__).resolve().parents[1]
-        repo_root = package_root.parent
+    @property
+    def plugins_marketplace(self) -> str | None:
+        """Optional github:// URI to a Claude plugin marketplace repository."""
+        value = self._resolve_path(os.environ.get("PLUGINS_MARKETPLACE"))
+        if not value or not value.strip():
+            return None
+        return value.strip()
 
-        candidate_dirs = [
-            repo_root / "skills",
-            repo_root / "skills" / "skills",
-            package_root / "skills",
-        ]
+    @property
+    def plugins_marketplace_include(self) -> set[str] | None:
+        """Allowlist of plugin names to load from the marketplace.
 
-        for candidate in candidate_dirs:
-            if candidate.is_dir():
-                return str(candidate)
+        When set, only matching plugins are loaded. When unset, all are loaded.
+        """
+        raw_value = os.environ.get("PLUGINS_MARKETPLACE_INCLUDE")
+        if not raw_value or not raw_value.strip():
+            return None
+        return {item.strip() for item in raw_value.split(",") if item.strip()}
 
-        raise RuntimeError(
-            "SKILLS_DIRECTORY environment variable is not set and no default skills "
-            "directory could be found. Please set SKILLS_DIRECTORY to the directory "
-            "containing your Agent Skills."
-        )
+    @property
+    def plugins_marketplace_exclude(self) -> set[str]:
+        """Plugin names to exclude from the marketplace."""
+        raw_value = os.environ.get("PLUGINS_MARKETPLACE_EXCLUDE")
+        if not raw_value or not raw_value.strip():
+            return set()
+        return {item.strip() for item in raw_value.split(",") if item.strip()}
 
     @property
     def excluded_skills(self) -> set[str]:

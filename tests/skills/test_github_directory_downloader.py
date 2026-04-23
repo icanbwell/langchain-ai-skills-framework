@@ -181,14 +181,15 @@ def test_download_preserves_existing_cache_on_failure(
     )
 
     downloader._RETRY_BASE_DELAY = 0.0
-    with pytest.raises(ValueError, match="Download failed after"):
-        downloader.download(
-            cache_path=cache_dir,
-            source_uri="github://my-org/private-repo/configs?ref=main",
-            github_token=None,
-        )
+    # Download fails but stale cache is served instead of raising.
+    result = downloader.download(
+        cache_path=cache_dir,
+        source_uri="github://my-org/private-repo/configs?ref=main",
+        github_token=None,
+    )
 
-    # The old data must still be there.
+    # The old data must still be there and the stale path returned.
+    assert result == target_dir.resolve()
     assert target_dir.is_dir()
     assert (target_dir / "old_file.txt").read_text() == "precious data"
 

@@ -10,20 +10,21 @@
 ## Repository Context Summary
 - **Stack**: Python 3.12, LangChain + langchain-core, Pydantic v2, PyYAML, Docker/Compose, uv.
 - **Key modules**:
-  - `langchain_ai_skills_framework/skills/skill_loader.py` – SKILL.md discovery, parsing, validation, and caching.
-  - `langchain_ai_skills_framework/skills/skills_model.py` – SkillSummary/SkillDetails dataclasses.
-  - `langchain_ai_skills_framework/skills/skills_middleware.py` – LangChain middleware that injects skill summaries into system prompts.
-  - `langchain_ai_skills_framework/skills/skills_tool.py` – LangChain tool to load a full skill on demand.
-  - `langchain_ai_skills_framework/utilities/cache/skill_cache.py` – TTL-aware cache for skill snapshots.
+  - `langchain_ai_skills_framework/loaders/marketplace_directory_loader.py` – Plugin marketplace SKILL.md discovery, parsing, validation, and caching.
+  - `langchain_ai_skills_framework/loaders/composite_skill_loader.py` – Merges marketplace (shared) skills with user-persisted MongoDB skills.
+  - `langchain_ai_skills_framework/loaders/mongo_plugin_skill_loader.py` – MongoDB-backed store for user-persisted skills, resources, and scripts.
+  - `langchain_ai_skills_framework/loaders/plugin_skill_store.py` – Protocol for the plugin skill store.
+  - `langchain_ai_skills_framework/models/skills_model.py` – SkillSummary/SkillDetails/SkillSnapshot dataclasses.
+  - `langchain_ai_skills_framework/tools/` – LangChain tools (load_skill, save_skill, list_skills, etc.) scoped by `plugin_name`.
   - `langchain_ai_skills_framework/utilities/logger/log_levels.py` – logging defaults and per-source levels.
-- **Tests & fixtures**: `tests/skills/test_skill_loader.py`, `tests/skills/test_skills_middleware.py`, `tests/skills/test_skills_tool.py`.
+- **Tests & fixtures**: `tests/skills/` directory.
 - **Tooling**: uv (`pyproject.toml`), Ruff/mypy/bandit via pre-commit, Docker Compose in `docker-compose.yml`, pytest config in `pyproject.toml`.
 
 ## Code Style and Quality Rules
-- Absolute imports only (e.g., `from langchain_ai_skills_framework.skills.skill_loader import SkillDirectoryLoader`). No relative imports within the project.
+- Absolute imports only (e.g., `from langchain_ai_skills_framework.loaders.composite_skill_loader import CompositeSkillLoader`). No relative imports within the project.
 - Provide full type annotations (functions, class attrs, module-level constants). Avoid `Any`; use Protocols/dataclasses/TypedDicts when needed.
 - Keep mypy strict and Ruff clean; do not add unchecked `# type: ignore` or blanket `noqa`.
-- Use `SkillCache` for shared snapshots and avoid repeated filesystem scans in request paths.
+- Use `MarketplaceDirectoryLoader`'s snapshot caching for shared skills. User-persisted skills in MongoDB (`MongoPluginSkillLoader`) are read directly without caching.
 - Logging uses the standard library with per-source levels from `langchain_ai_skills_framework.utilities.logger.log_levels.SRC_LOG_LEVELS`.
 - Do not log full skill content or any secrets; inside `except` blocks prefer `logger.exception("context message")` to preserve stack traces.
 
@@ -33,8 +34,9 @@
    - Name normalization rules enforced (lowercase, hyphenated, matches directory).
    - `allowed-tools` is a space-delimited string; metadata is a string-to-string mapping.
 2. **Architectural Consistency (blocking)**
-   - Skill discovery stays in `SkillDirectoryLoader`; no ad hoc parsing elsewhere.
-   - Middleware continues injecting skill summaries as a system message.
+   - Skill discovery stays in `MarketplaceDirectoryLoader` (shared) and `MongoPluginSkillLoader` (user-persisted); no ad hoc parsing elsewhere.
+   - `CompositeSkillLoader` merges both sources with precedence: user → shared DB → marketplace.
+   - All skill tools require `plugin_name` to scope operations to a specific plugin.
    - `LoadSkillTool` remains the supported entry point for loading skill content in agents.
 3. **Type Safety & Linting (blocking)**
    - mypy strict and Ruff clean; no new unchecked `type: ignore`.
@@ -48,7 +50,7 @@
 
 ## Blocking Issues (must fix before merge)
 - Relative imports, missing type hints, or mypy/Ruff failures.
-- Bypassing `SkillDirectoryLoader` or `SkillCache` for direct file access.
+- Bypassing `MarketplaceDirectoryLoader` or `CompositeSkillLoader` for direct file/DB access.
 - Weakening skill validation rules (frontmatter, naming, metadata, allowed-tools).
 - Tests not runnable via `make tests`, or new logic lacking coverage.
 - Secrets committed to the repo (credentials, tokens, private keys).
@@ -104,14 +106,16 @@
   - `make testpackage` / `make package` – upload to TestPyPI/PyPI.
 
 ## Integration Points
-- **Skill format**: SKILL.md with YAML frontmatter parsed by `SkillDirectoryLoader`.
-- **LangChain middleware**: `SkillMiddleware` injects `<available_skills>` into system prompts.
-- **LangChain tool**: `LoadSkillTool` loads full skill content for agent use.
+- **Skill format**: SKILL.md with YAML frontmatter, organized in plugin marketplace structure (`plugins/<plugin>/skills/<skill>/SKILL.md`).
+- **Shared skills**: `MarketplaceDirectoryLoader` loads from filesystem/GitHub with L1/L2 caching.
+- **User-persisted skills**: `MongoPluginSkillLoader` stores in three MongoDB collections (`plugin_skills`, `plugin_references`, `plugin_scripts`).
+- **Composite loader**: `CompositeSkillLoader` merges both sources and provides tools.
+- **LangChain tools**: `LoadSkillTool`, `SaveSkillTool`, `ListSkillsTool`, etc. — all scoped by `plugin_name`.
 
 ## Enforcement Checklist for Reviewers
 - Imports use absolute `langchain_ai_skills_framework.*` paths; typing is complete and mypy-clean.
 - Pre-commit hooks (Ruff, formatting, bandit, mypy) run successfully.
-- Skill parsing/validation stays centralized in `SkillDirectoryLoader`.
+- Skill parsing/validation stays centralized in `MarketplaceDirectoryLoader` and `MongoPluginSkillLoader`.
 - Cache usage is preserved and thread-safe.
 - Tests run via `make tests`; new behavior has coverage.
 - Logging avoids sensitive content and uses per-source log levels.

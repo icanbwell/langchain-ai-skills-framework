@@ -9,8 +9,8 @@ from langchain_ai_skills_framework.loaders.skill_sync import (
     SYSTEM_USER_ID,
     SkillSync,
 )
-from langchain_ai_skills_framework.models.mongo_skill_document import (
-    MongoSkillDocument,
+from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginSkillDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -44,23 +44,26 @@ def _make_shared_loader(
     loader = MagicMock()
     loader.list_skill_summaries.return_value = summaries or []
     _details = details or {}
-    loader.get_skill_details.side_effect = lambda skill_name: _details.get(skill_name, _make_details(skill_name))
+    loader.get_skill_details.side_effect = lambda skill_name, *, plugin_name="": _details.get(
+        skill_name, _make_details(skill_name)
+    )
     _resources = resource_names or {}
-    loader.list_skill_resource_names.side_effect = lambda skill_name: _resources.get(skill_name, [])
+    loader.list_skill_resource_names.side_effect = lambda skill_name, *, plugin_name="": _resources.get(skill_name, [])
     _scripts = script_names or {}
-    loader.list_skill_script_names.side_effect = lambda skill_name: _scripts.get(skill_name, [])
-    loader.read_skill_resource.side_effect = lambda skill_name, resource_name: f"content of {resource_name}"
+    loader.list_skill_script_names.side_effect = lambda skill_name, *, plugin_name="": _scripts.get(skill_name, [])
+    loader.read_skill_resource.side_effect = lambda skill_name, resource_name, *, plugin_name="": (
+        f"content of {resource_name}"
+    )
     return loader
 
 
 def _make_store() -> AsyncMock:
     store = AsyncMock()
-    store.skill_exists.return_value = False
-    store.resource_exists.return_value = False
-    store.script_exists.return_value = False
-    store.save_skill.return_value = MongoSkillDocument(
+    store.save_skill.return_value = MongoPluginSkillDocument(
+        plugin_name="test-plugin",
         user_id=SYSTEM_USER_ID,
         skill_name="test",
+        path="test-plugin/skills/test/SKILL.md",
         description="test",
         content="test",
         modified_by=SYSTEM_USER_ID,
@@ -80,7 +83,6 @@ class TestSkillSync:
         result = await sync.sync()
 
         assert result.skills_added == 1
-        assert result.skills_skipped == 0
         store.save_skill.assert_awaited_once()
         call_kwargs = store.save_skill.call_args.kwargs
         assert call_kwargs["user_id"] == SYSTEM_USER_ID
@@ -90,18 +92,17 @@ class TestSkillSync:
         store.set_skill_shared.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_skips_existing_skill(self) -> None:
+    async def test_upserts_existing_skill(self) -> None:
+        """Sync always upserts — existing skills get replaced with latest content."""
         summaries = [_make_summary("my-skill")]
         shared = _make_shared_loader(summaries=summaries)
         store = _make_store()
-        store.skill_exists.return_value = True
         sync = SkillSync(shared_loader=shared, user_store=store)
 
         result = await sync.sync()
 
-        assert result.skills_added == 0
-        assert result.skills_skipped == 1
-        store.save_skill.assert_not_awaited()
+        assert result.skills_added == 1
+        store.save_skill.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_syncs_missing_resources(self) -> None:
@@ -119,28 +120,31 @@ class TestSkillSync:
         assert store.save_resource.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_skips_existing_resources(self) -> None:
+    async def test_upserts_existing_resources(self) -> None:
+        """Sync always upserts — existing resources get replaced with latest content."""
         summaries = [_make_summary("my-skill")]
         shared = _make_shared_loader(
             summaries=summaries,
             resource_names={"my-skill": ["FORMS.md"]},
         )
         store = _make_store()
-        store.resource_exists.return_value = True
         sync = SkillSync(shared_loader=shared, user_store=store)
 
         result = await sync.sync()
 
-        assert result.resources_added == 0
-        store.save_resource.assert_not_awaited()
+        assert result.resources_added == 1
+        store.save_resource.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_syncs_missing_scripts(self, tmp_path: Path) -> None:
+        """Scripts in the ``scripts/`` subdirectory are found and synced."""
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
         skill_md.write_text("# My Skill")
-        script_file = skill_dir / "analyze.py"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir()
+        script_file = scripts_dir / "analyze.py"
         script_file.write_text("print('hello')")
 
         summary = _make_summary("my-skill", source_path=skill_md)
@@ -162,12 +166,14 @@ class TestSkillSync:
         assert call_kwargs["modified_by"] == SYSTEM_USER_ID
 
     @pytest.mark.asyncio
-    async def test_skips_existing_scripts(self, tmp_path: Path) -> None:
+    async def test_syncs_scripts_from_skill_root_fallback(self, tmp_path: Path) -> None:
+        """Scripts at the skill root (legacy layout) are found via fallback."""
         skill_dir = tmp_path / "my-skill"
         skill_dir.mkdir()
         skill_md = skill_dir / "SKILL.md"
         skill_md.write_text("# My Skill")
-        (skill_dir / "analyze.py").write_text("print('hello')")
+        script_file = skill_dir / "analyze.py"
+        script_file.write_text("print('legacy')")
 
         summary = _make_summary("my-skill", source_path=skill_md)
         details = SkillDetails(summary=summary, content="# My Skill", source_path=skill_md)
@@ -177,13 +183,39 @@ class TestSkillSync:
             script_names={"my-skill": ["analyze"]},
         )
         store = _make_store()
-        store.script_exists.return_value = True
         sync = SkillSync(shared_loader=shared, user_store=store)
 
         result = await sync.sync()
 
-        assert result.scripts_added == 0
-        store.save_script.assert_not_awaited()
+        assert result.scripts_added == 1
+        call_kwargs = store.save_script.call_args.kwargs
+        assert call_kwargs["content"] == "print('legacy')"
+
+    @pytest.mark.asyncio
+    async def test_upserts_existing_scripts(self, tmp_path: Path) -> None:
+        """Sync always upserts — existing scripts get replaced with latest content."""
+        skill_dir = tmp_path / "my-skill"
+        skill_dir.mkdir()
+        skill_md = skill_dir / "SKILL.md"
+        skill_md.write_text("# My Skill")
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "analyze.py").write_text("print('hello')")
+
+        summary = _make_summary("my-skill", source_path=skill_md)
+        details = SkillDetails(summary=summary, content="# My Skill", source_path=skill_md)
+        shared = _make_shared_loader(
+            summaries=[summary],
+            details={"my-skill": details},
+            script_names={"my-skill": ["analyze"]},
+        )
+        store = _make_store()
+        sync = SkillSync(shared_loader=shared, user_store=store)
+
+        result = await sync.sync()
+
+        assert result.scripts_added == 1
+        store.save_script.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handles_empty_skills(self) -> None:
@@ -194,7 +226,6 @@ class TestSkillSync:
         result = await sync.sync()
 
         assert result.skills_added == 0
-        assert result.skills_skipped == 0
 
     @pytest.mark.asyncio
     async def test_continues_on_skill_error(self) -> None:
@@ -202,8 +233,8 @@ class TestSkillSync:
         shared = _make_shared_loader(summaries=summaries)
         store = _make_store()
 
-        # First skill_exists call raises, second succeeds
-        store.skill_exists.side_effect = [RuntimeError("db error"), False]
+        # First save_skill call raises, second succeeds
+        store.save_skill.side_effect = [RuntimeError("db error"), store.save_skill.return_value]
         sync = SkillSync(shared_loader=shared, user_store=store)
 
         result = await sync.sync()

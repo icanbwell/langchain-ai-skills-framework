@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
+
 
 @dataclass(frozen=True, slots=True)
 class SkillSummary:
@@ -11,7 +13,8 @@ class SkillSummary:
 
     name: str
     description: str
-    source_path: Path
+    plugin_name: str = ""
+    source_path: Path | None = None
     license: str | None = None
     compatibility: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
@@ -24,7 +27,7 @@ class SkillDetails:
 
     summary: SkillSummary
     content: str
-    source_path: Path
+    source_path: Path | None = None
 
     @property
     def name(self) -> str:
@@ -41,3 +44,4 @@ class SkillSnapshot:
 
     details_by_name: Mapping[str, SkillDetails]
     ordered_summaries: tuple[SkillSummary, ...]
+    mcp_servers: tuple[PluginMcpServerEntry, ...] = ()

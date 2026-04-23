@@ -52,8 +52,8 @@ from langchain_ai_skills_framework.tools.save_skill_resource_tool import (
 from langchain_ai_skills_framework.tools.save_skill_script_tool import (
     SaveSkillScriptTool,
 )
-from langchain_ai_skills_framework.tools.toggle_skill_sharing_tool import (
-    ToggleSkillSharingTool,
+from langchain_ai_skills_framework.tools.publish_skill_tool import (
+    PublishSkillTool,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -185,7 +185,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "6. Use `save_skill_resource` with plugin_name to save a resource file for a skill\n"
             "7. Use `save_skill_script` with plugin_name to save a script file for a skill\n"
             "8. Use `delete_skill` with plugin_name to remove a previously saved skill\n"
-            "9. Use `toggle_skill_sharing` with plugin_name to share a skill with all users or make it private\n\n"
+            "9. Use `publish_skill` with plugin_name to publish a skill to the marketplace or unpublish it\n\n"
             "All skill tools require a `plugin_name` parameter to scope the operation to a specific plugin.\n"
             "Use progressive disclosure: load only what you need, when you need it."
         )
@@ -207,7 +207,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             SaveSkillResourceTool(mongo_skill_loader=self._user_loader),
             SaveSkillScriptTool(mongo_skill_loader=self._user_loader),
             DeleteSkillTool(mongo_skill_loader=self._user_loader),
-            ToggleSkillSharingTool(
+            PublishSkillTool(
                 mongo_skill_loader=self._user_loader,
                 marketplace_publisher=self._marketplace_publisher,
             ),

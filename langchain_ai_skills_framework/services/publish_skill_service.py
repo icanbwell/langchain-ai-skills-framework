@@ -21,7 +21,13 @@ class PublishSkillService:
     fires off a background task that publishes (or unpublishes) the skill
     to the GitHub marketplace repo.  The background task never blocks the
     local operation.
+
+    A class-level task registry ensures that rapid toggles for the same
+    skill are serialized: a new publish/unpublish request cancels any
+    in-flight task for that skill before scheduling the replacement.
     """
+
+    _pending_tasks: dict[str, asyncio.Task[None]] = {}
 
     def __init__(
         self,
@@ -52,15 +58,27 @@ class PublishSkillService:
             logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
             if self._publisher is not None:
-                asyncio.create_task(
+                task_key = f"{doc.plugin_name}/{doc.skill_name}"
+                previous = PublishSkillService._pending_tasks.get(task_key)
+                if previous is not None and not previous.done():
+                    previous.cancel()
+                    logger.debug("Cancelled in-flight publish task for '%s'", task_key)
+
+                task = asyncio.create_task(
                     self._try_publish(
                         user_id=user_id,
-                        plugin_name=plugin_name,
-                        skill_name=skill_name,
+                        plugin_name=doc.plugin_name,
+                        skill_name=doc.skill_name,
                         shared=shared,
                     ),
-                    name=f"marketplace-{'publish' if shared else 'unpublish'}-{plugin_name}/{skill_name}",
+                    name=f"marketplace-{'publish' if shared else 'unpublish'}-{task_key}",
                 )
+                PublishSkillService._pending_tasks[task_key] = task
+
+                def _cleanup(_t: asyncio.Task[None], _key: str = task_key) -> None:
+                    PublishSkillService._pending_tasks.pop(_key, None)
+
+                task.add_done_callback(_cleanup)
 
             return message
         except Exception as exc:

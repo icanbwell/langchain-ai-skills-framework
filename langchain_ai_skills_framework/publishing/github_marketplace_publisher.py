@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import logging
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from typing import Any
 
 import httpx
@@ -63,12 +64,18 @@ class GitHubMarketplacePublisher:
         resources: dict[str, str],
         scripts: dict[str, str],
         user_id: str,
-    ) -> str | None:
+    ) -> str:
         """Create or update a commit that adds/updates a skill in the marketplace.
 
-        Returns the PR HTML URL (branch mode), commit SHA (direct mode),
-        or ``None`` on failure.
+        Returns the PR HTML URL (branch mode) or commit SHA (direct mode).
+
+        Raises:
+            httpx.HTTPStatusError: If any GitHub API call fails.
+            ValueError: If any name contains path traversal segments.
         """
+        self._validate_path_segment(plugin_name, "plugin_name")
+        self._validate_path_segment(skill_name, "skill_name")
+
         branch = f"skill-publish/{plugin_name}/{skill_name}"
         files = self._build_file_map(
             plugin_name=plugin_name,
@@ -110,8 +117,15 @@ class GitHubMarketplacePublisher:
         """Create a commit that removes a skill directory from the marketplace.
 
         Returns the PR HTML URL (branch mode), commit SHA (direct mode),
-        or ``None`` on failure.
+        or ``None`` when no files exist under the skill directory.
+
+        Raises:
+            httpx.HTTPStatusError: If any GitHub API call fails.
+            ValueError: If any name contains path traversal segments.
         """
+        self._validate_path_segment(plugin_name, "plugin_name")
+        self._validate_path_segment(skill_name, "skill_name")
+
         branch = f"skill-unpublish/{plugin_name}/{skill_name}"
         skill_dir = f"{plugin_name}/skills/{skill_name}"
         commit_message = f"Remove skill: {plugin_name}/{skill_name}"
@@ -138,6 +152,25 @@ class GitHubMarketplacePublisher:
         )
 
     # ------------------------------------------------------------------
+    # Path safety
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_path_segment(value: str, label: str) -> None:
+        """Reject path segments that could escape the intended directory.
+
+        Raises ``ValueError`` for empty strings, absolute paths, ``..``
+        segments, or embedded path separators.
+        """
+        if not value or not value.strip():
+            raise ValueError(f"{label} must not be empty")
+        p = PurePosixPath(value)
+        if p.is_absolute():
+            raise ValueError(f"{label} must not be an absolute path: {value!r}")
+        if ".." in p.parts:
+            raise ValueError(f"{label} must not contain '..': {value!r}")
+
+    # ------------------------------------------------------------------
     # File map builder
     # ------------------------------------------------------------------
 
@@ -151,6 +184,13 @@ class GitHubMarketplacePublisher:
         scripts: dict[str, str],
     ) -> dict[str, str]:
         """Build path -> content mapping matching the marketplace directory layout."""
+        GitHubMarketplacePublisher._validate_path_segment(plugin_name, "plugin_name")
+        GitHubMarketplacePublisher._validate_path_segment(skill_name, "skill_name")
+        for name in resources:
+            GitHubMarketplacePublisher._validate_path_segment(name, "resource name")
+        for name in scripts:
+            GitHubMarketplacePublisher._validate_path_segment(name, "script name")
+
         base = f"{plugin_name}/skills/{skill_name}"
         files: dict[str, str] = {f"{base}/SKILL.md": skill_content}
         for name, content in resources.items():
@@ -312,7 +352,7 @@ class GitHubMarketplacePublisher:
         commit_message: str,
         pr_title: str,
         pr_body: str,
-    ) -> str | None:
+    ) -> str:
         """Branch mode: create blobs, tree, commit, branch, and PR."""
         async with httpx.AsyncClient(timeout=60.0) as client:
             base_sha = await self._get_ref_sha(client, self._base_branch)
@@ -402,7 +442,7 @@ class GitHubMarketplacePublisher:
         *,
         files: dict[str, str],
         commit_message: str,
-    ) -> str | None:
+    ) -> str:
         """Direct mode: commit files straight to the base branch."""
         async with httpx.AsyncClient(timeout=60.0) as client:
             base_sha = await self._get_ref_sha(client, self._base_branch)

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -19,6 +21,8 @@ from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServ
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import normalize_skill_name
 
 logger = logging.getLogger(__name__)
+
+_ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)}")
 
 
 @dataclass(frozen=True)
@@ -107,13 +111,16 @@ class MarketplacePluginManager:
                 continue
 
             def _sub(value: str, _root: str = plugin_root_str) -> str:
-                return value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
+                """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} references."""
+                value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
+                return _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
 
             url = server_config.get("url")
             command = server_config.get("command")
             args_raw = server_config.get("args", [])
             env_raw = server_config.get("env", {})
             headers_raw = server_config.get("headers", {})
+            oauth_raw = server_config.get("oauth")
 
             mcp_entry = PluginMcpServerEntry(
                 server_key=server_key,
@@ -131,6 +138,7 @@ class MarketplacePluginManager:
                 if isinstance(server_config.get("displayName"), str)
                 else None,
                 auth=server_config.get("auth") if isinstance(server_config.get("auth"), str) else None,
+                oauth=oauth_raw if isinstance(oauth_raw, dict) else None,
             )
 
             if not mcp_entry.is_http:

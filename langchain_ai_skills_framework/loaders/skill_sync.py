@@ -216,6 +216,8 @@ class SkillSync:
                         mcp_dict["display_name"] = mcp.display_name
                     if mcp.auth:
                         mcp_dict["auth"] = mcp.auth
+                    if mcp.oauth:
+                        mcp_dict["oauth"] = mcp.oauth
                     mcp_server_dicts.append(mcp_dict)
 
                 await self._store.save_plugin(

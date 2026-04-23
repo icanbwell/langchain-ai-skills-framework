@@ -106,6 +106,7 @@ def _serialize_mcp_entry(entry: PluginMcpServerEntry) -> dict[str, Any]:
         "description": entry.description,
         "display_name": entry.display_name,
         "auth": entry.auth,
+        "oauth": entry.oauth,
     }
 
 
@@ -122,6 +123,7 @@ def _deserialize_mcp_entry(data: dict[str, Any]) -> PluginMcpServerEntry:
         description=data.get("description"),
         display_name=data.get("display_name"),
         auth=data.get("auth"),
+        oauth=data.get("oauth"),
     )
 
 

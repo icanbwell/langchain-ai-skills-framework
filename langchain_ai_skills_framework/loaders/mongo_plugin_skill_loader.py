@@ -608,8 +608,8 @@ class MongoPluginSkillLoader:
                     desc = frontmatter.get("description", "")
                     if isinstance(desc, str) and desc.strip():
                         return desc.strip()
-            except yaml.YAMLError:
-                pass
+            except yaml.YAMLError as e:
+                logger.debug("Failed to parse YAML frontmatter in skill content: %s", e)
 
         for line in content.splitlines():
             stripped = line.strip().lstrip("#").strip()

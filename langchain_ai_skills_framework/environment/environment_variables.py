@@ -138,6 +138,12 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return {item.strip() for item in raw_value.split(",") if item.strip()}
 
     @property
+    def plugins_marketplace_publish_enabled(self) -> bool:
+        """Whether marketplace publishing is enabled (default: false)."""
+        raw = os.environ.get("PLUGINS_MARKETPLACE_PUBLISH_ENABLED", "false")
+        return raw.strip().lower() in ("true", "1", "yes")
+
+    @property
     def plugins_marketplace_publish_branch(self) -> str:
         """Base branch for marketplace skill publish commits/PRs."""
         return os.environ.get("PLUGINS_MARKETPLACE_PUBLISH_BRANCH", "main")

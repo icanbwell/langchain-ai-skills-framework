@@ -127,6 +127,18 @@ class SkillLoaderEnvironmentVariables(Protocol):
         ...
 
     @property
+    def plugins_marketplace_publish_enabled(self) -> bool:
+        """Whether marketplace publishing is enabled.
+
+        When ``False``, the publisher is not created even if a github://
+        marketplace URI and token are present.
+
+        Expected environment variable: PLUGINS_MARKETPLACE_PUBLISH_ENABLED
+        Default: ``false``
+        """
+        ...
+
+    @property
     def plugins_marketplace_publish_branch(self) -> str:
         """Base branch for marketplace skill publish commits/PRs.
 

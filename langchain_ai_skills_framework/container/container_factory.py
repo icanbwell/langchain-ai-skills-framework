@@ -80,6 +80,8 @@ def _build_marketplace_publisher(c: IContainer) -> GitHubMarketplacePublisher | 
     PLUGINS_MARKETPLACE_PUBLISH_USE_BRANCH control commit behaviour.
     """
     env = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
+    if not env.plugins_marketplace_publish_enabled:
+        return None
     marketplace_uri = env.plugins_marketplace
     token = env.skills_github_token
     if not marketplace_uri or not token or not marketplace_uri.startswith("github://"):

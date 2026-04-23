@@ -341,6 +341,59 @@ class GitHubMarketplacePublisher:
         return tree
 
     # ------------------------------------------------------------------
+    # Shared helpers for commit building
+    # ------------------------------------------------------------------
+
+    async def _build_file_tree_entries(self, client: httpx.AsyncClient, files: dict[str, str]) -> list[dict[str, Any]]:
+        """Upload each file as a blob and return tree entries for all of them."""
+        entries: list[dict[str, Any]] = []
+        for path, content in files.items():
+            blob_sha = await self._create_blob(client, content)
+            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob_sha})
+        return entries
+
+    async def _build_deletion_entries(
+        self, client: httpx.AsyncClient, base_tree_sha: str, directory_prefix: str
+    ) -> list[dict[str, Any]]:
+        """Return tree entries that null-out every blob under *directory_prefix*."""
+        full_tree = await self._get_tree_recursive(client, base_tree_sha)
+        prefix = directory_prefix.rstrip("/") + "/"
+        return [
+            {"path": e["path"], "mode": e["mode"], "type": e["type"], "sha": None}
+            for e in full_tree
+            if e["path"].startswith(prefix) and e["type"] == "blob"
+        ]
+
+    async def _commit_tree(
+        self,
+        client: httpx.AsyncClient,
+        base_tree_sha: str,
+        base_sha: str,
+        tree_entries: list[dict[str, Any]],
+        message: str,
+    ) -> str:
+        """Create tree + commit on top of *base_sha* and return the new commit SHA."""
+        new_tree_sha = await self._create_tree(client, base_tree_sha, tree_entries)
+        return await self._create_commit(client, new_tree_sha, base_sha, message)
+
+    async def _upsert_pr(
+        self,
+        client: httpx.AsyncClient,
+        branch: str,
+        title: str,
+        body: str,
+    ) -> str:
+        """Find an existing open PR for *branch* and update it, or create a new one."""
+        existing = await self._find_open_pr(client, branch)
+        if existing:
+            pr_url = await self._update_pull_request(client, existing["number"], title, body)
+            logger.info("Updated existing PR %s for branch '%s'", pr_url, branch)
+        else:
+            pr_url = await self._create_pull_request(client, branch, title, body)
+            logger.info("Created new PR %s for branch '%s'", pr_url, branch)
+        return pr_url
+
+    # ------------------------------------------------------------------
     # High-level orchestration — branch mode
     # ------------------------------------------------------------------
 
@@ -358,31 +411,11 @@ class GitHubMarketplacePublisher:
             base_sha = await self._get_ref_sha(client, self._base_branch)
             base_tree_sha = await self._get_commit_tree_sha(client, base_sha)
 
-            tree_entries: list[dict[str, Any]] = []
-            for path, content in files.items():
-                blob_sha = await self._create_blob(client, content)
-                tree_entries.append(
-                    {
-                        "path": path,
-                        "mode": "100644",
-                        "type": "blob",
-                        "sha": blob_sha,
-                    }
-                )
-
-            new_tree_sha = await self._create_tree(client, base_tree_sha, tree_entries)
-            commit_sha = await self._create_commit(client, new_tree_sha, base_sha, commit_message)
+            tree_entries = await self._build_file_tree_entries(client, files)
+            commit_sha = await self._commit_tree(client, base_tree_sha, base_sha, tree_entries, commit_message)
             await self._create_branch(client, branch, commit_sha)
 
-            existing_pr = await self._find_open_pr(client, branch)
-            if existing_pr:
-                pr_url = await self._update_pull_request(client, existing_pr["number"], pr_title, pr_body)
-                logger.info("Updated existing PR %s for branch '%s'", pr_url, branch)
-            else:
-                pr_url = await self._create_pull_request(client, branch, pr_title, pr_body)
-                logger.info("Created new PR %s for branch '%s'", pr_url, branch)
-
-            return pr_url
+            return await self._upsert_pr(client, branch, pr_title, pr_body)
 
     async def _create_or_update_removal_pr(
         self,
@@ -398,40 +431,15 @@ class GitHubMarketplacePublisher:
             base_sha = await self._get_ref_sha(client, self._base_branch)
             base_tree_sha = await self._get_commit_tree_sha(client, base_sha)
 
-            full_tree = await self._get_tree_recursive(client, base_tree_sha)
-
-            prefix = directory_prefix.rstrip("/") + "/"
-            delete_entries: list[dict[str, Any]] = [
-                {
-                    "path": entry["path"],
-                    "mode": entry["mode"],
-                    "type": entry["type"],
-                    "sha": None,
-                }
-                for entry in full_tree
-                if entry["path"].startswith(prefix) and entry["type"] == "blob"
-            ]
-
+            delete_entries = await self._build_deletion_entries(client, base_tree_sha, directory_prefix)
             if not delete_entries:
-                logger.info(
-                    "No files found under '%s' to remove — skipping PR",
-                    directory_prefix,
-                )
+                logger.info("No files found under '%s' to remove — skipping PR", directory_prefix)
                 return None
 
-            new_tree_sha = await self._create_tree(client, base_tree_sha, delete_entries)
-            commit_sha = await self._create_commit(client, new_tree_sha, base_sha, commit_message)
+            commit_sha = await self._commit_tree(client, base_tree_sha, base_sha, delete_entries, commit_message)
             await self._create_branch(client, branch, commit_sha)
 
-            existing_pr = await self._find_open_pr(client, branch)
-            if existing_pr:
-                pr_url = await self._update_pull_request(client, existing_pr["number"], pr_title, pr_body)
-                logger.info("Updated existing removal PR %s", pr_url)
-            else:
-                pr_url = await self._create_pull_request(client, branch, pr_title, pr_body)
-                logger.info("Created removal PR %s", pr_url)
-
-            return pr_url
+            return await self._upsert_pr(client, branch, pr_title, pr_body)
 
     # ------------------------------------------------------------------
     # High-level orchestration — direct mode
@@ -448,20 +456,8 @@ class GitHubMarketplacePublisher:
             base_sha = await self._get_ref_sha(client, self._base_branch)
             base_tree_sha = await self._get_commit_tree_sha(client, base_sha)
 
-            tree_entries: list[dict[str, Any]] = []
-            for path, content in files.items():
-                blob_sha = await self._create_blob(client, content)
-                tree_entries.append(
-                    {
-                        "path": path,
-                        "mode": "100644",
-                        "type": "blob",
-                        "sha": blob_sha,
-                    }
-                )
-
-            new_tree_sha = await self._create_tree(client, base_tree_sha, tree_entries)
-            commit_sha = await self._create_commit(client, new_tree_sha, base_sha, commit_message)
+            tree_entries = await self._build_file_tree_entries(client, files)
+            commit_sha = await self._commit_tree(client, base_tree_sha, base_sha, tree_entries, commit_message)
 
             await self._update_branch(client, self._base_branch, commit_sha)
             logger.info("Committed directly to '%s': %s", self._base_branch, commit_sha)
@@ -478,35 +474,13 @@ class GitHubMarketplacePublisher:
             base_sha = await self._get_ref_sha(client, self._base_branch)
             base_tree_sha = await self._get_commit_tree_sha(client, base_sha)
 
-            full_tree = await self._get_tree_recursive(client, base_tree_sha)
-
-            prefix = directory_prefix.rstrip("/") + "/"
-            delete_entries: list[dict[str, Any]] = [
-                {
-                    "path": entry["path"],
-                    "mode": entry["mode"],
-                    "type": entry["type"],
-                    "sha": None,
-                }
-                for entry in full_tree
-                if entry["path"].startswith(prefix) and entry["type"] == "blob"
-            ]
-
+            delete_entries = await self._build_deletion_entries(client, base_tree_sha, directory_prefix)
             if not delete_entries:
-                logger.info(
-                    "No files found under '%s' to remove — skipping commit",
-                    directory_prefix,
-                )
+                logger.info("No files found under '%s' to remove — skipping commit", directory_prefix)
                 return None
 
-            new_tree_sha = await self._create_tree(client, base_tree_sha, delete_entries)
-            commit_sha = await self._create_commit(client, new_tree_sha, base_sha, commit_message)
+            commit_sha = await self._commit_tree(client, base_tree_sha, base_sha, delete_entries, commit_message)
 
             await self._update_branch(client, self._base_branch, commit_sha)
-            logger.info(
-                "Removed '%s' directly on '%s': %s",
-                directory_prefix,
-                self._base_branch,
-                commit_sha,
-            )
+            logger.info("Removed '%s' directly on '%s': %s", directory_prefix, self._base_branch, commit_sha)
             return commit_sha

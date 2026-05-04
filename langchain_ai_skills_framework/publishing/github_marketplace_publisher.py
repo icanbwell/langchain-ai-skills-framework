@@ -90,10 +90,19 @@ class GitHubMarketplacePublisher:
             f"## Skill Published\n\n"
             f"- **Plugin**: {plugin_name}\n"
             f"- **Skill**: {skill_name}\n"
-            f"- **Shared by**: {user_id}\n"
+            f"- **Published by**: {user_id}\n"
             f"- **Timestamp**: {datetime.now(timezone.utc).isoformat()}\n"
         )
 
+        logger.info(
+            "Publishing skill '%s/%s' to %s (%d files, mode=%s, user=%s)",
+            plugin_name,
+            skill_name,
+            self._repo,
+            len(files),
+            "branch" if self._use_branch else "direct",
+            user_id,
+        )
         if self._use_branch:
             return await self._create_or_update_pr(
                 branch=branch,
@@ -134,10 +143,18 @@ class GitHubMarketplacePublisher:
             f"## Skill Removed\n\n"
             f"- **Plugin**: {plugin_name}\n"
             f"- **Skill**: {skill_name}\n"
-            f"- **Unshared by**: {user_id}\n"
+            f"- **Unpublished by**: {user_id}\n"
             f"- **Timestamp**: {datetime.now(timezone.utc).isoformat()}\n"
         )
 
+        logger.info(
+            "Unpublishing skill '%s/%s' from %s (mode=%s, user=%s)",
+            plugin_name,
+            skill_name,
+            self._repo,
+            "branch" if self._use_branch else "direct",
+            user_id,
+        )
         if self._use_branch:
             return await self._create_or_update_removal_pr(
                 branch=branch,
@@ -408,12 +425,18 @@ class GitHubMarketplacePublisher:
     ) -> str:
         """Branch mode: create blobs, tree, commit, branch, and PR."""
         async with httpx.AsyncClient(timeout=60.0) as client:
+            logger.info("Resolving base branch '%s' on %s", self._base_branch, self._repo)
             base_sha = await self._get_ref_sha(client, self._base_branch)
             base_tree_sha = await self._get_commit_tree_sha(client, base_sha)
+            logger.info("Base ref: %s (tree: %s)", base_sha[:12], base_tree_sha[:12])
 
+            logger.info("Creating %d blob(s) for branch '%s'", len(files), branch)
             tree_entries = await self._build_file_tree_entries(client, files)
             commit_sha = await self._commit_tree(client, base_tree_sha, base_sha, tree_entries, commit_message)
+            logger.info("Created commit %s on branch '%s'", commit_sha[:12], branch)
+
             await self._create_branch(client, branch, commit_sha)
+            logger.info("Branch '%s' updated to %s", branch, commit_sha[:12])
 
             return await self._upsert_pr(client, branch, pr_title, pr_body)
 
@@ -428,6 +451,7 @@ class GitHubMarketplacePublisher:
     ) -> str | None:
         """Branch mode: create a PR that removes all files under a directory prefix."""
         async with httpx.AsyncClient(timeout=60.0) as client:
+            logger.info("Resolving base branch '%s' on %s for removal", self._base_branch, self._repo)
             base_sha = await self._get_ref_sha(client, self._base_branch)
             base_tree_sha = await self._get_commit_tree_sha(client, base_sha)
 
@@ -435,8 +459,10 @@ class GitHubMarketplacePublisher:
             if not delete_entries:
                 logger.info("No files found under '%s' to remove — skipping PR", directory_prefix)
                 return None
+            logger.info("Removing %d file(s) under '%s'", len(delete_entries), directory_prefix)
 
             commit_sha = await self._commit_tree(client, base_tree_sha, base_sha, delete_entries, commit_message)
+            logger.info("Created removal commit %s on branch '%s'", commit_sha[:12], branch)
             await self._create_branch(client, branch, commit_sha)
 
             return await self._upsert_pr(client, branch, pr_title, pr_body)

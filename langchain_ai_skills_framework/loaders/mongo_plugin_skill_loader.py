@@ -166,22 +166,30 @@ class MongoPluginSkillLoader:
 
         return MongoPluginSkillDocument.from_mongo_dict(raw)
 
-    async def set_skill_shared(
+    async def set_skill_published(
         self,
         *,
         user_id: str,
         plugin_name: str,
         skill_name: str,
-        shared: bool,
+        published: bool,
+        published_branch: str | None = None,
     ) -> MongoPluginSkillDocument:
         self._validate_user_id(user_id)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
         now = datetime.now(timezone.utc)
+        update_fields: dict[str, object] = {
+            "published": published,
+            "published_date": now,
+            "date_modified": now,
+        }
+        if published_branch is not None:
+            update_fields["published_branch"] = published_branch
         raw = await self._skills_collection.find_one_and_update(
             {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name},
-            {"$set": {"shared": shared, "date_modified": now}},
+            {"$set": update_fields},
             return_document=ReturnDocument.AFTER,
         )
         if raw is None:
@@ -482,7 +490,7 @@ class MongoPluginSkillLoader:
         return await self._build_snapshot(query=query, owner_label=user_id)
 
     async def load_shared_snapshot(self, *, plugin_name: str = "") -> SkillSnapshot:
-        query: dict[str, object] = {"shared": True}
+        query: dict[str, object] = {"$or": [{"published": True}, {"shared": True}]}
         if plugin_name:
             query["plugin_name"] = plugin_name
         return await self._build_snapshot(query=query, owner_label="shared")

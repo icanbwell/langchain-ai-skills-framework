@@ -52,13 +52,14 @@ class NullPluginSkillStore:
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def set_skill_shared(
+    async def set_skill_published(
         self,
         *,
         user_id: str,
         plugin_name: str,
         skill_name: str,
-        shared: bool,
+        published: bool,
+        published_branch: str | None = None,
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 

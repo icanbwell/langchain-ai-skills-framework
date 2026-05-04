@@ -45,13 +45,14 @@ class PluginSkillStore(Protocol):
         modified_by: str = "",
     ) -> MongoPluginSkillDocument: ...
 
-    async def set_skill_shared(
+    async def set_skill_published(
         self,
         *,
         user_id: str,
         plugin_name: str,
         skill_name: str,
-        shared: bool,
+        published: bool,
+        published_branch: str | None = None,
     ) -> MongoPluginSkillDocument: ...
 
     async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool: ...

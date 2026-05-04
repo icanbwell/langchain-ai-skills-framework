@@ -68,7 +68,7 @@ def _make_store() -> AsyncMock:
         content="test",
         modified_by=SYSTEM_USER_ID,
     )
-    store.set_skill_shared.return_value = store.save_skill.return_value
+    store.set_skill_published.return_value = store.save_skill.return_value
     return store
 
 
@@ -89,7 +89,7 @@ class TestSkillSync:
         assert call_kwargs["skill_name"] == "my-skill"
         assert call_kwargs["modified_by"] == SYSTEM_USER_ID
         # Should be marked as shared
-        store.set_skill_shared.assert_awaited_once()
+        store.set_skill_published.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_upserts_existing_skill(self) -> None:

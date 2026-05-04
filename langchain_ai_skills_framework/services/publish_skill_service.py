@@ -50,19 +50,28 @@ class PublishSkillService:
         self._store = mongo_skill_loader
         self._publisher = marketplace_publisher
 
-    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str, shared: bool) -> str:
+    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str, published: bool) -> str:
         require_user_id(user_id, "publish_skill")
         require_non_empty(skill_name, "skill_name")
         store = require_store(self._store)
 
         try:
-            doc = await store.set_skill_shared(
+            branch: str | None = None
+            if self._publisher is not None and self._publisher._use_branch:
+                branch = (
+                    f"skill-publish/{plugin_name}/{skill_name}"
+                    if published
+                    else f"skill-unpublish/{plugin_name}/{skill_name}"
+                )
+
+            doc = await store.set_skill_published(
                 user_id=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
-                shared=shared,
+                published=published,
+                published_branch=branch,
             )
-            state = "published" if doc.shared else "unpublished"
+            state = "published" if doc.published else "unpublished"
             message = f"Skill '{doc.skill_name}' is now {state}."
             logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
@@ -78,9 +87,9 @@ class PublishSkillService:
                         user_id=user_id,
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
-                        shared=shared,
+                        published=published,
                     ),
-                    name=f"marketplace-{'publish' if shared else 'unpublish'}-{task_key}",
+                    name=f"marketplace-{'publish' if published else 'unpublish'}-{task_key}",
                 )
                 PublishSkillService._pending_tasks[task_key] = task
 
@@ -110,13 +119,13 @@ class PublishSkillService:
         user_id: str,
         plugin_name: str,
         skill_name: str,
-        shared: bool,
+        published: bool,
     ) -> None:
         """Best-effort publish/unpublish. Exceptions are logged, never raised."""
         assert self._publisher is not None
         assert self._store is not None
         try:
-            if shared:
+            if published:
                 await self._publish_skill(
                     user_id=user_id,
                     plugin_name=plugin_name,
@@ -137,7 +146,7 @@ class PublishSkillService:
         except Exception:
             logger.exception(
                 "Failed to %s skill '%s/%s' in marketplace",
-                "publish" if shared else "unpublish",
+                "publish" if published else "unpublish",
                 plugin_name,
                 skill_name,
             )
@@ -152,6 +161,12 @@ class PublishSkillService:
         assert self._publisher is not None
         assert self._store is not None
 
+        logger.info(
+            "Gathering skill content for '%s/%s' (user=%s)",
+            plugin_name,
+            skill_name,
+            user_id,
+        )
         details = await self._store.get_skill_details(
             user_id=user_id,
             plugin_name=plugin_name,
@@ -186,6 +201,13 @@ class PublishSkillService:
                 script_name=name,
             )
 
+        logger.info(
+            "Publishing '%s/%s' to marketplace: %d resource(s), %d script(s)",
+            plugin_name,
+            skill_name,
+            len(resources),
+            len(scripts),
+        )
         result = await self._publisher.publish_skill(
             plugin_name=plugin_name,
             skill_name=skill_name,

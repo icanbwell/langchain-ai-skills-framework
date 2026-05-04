@@ -17,7 +17,7 @@ from langchain_ai_skills_framework.langchain.tools.publish_skill_tool import (
 )
 
 
-def _make_doc(skill_name: str = "test-skill", shared: bool = True) -> MongoPluginSkillDocument:
+def _make_doc(skill_name: str = "test-skill", published: bool = True) -> MongoPluginSkillDocument:
     return MongoPluginSkillDocument(
         plugin_name="test-plugin",
         user_id="user-1",
@@ -25,16 +25,16 @@ def _make_doc(skill_name: str = "test-skill", shared: bool = True) -> MongoPlugi
         path=f"test-plugin/skills/{skill_name}/SKILL.md",
         description="A test",
         content="# Test\nContent",
-        shared=shared,
+        published=published,
         modified_by="user-1",
         date_created=datetime.now(timezone.utc),
         date_modified=datetime.now(timezone.utc),
     )
 
 
-def _make_loader_mock(shared: bool = True) -> AsyncMock:
+def _make_loader_mock(published: bool = True) -> AsyncMock:
     loader = AsyncMock(spec=PluginSkillStore)
-    loader.set_skill_shared.return_value = _make_doc(shared=shared)
+    loader.set_skill_published.return_value = _make_doc(published=published)
     return loader
 
 
@@ -48,25 +48,25 @@ def _make_runtime(user_id: str = "user-1") -> MagicMock:
 class TestPublishSkillTool:
     @pytest.mark.asyncio
     async def test_publishes_skill_successfully(self) -> None:
-        loader = _make_loader_mock(shared=True)
+        loader = _make_loader_mock(published=True)
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         result, artifact = await tool._arun(
-            plugin_name="test-plugin", skill_name="test-skill", shared=True, runtime=_make_runtime("user-1")
+            plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=_make_runtime("user-1")
         )
 
         assert "published" in result
-        loader.set_skill_shared.assert_awaited_once_with(
-            user_id="user-1", plugin_name="test-plugin", skill_name="test-skill", shared=True
+        loader.set_skill_published.assert_awaited_once_with(
+            user_id="user-1", plugin_name="test-plugin", skill_name="test-skill", published=True
         )
 
     @pytest.mark.asyncio
     async def test_unpublishes_skill(self) -> None:
-        loader = _make_loader_mock(shared=False)
+        loader = _make_loader_mock(published=False)
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         result, _ = await tool._arun(
-            plugin_name="test-plugin", skill_name="test-skill", shared=False, runtime=_make_runtime("user-1")
+            plugin_name="test-plugin", skill_name="test-skill", published=False, runtime=_make_runtime("user-1")
         )
 
         assert "unpublished" in result
@@ -76,36 +76,36 @@ class TestPublishSkillTool:
         tool = PublishSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", shared=True, runtime=_make_runtime(""))
+            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime(""))
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
         tool = PublishSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(plugin_name="test-plugin", skill_name="  ", shared=True, runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="  ", published=True, runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:
         tool = PublishSkillTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", shared=True, runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime())
 
     @pytest.mark.asyncio
     async def test_wraps_unexpected_exception(self) -> None:
         loader = AsyncMock(spec=PluginSkillStore)
-        loader.set_skill_shared.side_effect = RuntimeError("db down")
+        loader.set_skill_published.side_effect = RuntimeError("db down")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         with pytest.raises(ToolException, match="Unable to update publishing"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", shared=True, runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = PublishSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(plugin_name="test-plugin", skill_name="test", shared=True, runtime=_make_runtime())
+            tool._run(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime())
 
     def test_get_friendly_name(self) -> None:
         name = PublishSkillTool.get_friendly_name(tool_input={"skill_name": "my-skill"})

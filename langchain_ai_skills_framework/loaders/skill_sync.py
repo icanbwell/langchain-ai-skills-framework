@@ -86,8 +86,8 @@ class SkillSync:
             content=details.content,
             modified_by=SYSTEM_USER_ID,
         )
-        await self._store.set_skill_shared(
-            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, shared=True
+        await self._store.set_skill_published(
+            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, published=True
         )
         result.skills_added += 1
         logger.debug("SkillSync: upserted skill '%s' from plugin '%s'.", skill_name, plugin_name)

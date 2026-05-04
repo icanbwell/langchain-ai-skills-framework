@@ -32,12 +32,16 @@ class SaveSkillService:
         plugin_name: str,
         skill_name: str,
         content: str,
+        update_if_exists: bool = True,
     ) -> str:
         """Validate and persist the skill, returning a status message.
 
         Returns the message as a plain string on success or on validation
         failure (soft error).  Raises ``SkillOperationError`` for hard
         failures that should surface as tool errors.
+
+        When ``update_if_exists`` is False, returns an error message if a
+        skill with the same name already exists for this user/plugin.
         """
         require_user_id(user_id, "save_skill")
         require_non_empty(skill_name, "skill_name")
@@ -55,6 +59,15 @@ class SaveSkillService:
         if validation_errors:
             error_details = "; ".join(validation_errors)
             return f"Skill validation failed ({len(validation_errors)} error(s)): {error_details}"
+
+        if not update_if_exists:
+            exists = await store.skill_exists(
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
+            )
+            if exists:
+                return f"Skill '{skill_name}' already exists. Set update_if_exists=true to overwrite."
 
         try:
             doc = await store.save_skill(

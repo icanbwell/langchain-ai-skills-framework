@@ -64,6 +64,7 @@ class GitHubMarketplacePublisher:
         resources: dict[str, str],
         scripts: dict[str, str],
         user_id: str,
+        branch_name: str | None = None,
     ) -> str:
         """Create or update a commit that adds/updates a skill in the marketplace.
 
@@ -76,7 +77,7 @@ class GitHubMarketplacePublisher:
         self._validate_path_segment(plugin_name, "plugin_name")
         self._validate_path_segment(skill_name, "skill_name")
 
-        branch = f"skill-publish/{plugin_name}/{skill_name}"
+        branch = branch_name or f"skill-publish/{plugin_name}/{skill_name}"
         files = self._build_file_map(
             plugin_name=plugin_name,
             skill_name=skill_name,

@@ -50,7 +50,15 @@ class PublishSkillService:
         self._store = mongo_skill_loader
         self._publisher = marketplace_publisher
 
-    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str, published: bool) -> str:
+    async def execute(
+        self,
+        *,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+        published: bool,
+        branch_name: str | None = None,
+    ) -> str:
         require_user_id(user_id, "publish_skill")
         require_non_empty(skill_name, "skill_name")
         store = require_store(self._store)
@@ -58,11 +66,14 @@ class PublishSkillService:
         try:
             branch: str | None = None
             if self._publisher is not None and self._publisher._use_branch:
-                branch = (
-                    f"skill-publish/{plugin_name}/{skill_name}"
-                    if published
-                    else f"skill-unpublish/{plugin_name}/{skill_name}"
-                )
+                if branch_name:
+                    branch = branch_name
+                else:
+                    branch = (
+                        f"skill-publish/{plugin_name}/{skill_name}"
+                        if published
+                        else f"skill-unpublish/{plugin_name}/{skill_name}"
+                    )
 
             doc = await store.set_skill_published(
                 user_id=user_id,
@@ -88,6 +99,7 @@ class PublishSkillService:
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,
+                        branch_name=branch_name,
                     ),
                     name=f"marketplace-{'publish' if published else 'unpublish'}-{task_key}",
                 )
@@ -120,6 +132,7 @@ class PublishSkillService:
         plugin_name: str,
         skill_name: str,
         published: bool,
+        branch_name: str | None = None,
     ) -> None:
         """Best-effort publish/unpublish. Exceptions are logged, never raised."""
         assert self._publisher is not None
@@ -130,6 +143,7 @@ class PublishSkillService:
                     user_id=user_id,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
+                    branch_name=branch_name,
                 )
             else:
                 result = await self._publisher.unpublish_skill(
@@ -157,6 +171,7 @@ class PublishSkillService:
         user_id: str,
         plugin_name: str,
         skill_name: str,
+        branch_name: str | None = None,
     ) -> None:
         assert self._publisher is not None
         assert self._store is not None
@@ -208,6 +223,7 @@ class PublishSkillService:
             len(resources),
             len(scripts),
         )
+        effective_branch = branch_name if self._publisher._use_branch else None
         result = await self._publisher.publish_skill(
             plugin_name=plugin_name,
             skill_name=skill_name,
@@ -215,6 +231,7 @@ class PublishSkillService:
             resources=resources,
             scripts=scripts,
             user_id=user_id,
+            branch_name=effective_branch,
         )
         logger.info(
             "Skill '%s/%s' publish result: %s",

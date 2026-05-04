@@ -34,6 +34,10 @@ class PublishSkillInput(BaseModel):
     published: bool = Field(
         description="True to publish the skill to the marketplace, False to unpublish it.",
     )
+    branch_name: Optional[str] = Field(
+        default=None,
+        description="Optional branch name for the PR. Defaults to 'skill-publish/{plugin}/{skill}'.",
+    )
     runtime: ToolRuntime
 
 
@@ -54,6 +58,7 @@ class PublishSkillTool(BaseTool):
         plugin_name: str,
         skill_name: str,
         published: bool,
+        branch_name: Optional[str] = None,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -66,6 +71,7 @@ class PublishSkillTool(BaseTool):
         plugin_name: str,
         skill_name: str,
         published: bool,
+        branch_name: Optional[str] = None,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -78,7 +84,11 @@ class PublishSkillTool(BaseTool):
         )
         try:
             message = await service.execute(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, published=published
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
+                published=published,
+                branch_name=branch_name,
             )
             return message, message
         except SkillOperationError as exc:

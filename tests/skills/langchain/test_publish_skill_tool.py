@@ -57,7 +57,11 @@ class TestPublishSkillTool:
 
         assert "published" in result
         loader.set_skill_published.assert_awaited_once_with(
-            user_id="user-1", plugin_name="test-plugin", skill_name="test-skill", published=True
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            published=True,
+            published_branch=None,
         )
 
     @pytest.mark.asyncio

@@ -28,8 +28,13 @@ class PublishSkillInput(BaseModel):
     plugin_name: str = Field(
         description="Name of the plugin containing the skill.",
     )
-    skill_name: str = Field(
-        description="Name of the skill to publish or unpublish.",
+    skill_name: Optional[str] = Field(
+        default=None,
+        description="Name of the skill to publish or unpublish. If omitted, extracted from content frontmatter.",
+    )
+    content: Optional[str] = Field(
+        default=None,
+        description="Skill content (SKILL.md format). Used to extract skill_name from frontmatter when skill_name is not provided.",
     )
     published: bool = Field(
         description="True to publish the skill to the marketplace, False to unpublish it.",
@@ -56,7 +61,8 @@ class PublishSkillTool(BaseTool):
         self,
         *,
         plugin_name: str,
-        skill_name: str,
+        skill_name: Optional[str] = None,
+        content: Optional[str] = None,
         published: bool,
         branch_name: Optional[str] = None,
         runtime: ToolRuntime,
@@ -69,7 +75,8 @@ class PublishSkillTool(BaseTool):
         self,
         *,
         plugin_name: str,
-        skill_name: str,
+        skill_name: Optional[str] = None,
+        content: Optional[str] = None,
         published: bool,
         branch_name: Optional[str] = None,
         runtime: ToolRuntime,
@@ -87,6 +94,7 @@ class PublishSkillTool(BaseTool):
                 user_id=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
+                content=content,
                 published=published,
                 branch_name=branch_name,
             )

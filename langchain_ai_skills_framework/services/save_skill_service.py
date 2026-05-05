@@ -25,12 +25,25 @@ class SaveSkillService:
     def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
         self._store = mongo_skill_loader
 
+    @staticmethod
+    def resolve_skill_name(content: str) -> str | None:
+        """Extract skill name from content frontmatter.
+
+        Returns the name string or None if it cannot be determined.
+        """
+        try:
+            metadata, _ = parse_frontmatter(content)
+            name = metadata.get("name")
+            return name.strip() if isinstance(name, str) and name.strip() else None
+        except ParseError:
+            return None
+
     async def execute(
         self,
         *,
         user_id: str,
         plugin_name: str,
-        skill_name: str,
+        skill_name: str | None = None,
         content: str,
         update_if_exists: bool = True,
     ) -> str:
@@ -40,11 +53,13 @@ class SaveSkillService:
         failure (soft error).  Raises ``SkillOperationError`` for hard
         failures that should surface as tool errors.
 
+        When ``skill_name`` is None, it is extracted from the ``name``
+        field in the content frontmatter.
+
         When ``update_if_exists`` is False, returns an error message if a
         skill with the same name already exists for this user/plugin.
         """
         require_user_id(user_id, "save_skill")
-        require_non_empty(skill_name, "skill_name")
         require_non_empty(content, "content")
         store = require_store(self._store)
 
@@ -54,6 +69,15 @@ class SaveSkillService:
         except ParseError as exc:
             message = f"Skill validation failed: {exc}"
             return message
+
+        if not skill_name:
+            skill_name = metadata.get("name")
+            if isinstance(skill_name, str):
+                skill_name = skill_name.strip()
+            if not skill_name:
+                return "Skill validation failed: 'name' field missing from frontmatter and no skill_name provided."
+
+        require_non_empty(skill_name, "skill_name")
 
         validation_errors = validate_metadata(metadata)
         if validation_errors:

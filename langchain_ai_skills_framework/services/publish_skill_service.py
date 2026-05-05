@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from skills_ref.errors import ParseError
+from skills_ref.parser import parse_frontmatter
+
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
@@ -50,16 +53,44 @@ class PublishSkillService:
         self._store = mongo_skill_loader
         self._publisher = marketplace_publisher
 
+    @staticmethod
+    def resolve_skill_name(content: str) -> str | None:
+        """Extract skill name from content frontmatter.
+
+        Returns the name string or None if it cannot be determined.
+        """
+        try:
+            metadata, _ = parse_frontmatter(content)
+            name = metadata.get("name")
+            return name.strip() if isinstance(name, str) and name.strip() else None
+        except ParseError:
+            return None
+
     async def execute(
         self,
         *,
         user_id: str,
         plugin_name: str,
-        skill_name: str,
+        skill_name: str | None = None,
+        content: str | None = None,
         published: bool,
         branch_name: str | None = None,
     ) -> str:
+        """Toggle publish state for a skill.
+
+        When ``skill_name`` is None, it is extracted from the ``name``
+        field in the ``content`` frontmatter.
+        """
         require_user_id(user_id, "publish_skill")
+
+        if not skill_name:
+            if content:
+                skill_name = self.resolve_skill_name(content)
+            if not skill_name:
+                raise SkillOperationError(
+                    "skill_name is required when content is not provided or does not contain a 'name' field."
+                )
+
         require_non_empty(skill_name, "skill_name")
         store = require_store(self._store)
 

@@ -44,6 +44,11 @@ class GitHubMarketplacePublisher:
         self._base_url = "https://api.github.com"
 
     @property
+    def use_branch(self) -> bool:
+        """Whether publish operations create a branch + PR rather than committing directly."""
+        return self._use_branch
+
+    @property
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"token {self._access_token}",

@@ -115,7 +115,7 @@ def _make_user_loader_mock() -> PluginSkillStore:
 
 
 class TestBuildSkillTools:
-    def test_includes_save_and_delete(self) -> None:
+    def test_includes_expected_tools(self) -> None:
         shared = _StubSharedLoader()
         user_loader = _make_user_loader_mock()
         composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
@@ -125,13 +125,7 @@ class TestBuildSkillTools:
 
         assert "save_skill" in tool_names
         assert "delete_skill" in tool_names
-
-    def test_includes_list_plugins(self) -> None:
-        shared = _StubSharedLoader()
-        user_loader = _make_user_loader_mock()
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
-
-        tools = build_skill_tools(skill_loader=composite, user_skill_store=user_loader)
-        tool_names = [t.name for t in tools]
-
         assert "list_plugins" in tool_names
+        assert "publish_skill" in tool_names
+        assert "list_skills" in tool_names
+        assert "load_skill" in tool_names

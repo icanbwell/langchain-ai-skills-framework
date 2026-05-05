@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from skills_ref.errors import ParseError
-from skills_ref.parser import parse_frontmatter
-
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
+from langchain_ai_skills_framework.services.save_skill_service import SaveSkillService
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
     require_non_empty,
@@ -53,19 +51,6 @@ class PublishSkillService:
         self._store = mongo_skill_loader
         self._publisher = marketplace_publisher
 
-    @staticmethod
-    def resolve_skill_name(content: str) -> str | None:
-        """Extract skill name from content frontmatter.
-
-        Returns the name string or None if it cannot be determined.
-        """
-        try:
-            metadata, _ = parse_frontmatter(content)
-            name = metadata.get("name")
-            return name.strip() if isinstance(name, str) and name.strip() else None
-        except ParseError:
-            return None
-
     async def execute(
         self,
         *,
@@ -85,7 +70,7 @@ class PublishSkillService:
 
         if not skill_name:
             if content:
-                skill_name = self.resolve_skill_name(content)
+                skill_name = SaveSkillService.resolve_skill_name(content)
             if not skill_name:
                 raise SkillOperationError(
                     "skill_name is required when content is not provided or does not contain a 'name' field."
@@ -96,7 +81,7 @@ class PublishSkillService:
 
         try:
             branch: str | None = None
-            if self._publisher is not None and self._publisher._use_branch:
+            if self._publisher is not None and self._publisher.use_branch:
                 if branch_name:
                     branch = branch_name
                 else:
@@ -166,8 +151,8 @@ class PublishSkillService:
         branch_name: str | None = None,
     ) -> None:
         """Best-effort publish/unpublish. Exceptions are logged, never raised."""
-        assert self._publisher is not None
-        assert self._store is not None
+        if self._publisher is None or self._store is None:
+            return
         try:
             if published:
                 await self._publish_skill(
@@ -204,8 +189,8 @@ class PublishSkillService:
         skill_name: str,
         branch_name: str | None = None,
     ) -> None:
-        assert self._publisher is not None
-        assert self._store is not None
+        if self._publisher is None or self._store is None:
+            return
 
         logger.info(
             "Gathering skill content for '%s/%s' (user=%s)",
@@ -254,7 +239,7 @@ class PublishSkillService:
             len(resources),
             len(scripts),
         )
-        effective_branch = branch_name if self._publisher._use_branch else None
+        effective_branch = branch_name if self._publisher.use_branch else None
         result = await self._publisher.publish_skill(
             plugin_name=plugin_name,
             skill_name=skill_name,

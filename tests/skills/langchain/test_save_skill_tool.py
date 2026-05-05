@@ -79,11 +79,14 @@ class TestSaveSkillTool:
             await tool._arun(plugin_name="test-plugin", skill_name="test", content="content", runtime=runtime)
 
     @pytest.mark.asyncio
-    async def test_rejects_empty_skill_name(self) -> None:
+    async def test_rejects_empty_skill_name_without_frontmatter(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
-        with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(plugin_name="test-plugin", skill_name="", content="content", runtime=_make_runtime())
+        result, artifact = await tool._arun(
+            plugin_name="test-plugin", skill_name="", content="content", runtime=_make_runtime()
+        )
+
+        assert "Skill validation failed" in result
 
     @pytest.mark.asyncio
     async def test_rejects_empty_content(self) -> None:

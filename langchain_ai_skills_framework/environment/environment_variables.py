@@ -155,6 +155,20 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return raw.strip().lower() in ("true", "1", "yes")
 
     @property
+    def plugins_marketplace_publish_path(self) -> str | None:
+        """Relative path within the GitHub repo where skills are published.
+
+        Example: "plugins/all-employees" publishes to
+        ``<repo>/plugins/all-employees/skills/<skill_name>/...``
+
+        When unset, falls back to the path component of PLUGINS_MARKETPLACE URI.
+        """
+        value = os.environ.get("PLUGINS_MARKETPLACE_PUBLISH_PATH")
+        if value and value.strip():
+            return value.strip().strip("/")
+        return None
+
+    @property
     def mongo_skills_uri(self) -> str:
         """MongoDB connection URI for skills storage.
 

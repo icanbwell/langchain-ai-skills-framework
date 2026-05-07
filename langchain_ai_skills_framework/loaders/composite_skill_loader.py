@@ -343,49 +343,67 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         shared_defs = await self._shared_loader.list_plugin_definitions()
         if shared_defs:
             return shared_defs
-        return await self._list_plugin_definitions_from_mongo()
+        try:
+            return await self._list_plugin_definitions_from_mongo()
+        except Exception:
+            logger.exception("list_plugin_definitions: _list_plugin_definitions_from_mongo failed")
+            return []
 
     async def _list_plugin_definitions_from_mongo(self) -> Sequence[PluginDefinition]:
         """Reconstruct PluginDefinition objects from MongoDB plugin documents."""
         from pathlib import Path
 
         docs = await self._user_loader.list_plugins()
+        logger.info(
+            "_list_plugin_definitions_from_mongo: list_plugins returned %d doc(s): %s",
+            len(docs),
+            [d.plugin_name for d in docs],
+        )
         definitions: list[PluginDefinition] = []
         for doc in docs:
-            mcp_entries: list[PluginMcpServerEntry] = []
-            for mcp_dict in doc.mcp_servers:
-                mcp_entries.append(
-                    PluginMcpServerEntry(
-                        server_key=str(mcp_dict.get("server_key", "")),
-                        plugin_name=str(mcp_dict.get("plugin_name", doc.plugin_name)),
-                        plugin_root=Path("."),
-                        url=mcp_dict.get("url"),
-                        command=mcp_dict.get("command"),
-                        args=tuple(mcp_dict.get("args", ())),
-                        env=dict(mcp_dict.get("env", {})),
-                        headers=dict(mcp_dict.get("headers", {})),
-                        description=mcp_dict.get("description"),
-                        display_name=mcp_dict.get("display_name"),
-                        auth=mcp_dict.get("auth"),
+            try:
+                mcp_entries: list[PluginMcpServerEntry] = []
+                for mcp_dict in doc.mcp_servers:
+                    mcp_entries.append(
+                        PluginMcpServerEntry(
+                            server_key=str(mcp_dict.get("server_key", "")),
+                            plugin_name=str(mcp_dict.get("plugin_name", doc.plugin_name)),
+                            plugin_root=Path("."),
+                            url=mcp_dict.get("url"),
+                            command=mcp_dict.get("command"),
+                            args=tuple(mcp_dict.get("args", ())),
+                            env=dict(mcp_dict.get("env", {})),
+                            headers=dict(mcp_dict.get("headers", {})),
+                            description=mcp_dict.get("description"),
+                            display_name=mcp_dict.get("display_name"),
+                            auth=mcp_dict.get("auth"),
+                        )
+                    )
+                skill_summaries = tuple(
+                    SkillSummary(
+                        name=s,
+                        description="",
+                        plugin_name=doc.plugin_name,
+                        source_path=Path(f"mongodb://system/{doc.plugin_name}/{s}"),
+                    )
+                    for s in doc.skills
+                )
+                definitions.append(
+                    PluginDefinition(
+                        name=doc.plugin_name,
+                        description=doc.description,
+                        skills=skill_summaries,
+                        mcp_servers=tuple(mcp_entries),
                     )
                 )
-            skill_summaries = tuple(
-                SkillSummary(
-                    name=s,
-                    description="",
-                    plugin_name=doc.plugin_name,
-                    source_path=Path(f"mongodb://system/{doc.plugin_name}/{s}"),
+            except Exception:
+                logger.exception(
+                    "_list_plugin_definitions_from_mongo: failed to build PluginDefinition "
+                    "for plugin '%s' (mcp_servers=%d, skills=%d)",
+                    doc.plugin_name,
+                    len(doc.mcp_servers),
+                    len(doc.skills),
                 )
-                for s in doc.skills
-            )
-            definitions.append(
-                PluginDefinition(
-                    name=doc.plugin_name,
-                    description=doc.description,
-                    skills=skill_summaries,
-                    mcp_servers=tuple(mcp_entries),
-                )
-            )
         return definitions
 
     # --- Merging -------------------------------------------------------------

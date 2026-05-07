@@ -197,8 +197,8 @@ class GitHubMarketplacePublisher:
     # File map builder
     # ------------------------------------------------------------------
 
+    @staticmethod
     def _build_file_map(
-        self,
         *,
         plugin_name: str,
         skill_name: str,

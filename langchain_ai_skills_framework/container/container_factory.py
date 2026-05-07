@@ -84,14 +84,11 @@ def _build_marketplace_publisher(c: IContainer) -> GitHubMarketplacePublisher | 
     git_location = GithubDirectoryDownloader.parse_github_uri(marketplace_uri)
     repo = f"{git_location.owner}/{git_location.repository}"
 
-    path_prefix = env.plugins_marketplace_publish_path or git_location.path or None
-
     return GitHubMarketplacePublisher(
         access_token=token,
         repo=repo,
         base_branch=env.plugins_marketplace_publish_branch,
         use_branch=env.plugins_marketplace_publish_use_branch,
-        path_prefix=path_prefix,
     )
 
 

@@ -36,13 +36,11 @@ class GitHubMarketplacePublisher:
         repo: str,
         base_branch: str = "main",
         use_branch: bool = True,
-        path_prefix: str | None = None,
     ) -> None:
         self._access_token = access_token
         self._repo = repo  # "owner/repo"
         self._base_branch = base_branch
         self._use_branch = use_branch
-        self._path_prefix = path_prefix.strip("/") if path_prefix else None
         self._base_url = "https://api.github.com"
 
     @property
@@ -144,9 +142,7 @@ class GitHubMarketplacePublisher:
         self._validate_path_segment(skill_name, "skill_name")
 
         branch = f"skill-unpublish/{plugin_name}/{skill_name}"
-        skill_dir = f"{plugin_name}/skills/{skill_name}"
-        if self._path_prefix:
-            skill_dir = f"{self._path_prefix}/{skill_dir}"
+        skill_dir = f"plugins/{plugin_name}/skills/{skill_name}"
         commit_message = f"Remove skill: {plugin_name}/{skill_name}"
         pr_title = f"Remove skill: {plugin_name}/{skill_name}"
         pr_body = (
@@ -218,9 +214,7 @@ class GitHubMarketplacePublisher:
         for name in scripts:
             GitHubMarketplacePublisher._validate_path_segment(name, "script name")
 
-        base = f"{plugin_name}/skills/{skill_name}"
-        if self._path_prefix:
-            base = f"{self._path_prefix}/{base}"
+        base = f"plugins/{plugin_name}/skills/{skill_name}"
         files: dict[str, str] = {f"{base}/SKILL.md": skill_content}
         for name, content in resources.items():
             files[f"{base}/references/{name}"] = content

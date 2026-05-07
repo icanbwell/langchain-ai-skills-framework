@@ -159,18 +159,3 @@ class SkillLoaderEnvironmentVariables(Protocol):
         Default: ``true``
         """
         ...
-
-    @property
-    def plugins_marketplace_publish_path(self) -> str | None:
-        """Relative path within the GitHub repo where skills are published.
-
-        When set, all published skill files are prefixed with this path.
-        For example, ``plugins/all-employees`` results in files at
-        ``plugins/all-employees/{plugin}/skills/{skill}/...``
-
-        When unset, falls back to the path component of the
-        PLUGINS_MARKETPLACE github:// URI.
-
-        Expected environment variable: PLUGINS_MARKETPLACE_PUBLISH_PATH
-        """
-        ...

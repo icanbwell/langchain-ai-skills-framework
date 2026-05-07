@@ -36,7 +36,6 @@ class FakeEnvVars:
     plugins_marketplace_publish_enabled: bool = False
     plugins_marketplace_publish_branch: str = "main"
     plugins_marketplace_publish_use_branch: bool = True
-    plugins_marketplace_publish_path: str | None = None
     snapshot_cache_plugins_collection: str | None = None
     plugins_collection: str | None = "plugins"
     plugin_skills_collection: str | None = "plugin_skills"

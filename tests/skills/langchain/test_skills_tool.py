@@ -98,10 +98,10 @@ class _StubSkillLoader(SkillLoaderProtocol):
     ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
 
-    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+    async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         return []
 
-    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
+    async def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
         return []
 
 

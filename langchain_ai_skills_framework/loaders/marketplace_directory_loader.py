@@ -347,11 +347,11 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             await self._write_plugins_to_collection(self._plugin_definitions)
             return self._snapshot
 
-    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+    async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         snapshot = self._get_snapshot()
         return snapshot.mcp_servers
 
-    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
+    async def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
         self._get_snapshot()  # ensure _plugin_definitions is populated
         logger.info(
             "list_plugin_definitions: returning %d plugin definitions",

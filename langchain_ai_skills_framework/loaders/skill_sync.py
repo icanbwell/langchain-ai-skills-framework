@@ -183,7 +183,7 @@ class SkillSync:
     async def _sync_plugins(self, *, result: SyncResult) -> None:
         """Write plugin definitions (name, description, skills, MCP config) to MongoDB."""
         try:
-            plugin_defs: Sequence[PluginDefinition] = self._shared.list_plugin_definitions()
+            plugin_defs: Sequence[PluginDefinition] = await self._shared.list_plugin_definitions()
         except Exception:
             logger.exception("SkillSync: could not list plugin definitions; skipping plugin sync.")
             return

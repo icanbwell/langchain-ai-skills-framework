@@ -95,10 +95,10 @@ class _StubSharedLoader(SkillLoaderProtocol):
     ) -> Sequence[str]:
         return []
 
-    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+    async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         return []
 
-    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
+    async def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
         return []
 
 

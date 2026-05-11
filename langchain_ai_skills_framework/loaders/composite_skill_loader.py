@@ -377,6 +377,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                             description=mcp_dict.get("description"),
                             display_name=mcp_dict.get("display_name"),
                             auth=mcp_dict.get("auth"),
+                            oauth=mcp_dict.get("oauth"),
                         )
                     )
                 skill_summaries = tuple(

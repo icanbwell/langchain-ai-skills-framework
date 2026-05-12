@@ -79,6 +79,13 @@ class PublishSkillService:
         require_non_empty(skill_name, "skill_name")
         store = require_store(self._store)
 
+        if published and self._publisher is None:
+            raise SkillOperationError(
+                f"Cannot publish skill '{skill_name}': GitHub marketplace publisher is not configured. "
+                "Ensure PLUGINS_MARKETPLACE is set to a valid github:// URI and "
+                "PLUGINS_MARKETPLACE_PUBLISH_ENABLED is true."
+            )
+
         try:
             branch: str | None = None
             if self._publisher is not None and self._publisher.use_branch:

@@ -12,7 +12,7 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillDocument,
 )
-from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
+from langchain_ai_skills_framework.langchain.tools.save_skill_tool import SaveSkillTool
 
 VALID_SKILL_CONTENT = "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
 
@@ -79,11 +79,14 @@ class TestSaveSkillTool:
             await tool._arun(plugin_name="test-plugin", skill_name="test", content="content", runtime=runtime)
 
     @pytest.mark.asyncio
-    async def test_rejects_empty_skill_name(self) -> None:
+    async def test_rejects_empty_skill_name_without_frontmatter(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
-        with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(plugin_name="test-plugin", skill_name="", content="content", runtime=_make_runtime())
+        result, artifact = await tool._arun(
+            plugin_name="test-plugin", skill_name="", content="content", runtime=_make_runtime()
+        )
+
+        assert "Skill validation failed" in result
 
     @pytest.mark.asyncio
     async def test_rejects_empty_content(self) -> None:

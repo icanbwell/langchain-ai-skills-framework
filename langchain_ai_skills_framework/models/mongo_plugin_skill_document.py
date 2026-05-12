@@ -60,9 +60,17 @@ class MongoPluginSkillDocument(BaseModel):
         description="Arbitrary metadata from the skill frontmatter",
     )
     user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
-    shared: bool = Field(
+    published: bool = Field(
         default=False,
         description="When True, this skill is visible to all users",
+    )
+    published_date: datetime | None = Field(
+        default=None,
+        description="When the skill was last published (or unpublished)",
+    )
+    published_branch: str | None = Field(
+        default=None,
+        description="Git branch used for the marketplace publish PR",
     )
     modified_by: str = Field(default="", description="ID of the user who last modified this skill")
     date_created: datetime = Field(
@@ -97,7 +105,9 @@ class MongoPluginSkillDocument(BaseModel):
             allowed_tools=allowed_tools,
             metadata=data.get("metadata"),
             user_id=data["user_id"],
-            shared=data.get("shared", False),
+            published=data.get("published", data.get("shared", False)),
+            published_date=data.get("published_date"),
+            published_branch=data.get("published_branch"),
             modified_by=data.get("modified_by", ""),
             date_created=data.get("date_created", datetime.now(timezone.utc)),
             date_modified=data.get("date_modified", datetime.now(timezone.utc)),

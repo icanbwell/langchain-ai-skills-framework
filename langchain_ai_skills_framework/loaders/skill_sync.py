@@ -86,8 +86,8 @@ class SkillSync:
             content=details.content,
             modified_by=SYSTEM_USER_ID,
         )
-        await self._store.set_skill_shared(
-            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, shared=True
+        await self._store.set_skill_published(
+            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, published=True
         )
         result.skills_added += 1
         logger.debug("SkillSync: upserted skill '%s' from plugin '%s'.", skill_name, plugin_name)
@@ -183,7 +183,7 @@ class SkillSync:
     async def _sync_plugins(self, *, result: SyncResult) -> None:
         """Write plugin definitions (name, description, skills, MCP config) to MongoDB."""
         try:
-            plugin_defs: Sequence[PluginDefinition] = self._shared.list_plugin_definitions()
+            plugin_defs: Sequence[PluginDefinition] = await self._shared.list_plugin_definitions()
         except Exception:
             logger.exception("SkillSync: could not list plugin definitions; skipping plugin sync.")
             return
@@ -216,6 +216,8 @@ class SkillSync:
                         mcp_dict["display_name"] = mcp.display_name
                     if mcp.auth:
                         mcp_dict["auth"] = mcp.auth
+                    if mcp.oauth:
+                        mcp_dict["oauth"] = mcp.oauth
                     mcp_server_dicts.append(mcp_dict)
 
                 await self._store.save_plugin(

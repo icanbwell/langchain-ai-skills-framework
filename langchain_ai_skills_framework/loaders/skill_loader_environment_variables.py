@@ -125,3 +125,37 @@ class SkillLoaderEnvironmentVariables(Protocol):
         - GITHUB_TOKEN (fallback)
         """
         ...
+
+    @property
+    def plugins_marketplace_publish_enabled(self) -> bool:
+        """Whether marketplace publishing is enabled.
+
+        When ``False``, the publisher is not created even if a github://
+        marketplace URI and token are present.
+
+        Expected environment variable: PLUGINS_MARKETPLACE_PUBLISH_ENABLED
+        Default: ``false``
+        """
+        ...
+
+    @property
+    def plugins_marketplace_publish_branch(self) -> str:
+        """Base branch for marketplace skill publish commits/PRs.
+
+        Expected environment variable: PLUGINS_MARKETPLACE_PUBLISH_BRANCH
+        Default: ``main``
+        """
+        ...
+
+    @property
+    def plugins_marketplace_publish_use_branch(self) -> bool:
+        """Whether to publish via a PR branch or commit directly to base.
+
+        When ``True`` (default), a deterministic branch is created and a
+        pull request is opened or updated.  When ``False``, the commit is
+        pushed directly to the base branch.
+
+        Expected environment variable: PLUGINS_MARKETPLACE_PUBLISH_USE_BRANCH
+        Default: ``true``
+        """
+        ...

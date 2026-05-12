@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 import tempfile
 import time
 from pathlib import Path
@@ -10,28 +9,27 @@ from typing import Any
 import anyio
 from skillkit import SkillMetadata
 
+from langchain_ai_skills_framework.executors.base_script_executor import (
+    BaseScriptExecutor,
+    PathSecurityError,
+    ScriptPermissionError,
+)
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
 
 logger = logging.getLogger(__name__)
 
-
-class PathSecurityError(Exception):
-    """Raised when path validation fails"""
-
-    pass
-
-
-class ScriptPermissionError(Exception):
-    """Raised when script has dangerous permissions"""
-
-    pass
+# Re-export so existing ``from my_script_executor import PathSecurityError``
+# imports continue to work without changes.
+__all__ = [
+    "MyScriptExecutor",
+    "PathSecurityError",
+    "ScriptPermissionError",
+]
 
 
-class MyScriptExecutor:
-    _ARGUMENT_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
+class MyScriptExecutor(BaseScriptExecutor):
     def __init__(
         self,
         allowed_base_dirs: list[Path] | None = None,
@@ -46,82 +44,11 @@ class MyScriptExecutor:
             max_timeout: Maximum allowed timeout in seconds
             max_output_size: Maximum allowed output size in bytes
         """
-        self.allowed_base_dirs = allowed_base_dirs or []
-        self.max_timeout = max_timeout
-        self.max_output_size = max_output_size
-
-    def _validate_path(self, script_path: Path, skill_base_dir: Path) -> Path:
-        """
-        Validate that the script path is safe.
-
-        Raises:
-            PathSecurityError: If path validation fails
-        """
-        # Resolve the skill directory first, then anchor relative script paths to it.
-        try:
-            resolved_skill_base_dir = skill_base_dir.resolve(strict=True)
-        except (OSError, RuntimeError) as e:
-            raise PathSecurityError(f"Cannot resolve skill base directory: {e}") from e
-
-        candidate_script_path = (
-            script_path if script_path.is_absolute() else resolved_skill_base_dir.joinpath(script_path)
+        super().__init__(
+            allowed_base_dirs=allowed_base_dirs,
+            max_timeout=max_timeout,
+            max_output_size=max_output_size,
         )
-
-        # Resolve to absolute path to prevent directory traversal
-        try:
-            resolved_path = candidate_script_path.resolve(strict=True)
-        except (OSError, RuntimeError) as e:
-            raise PathSecurityError(f"Cannot resolve script path: {e}") from e
-
-        # Check if script exists
-        if not resolved_path.exists():
-            raise PathSecurityError(f"Script does not exist: {resolved_path}")
-
-        # Check if it's a file (not a directory or symlink to something dangerous)
-        if not resolved_path.is_file():
-            raise PathSecurityError(f"Script path is not a file: {resolved_path}")
-
-        # Prevent directory traversal - ensure script is within skill_base_dir
-        try:
-            resolved_path.relative_to(resolved_skill_base_dir)
-        except ValueError:
-            raise PathSecurityError(
-                f"Script path {resolved_path} is outside skill directory {skill_base_dir}"
-            ) from None
-
-        # Check if allowed_base_dirs is set and validate
-        if self.allowed_base_dirs:
-            is_in_allowed_dir = False
-            for base_dir in self.allowed_base_dirs:
-                try:
-                    resolved_path.relative_to(base_dir.resolve(strict=True))
-                    is_in_allowed_dir = True
-                    break
-                except (ValueError, OSError, RuntimeError):
-                    continue
-            if not is_in_allowed_dir:
-                raise PathSecurityError(f"Script path {resolved_path} is not in allowed directories")
-
-        # Check file permissions (Unix-like systems)
-        try:
-            stat_info = resolved_path.stat()
-            # Check if file is world-writable (dangerous)
-            if stat_info.st_mode & 0o002:
-                raise ScriptPermissionError(f"Script {resolved_path} is world-writable (insecure)")
-        except OSError:
-            pass  # Permission check not available on this system
-
-        return resolved_path
-
-    def _check_output_size(self, output: bytes) -> None:
-        """Prevent memory exhaustion from large outputs"""
-        if len(output) > self.max_output_size:
-            raise Exception(f"Script output too large: {len(output)} bytes (max {self.max_output_size})")
-
-    def _validate_argument_keys(self, arguments: dict[str, Any]) -> None:
-        for key in arguments:
-            if not self._ARGUMENT_KEY_PATTERN.fullmatch(key):
-                raise ValueError(f"Invalid argument key: {key}")
 
     async def _execute_validated_script(
         self,
@@ -160,10 +87,8 @@ class MyScriptExecutor:
             # Prevents uv from using the project's virtual environment or dependencies
             # Forces uv to create a completely separate, temporary environment for this execution
             # Useful when you want to run something without interference from the current project's setup
-            # -v - Verbose output
-            # Enables verbose logging to see detailed information about what's happening
-            # Shows dependency installation progress, resolution steps, and other diagnostic information
-            # Helpful for debugging or understanding what packages are being installed
+            # --no-config - Don't use any config files at all (uv.toml, pyproject.toml, etc.)
+            # --no-progress - Don't show progress bars (cleaner output)
             cmd = [
                 "uv",
                 "run",

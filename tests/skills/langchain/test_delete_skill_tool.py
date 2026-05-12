@@ -8,7 +8,7 @@ from langchain_core.tools import ToolException
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     PluginSkillStore,
 )
-from langchain_ai_skills_framework.tools.delete_skill_tool import DeleteSkillTool
+from langchain_ai_skills_framework.langchain.tools.delete_skill_tool import DeleteSkillTool
 
 
 def _make_loader_mock(deleted: bool = True) -> AsyncMock:

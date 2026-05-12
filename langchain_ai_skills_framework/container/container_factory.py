@@ -24,6 +24,9 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory import (
 from langchain_ai_skills_framework.persistence.mongo_database_factory_impl import (
     MongoDatabaseFactoryImpl,
 )
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
+)
 from simple_container.container.interfaces import IContainer
 from simple_container.container.simple_container import SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
@@ -44,12 +47,6 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     """
     env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
 
-    marketplace_uri = env_vars.plugins_marketplace
-    if not marketplace_uri:
-        raise RuntimeError(
-            "PLUGINS_MARKETPLACE is not configured. A marketplace URI is required since skills are loaded from plugins."
-        )
-
     # BaseStore is registered by language-model-common's container
     # factory.  It may not be available at this point if the skills
     # framework container runs first; treat as optional.
@@ -65,6 +62,33 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
         environment_variables=env_vars,
         github_directory_downloader=c.resolve(GithubDirectoryDownloader),
         snapshot_cache_store=snapshot_cache_store,
+    )
+
+
+def _build_marketplace_publisher(c: IContainer) -> GitHubMarketplacePublisher | None:
+    """Build the marketplace publisher from the PLUGINS_MARKETPLACE URI.
+
+    Publishing is enabled when PLUGINS_MARKETPLACE is a github:// URI
+    and a GitHub token is available.  The target repo is extracted from
+    the URI; PLUGINS_MARKETPLACE_PUBLISH_BRANCH and
+    PLUGINS_MARKETPLACE_PUBLISH_USE_BRANCH control commit behaviour.
+    """
+    env = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
+    if not env.plugins_marketplace_publish_enabled:
+        return None
+    marketplace_uri = env.plugins_marketplace
+    token = env.skills_github_token
+    if not marketplace_uri or not token or not marketplace_uri.startswith("github://"):
+        return None
+
+    git_location = GithubDirectoryDownloader.parse_github_uri(marketplace_uri)
+    repo = f"{git_location.owner}/{git_location.repository}"
+
+    return GitHubMarketplacePublisher(
+        access_token=token,
+        repo=repo,
+        base_branch=env.plugins_marketplace_publish_branch,
+        use_branch=env.plugins_marketplace_publish_use_branch,
     )
 
 
@@ -110,6 +134,7 @@ class LangchainAISkillsFrameworkContainerFactory:
             lambda c: CompositeSkillLoader(
                 shared_loader=c.resolve(MarketplaceDirectoryLoader),
                 user_loader=c.resolve(PluginSkillStore),
+                marketplace_publisher=_build_marketplace_publisher(c),
             ),
         )
 

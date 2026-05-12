@@ -5,7 +5,6 @@ from typing import Mapping, Sequence, Any
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.tools import BaseTool
 from langchain_core.tools import ToolException
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -20,7 +19,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
+from langchain_ai_skills_framework.langchain.tools.load_skill_tool import LoadSkillTool
 
 
 def _make_runtime(user_id: str = "user-1") -> MagicMock:
@@ -58,9 +57,6 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
     async def get_instructions(self) -> str:  # pragma: no cover
         return ""
-
-    def get_tools(self) -> list[BaseTool]:
-        return []
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         raise NotImplementedError()
@@ -102,10 +98,10 @@ class _StubSkillLoader(SkillLoaderProtocol):
     ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
 
-    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+    async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         return []
 
-    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
+    async def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
         return []
 
 

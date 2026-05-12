@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,9 @@ class PluginMcpServerEntry:
 
     auth: str | None = None
     """Authentication mode (e.g., "oauth", "jwt_token", "headers")."""
+
+    oauth: dict[str, Any] | None = None
+    """OAuth configuration dict (clientId, authServerMetadataUrl, etc.)."""
 
     @property
     def namespaced_key(self) -> str:

@@ -33,6 +33,9 @@ class FakeEnvVars:
     excluded_skill_groups: set[str] = field(default_factory=set)
     plugins_marketplace_include: set[str] | None = None
     plugins_marketplace_exclude: set[str] = field(default_factory=set)
+    plugins_marketplace_publish_enabled: bool = False
+    plugins_marketplace_publish_branch: str = "main"
+    plugins_marketplace_publish_use_branch: bool = True
     snapshot_cache_plugins_collection: str | None = None
     plugins_collection: str | None = "plugins"
     plugin_skills_collection: str | None = "plugin_skills"
@@ -83,21 +86,21 @@ def _write_marketplace_json(
 
 
 class TestMarketplaceDirectoryLoaderInit:
-    def test_rejects_missing_marketplace_uri(self) -> None:
+    def test_missing_marketplace_uri_returns_empty(self) -> None:
         env = FakeEnvVars(plugins_marketplace=None)
-        with pytest.raises(SkillValidationError, match="plugins_marketplace is not configured"):
-            MarketplaceDirectoryLoader(
-                environment_variables=env,
-                github_directory_downloader=MagicMock(),
-            )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+        assert loader.list_skill_summaries(allowed_skills=set()) == ()
 
-    def test_rejects_blank_marketplace_uri(self) -> None:
+    def test_blank_marketplace_uri_returns_empty(self) -> None:
         env = FakeEnvVars(plugins_marketplace="   ")
-        with pytest.raises(SkillValidationError, match="plugins_marketplace is not configured"):
-            MarketplaceDirectoryLoader(
-                environment_variables=env,
-                github_directory_downloader=MagicMock(),
-            )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+        assert loader.list_skill_summaries(allowed_skills=set()) == ()
 
 
 class TestLocalMarketplaceDiscovery:

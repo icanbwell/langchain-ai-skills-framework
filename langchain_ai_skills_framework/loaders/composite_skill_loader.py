@@ -6,8 +6,6 @@ from html import escape
 from types import MappingProxyType
 from typing import Any, Sequence
 
-from langchain_core.tools import BaseTool
-
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
@@ -19,7 +17,6 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 )
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
-from langchain_ai_skills_framework.tools.list_skills_tool import ListSkillsTool
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
@@ -29,28 +26,13 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
+)
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
-)
-from langchain_ai_skills_framework.tools.delete_skill_tool import DeleteSkillTool
-from langchain_ai_skills_framework.tools.load_skill_tool import LoadSkillTool
-from langchain_ai_skills_framework.tools.read_skill_resource_tool import (
-    ReadSkillResourceTool,
-)
-from langchain_ai_skills_framework.tools.run_skill_script_tool import (
-    RunSkillScriptTool,
-)
-from langchain_ai_skills_framework.tools.save_skill_tool import SaveSkillTool
-from langchain_ai_skills_framework.tools.save_skill_resource_tool import (
-    SaveSkillResourceTool,
-)
-from langchain_ai_skills_framework.tools.save_skill_script_tool import (
-    SaveSkillScriptTool,
-)
-from langchain_ai_skills_framework.tools.toggle_skill_sharing_tool import (
-    ToggleSkillSharingTool,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -74,6 +56,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         *,
         shared_loader: SkillLoaderProtocol,
         user_loader: PluginSkillStore,
+        marketplace_publisher: GitHubMarketplacePublisher | None = None,
     ) -> None:
         if shared_loader is None:
             raise ValueError("shared_loader must not be None")
@@ -82,6 +65,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         self._shared_loader = shared_loader
         self._user_loader = user_loader
+        self._marketplace_publisher = marketplace_publisher
 
     @property
     def shared_loader(self) -> SkillLoaderProtocol:
@@ -172,38 +156,19 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "Each skill provides specialized instructions for specific tasks.\n\n"
             f"<available_skills>\n{skills_list}\n</available_skills>\n\n"
             "When a task falls within a skill's domain:\n"
-            "1. Use `load_skill` with plugin_name to read the complete skill instructions\n"
-            "2. Follow the skill's guidance to complete the task\n"
-            "3. Use `read_skill_resource` with plugin_name to read files referenced by the skill\n"
-            "4. Use `run_skill_script` with plugin_name to run scripts provided by the skill\n"
-            "5. Use `save_skill` with plugin_name to save a new or updated skill for the current user\n"
-            "6. Use `save_skill_resource` with plugin_name to save a resource file for a skill\n"
-            "7. Use `save_skill_script` with plugin_name to save a script file for a skill\n"
-            "8. Use `delete_skill` with plugin_name to remove a previously saved skill\n"
-            "9. Use `toggle_skill_sharing` with plugin_name to share a skill with all users or make it private\n\n"
+            "1. Use `list_plugins` to see all registered plugins\n"
+            "2. Use `load_skill` with plugin_name to read the complete skill instructions\n"
+            "3. Follow the skill's guidance to complete the task\n"
+            "4. Use `read_skill_resource` with plugin_name to read files referenced by the skill\n"
+            "5. Use `run_skill_script` with plugin_name to run scripts provided by the skill\n"
+            "6. Use `save_skill` with plugin_name to save a new or updated skill for the current user\n"
+            "7. Use `save_skill_resource` with plugin_name to save a resource file for a skill\n"
+            "8. Use `save_skill_script` with plugin_name to save a script file for a skill\n"
+            "9. Use `delete_skill` with plugin_name to remove a previously saved skill\n"
+            "10. Use `publish_skill` with plugin_name to publish a skill to the marketplace or unpublish it\n\n"
             "All skill tools require a `plugin_name` parameter to scope the operation to a specific plugin.\n"
             "Use progressive disclosure: load only what you need, when you need it."
         )
-
-    def get_tools(self) -> list[BaseTool]:
-        """Return tools that resolve skills through this composite loader.
-
-        Tools are constructed with ``skill_loader=self`` so that
-        ``load_skill`` and availability lists include both shared and
-        user-persisted skills, consistent with what
-        ``get_instructions_for_user`` advertises.
-        """
-        return [
-            ListSkillsTool(skill_loader=self),
-            LoadSkillTool(skill_loader=self, user_skill_store=self._user_loader),
-            ReadSkillResourceTool(skill_loader=self),
-            RunSkillScriptTool(skill_loader=self),
-            SaveSkillTool(mongo_skill_loader=self._user_loader),
-            SaveSkillResourceTool(mongo_skill_loader=self._user_loader),
-            SaveSkillScriptTool(mongo_skill_loader=self._user_loader),
-            DeleteSkillTool(mongo_skill_loader=self._user_loader),
-            ToggleSkillSharingTool(mongo_skill_loader=self._user_loader),
-        ]
 
     def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
         return self._shared_loader.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)
@@ -364,11 +329,83 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         return sorted(names)
 
-    def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
-        return self._shared_loader.get_plugin_mcp_configs()
+    async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
+        shared_configs = await self._shared_loader.get_plugin_mcp_configs()
+        if shared_configs:
+            return shared_configs
+        plugins = await self.list_plugin_definitions()
+        entries: list[PluginMcpServerEntry] = []
+        for plugin in plugins:
+            entries.extend(plugin.mcp_servers)
+        return entries
 
-    def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
-        return self._shared_loader.list_plugin_definitions()
+    async def list_plugin_definitions(self) -> Sequence[PluginDefinition]:
+        shared_defs = await self._shared_loader.list_plugin_definitions()
+        if shared_defs:
+            return shared_defs
+        try:
+            return await self._list_plugin_definitions_from_mongo()
+        except Exception:
+            logger.exception("list_plugin_definitions: _list_plugin_definitions_from_mongo failed")
+            return []
+
+    async def _list_plugin_definitions_from_mongo(self) -> Sequence[PluginDefinition]:
+        """Reconstruct PluginDefinition objects from MongoDB plugin documents."""
+        from pathlib import Path
+
+        docs = await self._user_loader.list_plugins()
+        logger.info(
+            "_list_plugin_definitions_from_mongo: list_plugins returned %d doc(s): %s",
+            len(docs),
+            [d.plugin_name for d in docs],
+        )
+        definitions: list[PluginDefinition] = []
+        for doc in docs:
+            try:
+                mcp_entries: list[PluginMcpServerEntry] = []
+                for mcp_dict in doc.mcp_servers:
+                    mcp_entries.append(
+                        PluginMcpServerEntry(
+                            server_key=str(mcp_dict.get("server_key", "")),
+                            plugin_name=str(mcp_dict.get("plugin_name", doc.plugin_name)),
+                            plugin_root=Path("."),
+                            url=mcp_dict.get("url"),
+                            command=mcp_dict.get("command"),
+                            args=tuple(mcp_dict.get("args", ())),
+                            env=dict(mcp_dict.get("env", {})),
+                            headers=dict(mcp_dict.get("headers", {})),
+                            description=mcp_dict.get("description"),
+                            display_name=mcp_dict.get("display_name"),
+                            auth=mcp_dict.get("auth"),
+                            oauth=mcp_dict.get("oauth"),
+                        )
+                    )
+                skill_summaries = tuple(
+                    SkillSummary(
+                        name=s,
+                        description="",
+                        plugin_name=doc.plugin_name,
+                        source_path=Path(f"mongodb://system/{doc.plugin_name}/{s}"),
+                    )
+                    for s in doc.skills
+                )
+                definitions.append(
+                    PluginDefinition(
+                        name=doc.plugin_name,
+                        description=doc.description,
+                        skills=skill_summaries,
+                        mcp_servers=tuple(mcp_entries),
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "_list_plugin_definitions_from_mongo: failed to build PluginDefinition "
+                    "for plugin '%s' (mcp_servers=%d, skills=%d)",
+                    doc.plugin_name,
+                    len(doc.mcp_servers),
+                    len(doc.skills),
+                )
+        return definitions
 
     # --- Merging -------------------------------------------------------------
 

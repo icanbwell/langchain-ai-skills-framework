@@ -1,6 +1,8 @@
 import logging
 from typing import cast
 
+from key_value.aio.stores.base import BaseStore
+from key_value.aio.stores.mongodb import MongoDBStore
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
 )
@@ -24,6 +26,9 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory import (
 from langchain_ai_skills_framework.persistence.mongo_database_factory_impl import (
     MongoDatabaseFactoryImpl,
 )
+from langchain_ai_skills_framework.persistence.mongo_url_helpers import (
+    MongoUrlHelpers,
+)
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
@@ -38,6 +43,31 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 logger = logging.getLogger(__name__)
 
 
+def _build_key_value_store(c: IContainer) -> BaseStore:
+    from langchain_ai_skills_framework.environment.environment_variables import (
+        LangchainAISkillsFrameworkEnvironmentVariables,
+    )
+
+    env = cast(
+        LangchainAISkillsFrameworkEnvironmentVariables,
+        c.resolve(EnvironmentVariables),
+    )
+
+    store_type = env.key_value_store_type
+
+    if store_type == "redis":
+        from key_value.aio.stores.redis import RedisStore
+
+        return RedisStore(url=env.redis_url)
+
+    url = MongoUrlHelpers.add_credentials_to_mongo_url(
+        mongo_url=env.mongo_skills_uri,
+        username=env.mongo_skills_db_username,
+        password=env.mongo_skills_db_password,
+    )
+    return MongoDBStore(url=url, db_name=env.mongo_skills_db_name)
+
+
 def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     """Build the shared skill loader from the plugin marketplace.
 
@@ -46,11 +76,6 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     all skills come from plugins.
     """
     env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
-
-    # BaseStore is registered by language-model-common's container
-    # factory.  It may not be available at this point if the skills
-    # framework container runs first; treat as optional.
-    from key_value.aio.stores.base import BaseStore
 
     snapshot_cache_store: BaseStore | None = None
     try:
@@ -106,6 +131,11 @@ class LangchainAISkillsFrameworkContainerFactory:
             lambda c: MongoDatabaseFactoryImpl(
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
             ),
+        )
+
+        container.singleton(
+            BaseStore,
+            lambda c: _build_key_value_store(c),
         )
 
         container.singleton(

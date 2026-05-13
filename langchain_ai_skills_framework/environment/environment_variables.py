@@ -189,3 +189,24 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         if not val or not val.strip():
             return None
         return val.strip()
+
+    @property
+    def key_value_store_type(self) -> str:
+        """Backend type for the key-value store ('mongodb' or 'redis').
+
+        Expected environment variable: KEY_VALUE_STORE_TYPE
+        Default: 'mongodb'
+        """
+        return (os.environ.get("KEY_VALUE_STORE_TYPE") or "mongodb").strip().lower()
+
+    @property
+    def redis_url(self) -> str:
+        """Redis connection URL.
+
+        Required when KEY_VALUE_STORE_TYPE is 'redis'.
+        Expected environment variable: REDIS_URL
+        """
+        url = os.environ.get("REDIS_URL")
+        if not url or not url.strip():
+            raise RuntimeError("REDIS_URL is not set. A Redis URL is required when KEY_VALUE_STORE_TYPE is 'redis'.")
+        return url.strip()

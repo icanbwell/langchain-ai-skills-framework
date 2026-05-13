@@ -319,7 +319,13 @@ class TestGithubCacheTTL:
         captured_calls: list[dict[str, int]] = []
 
         def fake_download(
-            *, source_uri: str, github_token: str | None, cache_path: Path, cache_ttl_seconds: int = 0
+            *,
+            source_uri: str,
+            github_token: str | None,
+            cache_path: Path,
+            cache_ttl_seconds: int = 0,
+            include_directories: set[str] | None = None,
+            exclude_directories: set[str] | None = None,
         ) -> Path:
             captured_calls.append({"cache_ttl_seconds": cache_ttl_seconds})
             plugins_dir = tmp_path / "plugins" / "test-plugin" / "skills" / "test-skill"
@@ -350,7 +356,13 @@ class TestGithubCacheTTL:
         captured_calls: list[dict[str, int]] = []
 
         def fake_download(
-            *, source_uri: str, github_token: str | None, cache_path: Path, cache_ttl_seconds: int = 0
+            *,
+            source_uri: str,
+            github_token: str | None,
+            cache_path: Path,
+            cache_ttl_seconds: int = 0,
+            include_directories: set[str] | None = None,
+            exclude_directories: set[str] | None = None,
         ) -> Path:
             captured_calls.append({"cache_ttl_seconds": cache_ttl_seconds})
             plugins_dir = tmp_path / "plugins" / "test-plugin" / "skills" / "test-skill"

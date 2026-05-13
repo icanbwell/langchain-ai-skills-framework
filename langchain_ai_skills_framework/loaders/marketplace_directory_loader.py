@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
@@ -360,17 +361,21 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         return list(self._plugin_definitions)
 
     def _build_snapshot(self, *, force_download: bool) -> SkillSnapshot:
-        cache_path = self._resolve_marketplace_path(force=force_download)
+        excluded_skills = self._normalize_set(self._environment_variables.excluded_skills)
+        excluded_groups = self._normalize_set(self._environment_variables.excluded_skill_groups)
+        marketplace_include = self._normalize_set(self._environment_variables.plugins_marketplace_include) or None
+        marketplace_exclude = self._normalize_set(self._environment_variables.plugins_marketplace_exclude)
+
+        cache_path = self._resolve_marketplace_path(
+            force=force_download,
+            include_directories=marketplace_include,
+            exclude_directories=marketplace_exclude or None,
+        )
 
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
         all_mcp_servers: list[PluginMcpServerEntry] = []
         plugin_defs: list[PluginDefinition] = []
-
-        excluded_skills = self._normalize_set(self._environment_variables.excluded_skills)
-        excluded_groups = self._normalize_set(self._environment_variables.excluded_skill_groups)
-        marketplace_include = self._normalize_set(self._environment_variables.plugins_marketplace_include) or None
-        marketplace_exclude = self._normalize_set(self._environment_variables.plugins_marketplace_exclude)
 
         # Build combined exclude filter (marketplace-specific + global skill groups)
         combined_exclude = (marketplace_exclude | excluded_groups) if excluded_groups else marketplace_exclude
@@ -505,7 +510,13 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                     exc_info=True,
                 )
 
-    def _resolve_marketplace_path(self, *, force: bool) -> Path:
+    def _resolve_marketplace_path(
+        self,
+        *,
+        force: bool,
+        include_directories: AbstractSet[str] | None = None,
+        exclude_directories: AbstractSet[str] | None = None,
+    ) -> Path:
         """Resolve the marketplace to a local path.
 
         Supports both local filesystem paths and github:// URIs.
@@ -531,6 +542,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                 github_token=self._environment_variables.skills_github_token,
                 cache_path=cache_path,
                 cache_ttl_seconds=cache_ttl,
+                include_directories=include_directories,
+                exclude_directories=exclude_directories,
             )
         except ValueError as exc:
             raise SkillValidationError(f"Failed to download marketplace from '{self._marketplace_uri}': {exc}") from exc

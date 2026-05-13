@@ -1,6 +1,7 @@
 import logging
 import shutil
 import time
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -36,6 +37,8 @@ class GithubDirectoryDownloader:
         github_token: str | None,
         cache_path: Path,
         cache_ttl_seconds: int = 0,
+        include_directories: AbstractSet[str] | None = None,
+        exclude_directories: AbstractSet[str] | None = None,
     ) -> Path:
         """Download a github:// URI to a local directory.
 
@@ -45,6 +48,10 @@ class GithubDirectoryDownloader:
             cache_path: Local directory for cached downloads.
             cache_ttl_seconds: If > 0, skip download when existing cache
                 is younger than this many seconds.
+            include_directories: When set, only download these top-level
+                directory names under source_path.
+            exclude_directories: Top-level directory names under source_path
+                to skip during download.
 
         Returns:
             Resolved path to the downloaded directory.
@@ -82,6 +89,8 @@ class GithubDirectoryDownloader:
                 source_path=source_path,
                 github_token=github_token,
                 target_dir=target_dir,
+                include_directories=include_directories,
+                exclude_directories=exclude_directories,
             )
             self._mark_cache_fresh(target_dir)
         except ValueError:
@@ -118,6 +127,8 @@ class GithubDirectoryDownloader:
         source_path: str,
         github_token: str | None,
         target_dir: Path,
+        include_directories: AbstractSet[str] | None = None,
+        exclude_directories: AbstractSet[str] | None = None,
     ) -> None:
         """Try the download up to ``_MAX_RETRIES`` times with exponential backoff."""
         last_exc: Exception | None = None
@@ -128,6 +139,8 @@ class GithubDirectoryDownloader:
                     source_path=source_path,
                     github_token=github_token,
                     target_dir=target_dir,
+                    include_directories=include_directories,
+                    exclude_directories=exclude_directories,
                 )
                 return
             except Exception as exc:
@@ -153,6 +166,8 @@ class GithubDirectoryDownloader:
         source_path: str,
         github_token: str | None,
         target_dir: Path,
+        include_directories: AbstractSet[str] | None = None,
+        exclude_directories: AbstractSet[str] | None = None,
     ) -> None:
         """Download remote content into *target_dir* using atomic swap.
 
@@ -179,7 +194,21 @@ class GithubDirectoryDownloader:
                 storage_options["token"] = github_token
 
             filesystem = fsspec.filesystem("github", **storage_options)
-            if source_path:
+            if source_path and (include_directories or exclude_directories):
+                normalized_include = {name.lower() for name in include_directories} if include_directories else None
+                normalized_exclude = {name.lower() for name in exclude_directories} if exclude_directories else set()
+                for remote_item in filesystem.ls(source_path, detail=False):
+                    item_name = Path(str(remote_item)).name
+                    item_lower = item_name.lower()
+                    if normalized_include is not None and item_lower not in normalized_include:
+                        logger.debug("Skipping non-included directory: %s", item_name)
+                        continue
+                    if item_lower in normalized_exclude:
+                        logger.debug("Skipping excluded directory: %s", item_name)
+                        continue
+                    destination = staging_dir / item_name
+                    filesystem.get(str(remote_item), str(destination), recursive=True)
+            elif source_path:
                 filesystem.get(source_path, str(staging_dir), recursive=True)
             else:
                 for remote_item in filesystem.ls("", detail=False):

@@ -72,7 +72,9 @@ class GithubDirectoryDownloader:
 
         cache_root = cache_path.expanduser().resolve()
         cache_root.mkdir(parents=True, exist_ok=True)
-        key = f"{git_location.owner}/{git_location.repository}:{ref}:{source_path}"
+        inc_part = ",".join(sorted(include_directories)) if include_directories else ""
+        exc_part = ",".join(sorted(exclude_directories)) if exclude_directories else ""
+        key = f"{git_location.owner}/{git_location.repository}:{ref}:{source_path}:inc={inc_part}:exc={exc_part}"
         cache_dir_name = (
             f"{git_location.owner}-{git_location.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
         )
@@ -259,7 +261,7 @@ class GithubDirectoryDownloader:
             filesystem.get(str(remote_item), str(destination), recursive=True)
 
     @staticmethod
-    def _read_plugin_root_from_manifest(filesystem: Any) -> str | None:
+    def _read_plugin_root_from_manifest(filesystem: Any, *, has_filters: bool = False) -> str | None:
         """Fetch .claude-plugin/marketplace.json and extract pluginRoot."""
         manifest_path = ".claude-plugin/marketplace.json"
         try:
@@ -270,10 +272,17 @@ class GithubDirectoryDownloader:
             metadata = manifest.get("metadata") or {}
             raw_root = metadata.get("pluginRoot", "")
             if raw_root and isinstance(raw_root, str):
-                result: str = raw_root.strip("./").strip("/")
+                result: str = raw_root.removeprefix("./").strip("/")
                 return result
         except Exception:
-            logger.debug("Could not read %s from remote — filters will not be applied at download time", manifest_path)
+            if has_filters:
+                logger.warning(
+                    "Could not read %s from remote — include/exclude filters "
+                    "will not be applied at download time (full repo will be fetched)",
+                    manifest_path,
+                )
+            else:
+                logger.debug("Could not read %s from remote", manifest_path)
         return None
 
     @staticmethod
@@ -286,40 +295,58 @@ class GithubDirectoryDownloader:
     ) -> None:
         """Download repo root, discovering pluginRoot from marketplace.json for filtering."""
         has_filters = bool(include_directories or exclude_directories)
-        plugin_root_name: str | None = None
+        plugin_root_path: str | None = None
 
         if has_filters:
-            plugin_root_name = GithubDirectoryDownloader._read_plugin_root_from_manifest(filesystem)
-            if plugin_root_name:
+            plugin_root_path = GithubDirectoryDownloader._read_plugin_root_from_manifest(filesystem, has_filters=True)
+            if plugin_root_path:
                 logger.info(
                     "Discovered pluginRoot='%s' from marketplace.json — applying filters to that directory",
-                    plugin_root_name,
+                    plugin_root_path,
                 )
 
         normalized_include = {name.lower() for name in include_directories} if include_directories else None
         normalized_exclude = {name.lower() for name in exclude_directories} if exclude_directories else set()
 
-        for remote_item in filesystem.ls("", detail=False):
-            item_path = str(remote_item)
-            item_name = Path(item_path).name
-            if item_name in {".git", ".github"}:
-                continue
+        if has_filters and plugin_root_path:
+            plugin_root_parts = Path(plugin_root_path).parts
+            top_level_dir = plugin_root_parts[0]
 
-            if has_filters and plugin_root_name and item_name == plugin_root_name:
-                destination = staging_dir / item_name
-                destination.mkdir(parents=True, exist_ok=True)
-                for plugin_item in filesystem.ls(item_path, detail=False):
-                    plugin_name = Path(str(plugin_item)).name
-                    plugin_lower = plugin_name.lower()
-                    if normalized_include is not None and plugin_lower not in normalized_include:
-                        logger.debug("Skipping non-included plugin: %s", plugin_name)
-                        continue
-                    if plugin_lower in normalized_exclude:
-                        logger.debug("Skipping excluded plugin: %s", plugin_name)
-                        continue
-                    plugin_dest = destination / plugin_name
-                    filesystem.get(str(plugin_item), str(plugin_dest), recursive=True)
-            else:
+            for remote_item in filesystem.ls("", detail=False):
+                item_path = str(remote_item)
+                item_name = Path(item_path).name
+                if item_name in {".git", ".github"}:
+                    continue
+
+                if item_name == top_level_dir:
+                    # Walk down to the actual plugin root for multi-segment paths
+                    filter_remote_path = item_path
+                    for segment in plugin_root_parts[1:]:
+                        filter_remote_path = f"{filter_remote_path}/{segment}"
+
+                    local_root_dest = staging_dir / Path(plugin_root_path)
+                    local_root_dest.mkdir(parents=True, exist_ok=True)
+
+                    for plugin_item in filesystem.ls(filter_remote_path, detail=False):
+                        plugin_name = Path(str(plugin_item)).name
+                        plugin_lower = plugin_name.lower()
+                        if normalized_include is not None and plugin_lower not in normalized_include:
+                            logger.debug("Skipping non-included plugin: %s", plugin_name)
+                            continue
+                        if plugin_lower in normalized_exclude:
+                            logger.debug("Skipping excluded plugin: %s", plugin_name)
+                            continue
+                        plugin_dest = local_root_dest / plugin_name
+                        filesystem.get(str(plugin_item), str(plugin_dest), recursive=True)
+                else:
+                    destination = staging_dir / item_name
+                    filesystem.get(item_path, str(destination), recursive=True)
+        else:
+            for remote_item in filesystem.ls("", detail=False):
+                item_path = str(remote_item)
+                item_name = Path(item_path).name
+                if item_name in {".git", ".github"}:
+                    continue
                 destination = staging_dir / item_name
                 filesystem.get(item_path, str(destination), recursive=True)
 

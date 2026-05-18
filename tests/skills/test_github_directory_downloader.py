@@ -164,7 +164,7 @@ def test_download_preserves_existing_cache_on_failure(
     # Compute the target dir the same way download() does.
     from hashlib import sha256
 
-    key = f"{git_loc.owner}/{git_loc.repository}:main:configs"
+    key = f"{git_loc.owner}/{git_loc.repository}:main:configs:inc=:exc="
     cache_dir_name = f"{git_loc.owner}-{git_loc.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
     target_dir = cache_dir / cache_dir_name
     target_dir.mkdir(parents=True)
@@ -247,7 +247,7 @@ def test_download_skips_when_disk_cache_is_fresh(
     git_loc = downloader.parse_github_uri("github://my-org/private-repo/configs?ref=main")
     from hashlib import sha256
 
-    key = f"{git_loc.owner}/{git_loc.repository}:main:configs"
+    key = f"{git_loc.owner}/{git_loc.repository}:main:configs:inc=:exc="
     cache_dir_name = f"{git_loc.owner}-{git_loc.repository}-{sha256(key.encode('utf-8')).hexdigest()[:12]}"
     target_dir = cache_dir / cache_dir_name
     target_dir.mkdir(parents=True)

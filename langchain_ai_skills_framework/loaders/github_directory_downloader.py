@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 import time
@@ -5,6 +6,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import fsspec
@@ -49,9 +51,14 @@ class GithubDirectoryDownloader:
             cache_ttl_seconds: If > 0, skip download when existing cache
                 is younger than this many seconds.
             include_directories: When set, only download these top-level
-                directory names under source_path.
+                directory names under source_path to include.
             exclude_directories: Top-level directory names under source_path
                 to skip during download.
+
+        When source_path is empty (repo root) and include/exclude filters are
+        set, the downloader first fetches ``.claude-plugin/marketplace.json``
+        to discover the ``pluginRoot`` directory, then applies filters to items
+        inside that directory while downloading everything else unfiltered.
 
         Returns:
             Resolved path to the downloaded directory.
@@ -195,28 +202,22 @@ class GithubDirectoryDownloader:
 
             filesystem = fsspec.filesystem("github", **storage_options)
             if source_path and (include_directories or exclude_directories):
-                normalized_include = {name.lower() for name in include_directories} if include_directories else None
-                normalized_exclude = {name.lower() for name in exclude_directories} if exclude_directories else set()
-                for remote_item in filesystem.ls(source_path, detail=False):
-                    item_name = Path(str(remote_item)).name
-                    item_lower = item_name.lower()
-                    if normalized_include is not None and item_lower not in normalized_include:
-                        logger.debug("Skipping non-included directory: %s", item_name)
-                        continue
-                    if item_lower in normalized_exclude:
-                        logger.debug("Skipping excluded directory: %s", item_name)
-                        continue
-                    destination = staging_dir / item_name
-                    filesystem.get(str(remote_item), str(destination), recursive=True)
+                self._download_filtered(
+                    filesystem=filesystem,
+                    remote_path=source_path,
+                    staging_dir=staging_dir,
+                    include_directories=include_directories,
+                    exclude_directories=exclude_directories,
+                )
             elif source_path:
                 filesystem.get(source_path, str(staging_dir), recursive=True)
             else:
-                for remote_item in filesystem.ls("", detail=False):
-                    item_path = str(remote_item)
-                    if item_path in {".git", ".github"}:
-                        continue
-                    destination = staging_dir / Path(item_path).name
-                    filesystem.get(item_path, str(destination), recursive=True)
+                self._download_repo_root(
+                    filesystem=filesystem,
+                    staging_dir=staging_dir,
+                    include_directories=include_directories,
+                    exclude_directories=exclude_directories,
+                )
         except ValueError:
             shutil.rmtree(staging_dir, ignore_errors=True)
             raise
@@ -232,6 +233,95 @@ class GithubDirectoryDownloader:
         shutil.move(str(staging_dir), str(target_dir))
         if old_dir.exists():
             shutil.rmtree(old_dir, ignore_errors=True)
+
+    @staticmethod
+    def _download_filtered(
+        *,
+        filesystem: Any,
+        remote_path: str,
+        staging_dir: Path,
+        include_directories: AbstractSet[str] | None,
+        exclude_directories: AbstractSet[str] | None,
+    ) -> None:
+        """Download items from a remote path, applying include/exclude filters."""
+        normalized_include = {name.lower() for name in include_directories} if include_directories else None
+        normalized_exclude = {name.lower() for name in exclude_directories} if exclude_directories else set()
+        for remote_item in filesystem.ls(remote_path, detail=False):
+            item_name = Path(str(remote_item)).name
+            item_lower = item_name.lower()
+            if normalized_include is not None and item_lower not in normalized_include:
+                logger.debug("Skipping non-included directory: %s", item_name)
+                continue
+            if item_lower in normalized_exclude:
+                logger.debug("Skipping excluded directory: %s", item_name)
+                continue
+            destination = staging_dir / item_name
+            filesystem.get(str(remote_item), str(destination), recursive=True)
+
+    @staticmethod
+    def _read_plugin_root_from_manifest(filesystem: Any) -> str | None:
+        """Fetch .claude-plugin/marketplace.json and extract pluginRoot."""
+        manifest_path = ".claude-plugin/marketplace.json"
+        try:
+            with filesystem.open(manifest_path, "r") as f:
+                manifest = json.loads(f.read())
+            if not isinstance(manifest, dict):
+                return None
+            metadata = manifest.get("metadata") or {}
+            raw_root = metadata.get("pluginRoot", "")
+            if raw_root and isinstance(raw_root, str):
+                result: str = raw_root.strip("./").strip("/")
+                return result
+        except Exception:
+            logger.debug("Could not read %s from remote — filters will not be applied at download time", manifest_path)
+        return None
+
+    @staticmethod
+    def _download_repo_root(
+        *,
+        filesystem: Any,
+        staging_dir: Path,
+        include_directories: AbstractSet[str] | None,
+        exclude_directories: AbstractSet[str] | None,
+    ) -> None:
+        """Download repo root, discovering pluginRoot from marketplace.json for filtering."""
+        has_filters = bool(include_directories or exclude_directories)
+        plugin_root_name: str | None = None
+
+        if has_filters:
+            plugin_root_name = GithubDirectoryDownloader._read_plugin_root_from_manifest(filesystem)
+            if plugin_root_name:
+                logger.info(
+                    "Discovered pluginRoot='%s' from marketplace.json — applying filters to that directory",
+                    plugin_root_name,
+                )
+
+        normalized_include = {name.lower() for name in include_directories} if include_directories else None
+        normalized_exclude = {name.lower() for name in exclude_directories} if exclude_directories else set()
+
+        for remote_item in filesystem.ls("", detail=False):
+            item_path = str(remote_item)
+            item_name = Path(item_path).name
+            if item_name in {".git", ".github"}:
+                continue
+
+            if has_filters and plugin_root_name and item_name == plugin_root_name:
+                destination = staging_dir / item_name
+                destination.mkdir(parents=True, exist_ok=True)
+                for plugin_item in filesystem.ls(item_path, detail=False):
+                    plugin_name = Path(str(plugin_item)).name
+                    plugin_lower = plugin_name.lower()
+                    if normalized_include is not None and plugin_lower not in normalized_include:
+                        logger.debug("Skipping non-included plugin: %s", plugin_name)
+                        continue
+                    if plugin_lower in normalized_exclude:
+                        logger.debug("Skipping excluded plugin: %s", plugin_name)
+                        continue
+                    plugin_dest = destination / plugin_name
+                    filesystem.get(str(plugin_item), str(plugin_dest), recursive=True)
+            else:
+                destination = staging_dir / item_name
+                filesystem.get(item_path, str(destination), recursive=True)
 
     @classmethod
     def parse_github_uri(cls, source_uri: str) -> GitLocation:

@@ -20,11 +20,9 @@ SYSTEM_USER_ID = "system"
 class SkillSync:
     """Syncs skills from a shared loader (GitHub/filesystem) into MongoDB.
 
-    On server startup, this compares the skills available from the shared
-    loader against what is already stored in MongoDB under the system user.
-    Missing skills, resources, and scripts are inserted. Existing items
-    are never overwritten — this is insert-only to preserve any
-    user modifications.
+    On each sync, skills, resources, and scripts from the shared loader
+    are upserted into MongoDB under the system user — existing items are
+    replaced with the latest marketplace content.
     """
 
     def __init__(

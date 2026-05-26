@@ -482,14 +482,14 @@ class MongoPluginSkillLoader:
 
     # --- Skill read operations -----------------------------------------------
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str = "") -> SkillSnapshot:
+    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot:
         self._validate_user_id(user_id)
         query: dict[str, object] = {"user_id": user_id}
         if plugin_name:
             query["plugin_name"] = plugin_name
         return await self._build_snapshot(query=query, owner_label=user_id)
 
-    async def load_shared_snapshot(self, *, plugin_name: str = "") -> SkillSnapshot:
+    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
         query: dict[str, object] = {"$or": [{"published": True}, {"shared": True}]}
         if plugin_name:
             query["plugin_name"] = plugin_name

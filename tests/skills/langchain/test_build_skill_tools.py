@@ -40,10 +40,12 @@ class _StubSharedLoader(SkillLoaderProtocol):
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return []
 
-    def get_skill_details(self, skill_name: str, *, plugin_name: str = "") -> SkillDetails:
+    def get_skill_details(self, skill_name: str, *, plugin_name: str | None = None) -> SkillDetails:
         raise SkillNotFoundError(f"'{skill_name}' not found")
 
-    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
+    async def get_skill_details_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+    ) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -55,16 +57,16 @@ class _StubSharedLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:
         return ""
 
-    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
+    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str | None = None) -> str:
         raise NotImplementedError
 
     async def read_skill_resource_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str, resource_name: str
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
         raise NotImplementedError
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
         raise NotImplementedError
 
@@ -72,26 +74,26 @@ class _StubSharedLoader(SkillLoaderProtocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         raise NotImplementedError
 
-    def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
+    def list_skill_script_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
         return []
 
     async def list_skill_script_names_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         return []
 
-    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
+    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
         return []
 
     async def list_skill_resource_names_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         return []
 

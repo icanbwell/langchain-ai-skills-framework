@@ -40,7 +40,7 @@ async def format_script_availability(
     script_name: str,
     *,
     user_id: str,
-    plugin_name: str = "",
+    plugin_name: str | None = None,
 ) -> str:
     """Return a message listing available scripts for a given skill."""
     if user_id:
@@ -59,7 +59,7 @@ async def format_resource_availability(
     resource_name: str,
     *,
     user_id: str,
-    plugin_name: str = "",
+    plugin_name: str | None = None,
 ) -> str:
     """Return a message listing available resources for a given skill.
 

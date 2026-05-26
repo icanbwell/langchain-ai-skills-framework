@@ -66,10 +66,10 @@ class NullPluginSkillStore:
     async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str = "") -> SkillSnapshot:
+    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
-    async def load_shared_snapshot(self, *, plugin_name: str = "") -> SkillSnapshot:
+    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
     async def get_skill_details(

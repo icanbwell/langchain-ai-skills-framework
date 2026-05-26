@@ -22,9 +22,9 @@ class ListSkillsInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    plugin_name: str = Field(
-        default="",
-        description="Optional plugin name to filter skills by. If empty, lists skills from all plugins.",
+    plugin_name: str | None = Field(
+        default=None,
+        description="Optional plugin name to filter skills by. If not provided, lists skills from all plugins.",
     )
     runtime: ToolRuntime
 
@@ -45,7 +45,7 @@ class ListSkillsTool(BaseTool):
     def _run(
         self,
         *,
-        plugin_name: str = "",
+        plugin_name: str | None = None,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -55,7 +55,7 @@ class ListSkillsTool(BaseTool):
     async def _arun(
         self,
         *,
-        plugin_name: str = "",
+        plugin_name: str | None = None,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:

@@ -40,13 +40,15 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills)
 
-    def get_skill_details(self, skill_name: str, *, plugin_name: str = "") -> SkillDetails:
+    def get_skill_details(self, skill_name: str, *, plugin_name: str | None = None) -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
             raise SkillNotFoundError from exc
 
-    async def get_skill_details_for_user(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetails:
+    async def get_skill_details_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+    ) -> SkillDetails:
         return self.get_skill_details(skill_name)
 
     def refresh(self) -> None:
@@ -58,16 +60,16 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:  # pragma: no cover
         return ""
 
-    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str = "") -> str:
+    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str | None = None) -> str:
         raise NotImplementedError()
 
     async def read_skill_resource_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str, resource_name: str
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
         return self.read_skill_resource(skill_name, resource_name)
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str = ""
+        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
         raise NotImplementedError()
 
@@ -75,26 +77,26 @@ class _StubSkillLoader(SkillLoaderProtocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments)
 
-    def list_skill_script_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
+    def list_skill_script_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
         return []
 
     async def list_skill_script_names_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         return self.list_skill_script_names(skill_name)
 
-    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str = "") -> Sequence[str]:
+    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
         return []
 
     async def list_skill_resource_names_for_user(
-        self, *, user_id: str, plugin_name: str, skill_name: str
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name)
 

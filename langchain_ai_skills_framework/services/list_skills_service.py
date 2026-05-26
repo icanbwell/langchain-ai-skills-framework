@@ -28,7 +28,7 @@ class ListSkillsService:
     def __init__(self, *, skill_loader: SkillLoaderProtocol) -> None:
         self._loader = skill_loader
 
-    async def execute(self, *, user_id: str, plugin_name: str = "") -> Sequence[SkillInfo]:
+    async def execute(self, *, user_id: str, plugin_name: str | None = None) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``."""
         if user_id:
             summaries = await self._loader.list_all_summaries(user_id=user_id, allowed_skills=set())

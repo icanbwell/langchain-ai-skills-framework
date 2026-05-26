@@ -661,9 +661,19 @@ class MongoPluginSkillLoader:
         return MongoPluginDefinitionDocument.from_mongo_dict(raw)
 
     async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
-        """Return all plugin definitions."""
+        """Return all plugin definitions, skipping malformed documents."""
         cursor = self._plugins_collection.find().sort("plugin_name", 1)
-        return [MongoPluginDefinitionDocument.from_mongo_dict(doc) async for doc in cursor]
+        results: list[MongoPluginDefinitionDocument] = []
+        async for doc in cursor:
+            try:
+                results.append(MongoPluginDefinitionDocument.from_mongo_dict(doc))
+            except (KeyError, ValueError) as exc:
+                logger.warning(
+                    "list_plugins: skipping malformed plugin document _id=%s: %s",
+                    doc.get("_id"),
+                    exc,
+                )
+        return results
 
     async def has_plugins(self) -> bool:
         """Return True if the plugins collection has at least one document."""

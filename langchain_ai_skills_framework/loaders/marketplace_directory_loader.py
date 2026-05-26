@@ -199,6 +199,12 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             raise SkillNotFoundError(f"Resource '{resource_name}' not found for skill '{skill_name}'")
         try:
             return resolved_resource.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            import base64
+
+            raw = resolved_resource.read_bytes()
+            encoded = base64.b64encode(raw).decode("ascii")
+            return f"[base64-encoded binary file: {resource_name}]\n{encoded}"
         except Exception as exc:
             raise SkillValidationError(
                 f"Error reading resource '{resource_name}' for skill '{skill_name}': {exc}"

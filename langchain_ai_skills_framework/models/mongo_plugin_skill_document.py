@@ -237,8 +237,11 @@ class MongoPluginDefinitionDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginDefinitionDocument:
+        plugin_name = data.get("plugin_name") or data.get("name", "")
+        if not plugin_name:
+            raise KeyError("plugin_name")
         return cls(
-            plugin_name=data["plugin_name"],
+            plugin_name=plugin_name,
             description=data.get("description", ""),
             skills=data.get("skills", []),
             mcp_servers=data.get("mcp_servers", []),

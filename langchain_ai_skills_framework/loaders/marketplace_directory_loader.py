@@ -607,11 +607,11 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         summary = SkillSummary(
             name=normalized_name,
             description=description,
-            plugin_name=plugin_name or "",
+            plugin_name=plugin_name,
             source_path=metadata.skill_path,
             license=None,
             compatibility=None,
-            metadata={"source": "marketplace", "plugin_name": plugin_name or ""},
+            metadata={"source": "marketplace", "plugin_name": plugin_name},
             allowed_tools=metadata.allowed_tools,
         )
         return SkillDetails(

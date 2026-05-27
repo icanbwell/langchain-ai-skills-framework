@@ -269,7 +269,7 @@ class MongoPluginSkillUsageDocument(BaseModel):
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillUsageDocument:
         return cls(
-            plugin_name=data.get("plugin_name", ""),
+            plugin_name=data["plugin_name"],
             skill_name=data["skill_name"],
             user_id=data["user_id"],
             date_used=data.get("date_used", datetime.now(timezone.utc)),

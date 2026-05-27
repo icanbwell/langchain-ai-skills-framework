@@ -65,11 +65,11 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails: ...
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool: ...
+    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool: ...
 
     # --- Resource operations ---
 
@@ -97,7 +97,7 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> str: ...
@@ -106,7 +106,7 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]: ...
 
@@ -114,7 +114,7 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> bool: ...
@@ -145,7 +145,7 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> str: ...
@@ -154,7 +154,7 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]: ...
 
@@ -162,7 +162,7 @@ class PluginSkillStore(Protocol):
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> bool: ...

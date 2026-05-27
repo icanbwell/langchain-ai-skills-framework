@@ -209,13 +209,13 @@ class MongoPluginSkillLoader:
         result = await self._skills_collection.delete_one(filter_base)
         return result.deleted_count > 0
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
+    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool:
         self._validate_user_id(user_id)
         normalized_name = self._normalize(skill_name)
-        count = await self._skills_collection.count_documents(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name},
-            limit=1,
-        )
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_name}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        count = await self._skills_collection.count_documents(query, limit=1)
         return count > 0
 
     # --- Resource write operations -------------------------------------------
@@ -290,20 +290,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> str:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        raw = await self._resources_collection.find_one(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "resource_name": resource_name.strip(),
-            }
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "resource_name": resource_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        raw = await self._resources_collection.find_one(query)
         if raw is None:
             raise SkillNotFoundError(
                 f"Resource '{resource_name}' not found in skill '{skill_name}' "
@@ -315,16 +315,16 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_skill}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
         names: list[str] = []
-        async for raw in self._resources_collection.find(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_skill},
-            {"resource_name": 1},
-        ):
+        async for raw in self._resources_collection.find(query, {"resource_name": 1}):
             names.append(raw["resource_name"])
         return sorted(names)
 
@@ -332,21 +332,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> bool:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        count = await self._resources_collection.count_documents(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "resource_name": resource_name.strip(),
-            },
-            limit=1,
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "resource_name": resource_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        count = await self._resources_collection.count_documents(query, limit=1)
         return count > 0
 
     # --- Script write operations ---------------------------------------------
@@ -421,20 +420,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> str:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        raw = await self._scripts_collection.find_one(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "script_name": script_name.strip(),
-            }
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "script_name": script_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        raw = await self._scripts_collection.find_one(query)
         if raw is None:
             raise SkillNotFoundError(
                 f"Script '{script_name}' not found in skill '{skill_name}' "
@@ -446,16 +445,16 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_skill}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
         names: list[str] = []
-        async for raw in self._scripts_collection.find(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_skill},
-            {"script_name": 1},
-        ):
+        async for raw in self._scripts_collection.find(query, {"script_name": 1}):
             names.append(raw["script_name"])
         return sorted(names)
 
@@ -463,21 +462,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> bool:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        count = await self._scripts_collection.count_documents(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "script_name": script_name.strip(),
-            },
-            limit=1,
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "script_name": script_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        count = await self._scripts_collection.count_documents(query, limit=1)
         return count > 0
 
     # --- Skill read operations -----------------------------------------------
@@ -499,14 +497,15 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails:
         self._validate_user_id(user_id)
         normalized_name = self._normalize(skill_name)
-        raw = await self._skills_collection.find_one(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}
-        )
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_name}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        raw = await self._skills_collection.find_one(query)
         if raw is None:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)

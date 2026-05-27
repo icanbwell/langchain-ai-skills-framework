@@ -67,7 +67,7 @@ def _deserialize_summary(data: dict[str, Any]) -> SkillSummary:
     return SkillSummary(
         name=data["name"],
         description=data["description"],
-        plugin_name=data.get("plugin_name", ""),
+        plugin_name=data.get("plugin_name"),
         source_path=Path(source_path_raw) if source_path_raw else None,
         license=data.get("license"),
         compatibility=data.get("compatibility"),

@@ -50,6 +50,9 @@ class SkillSync:
             for summary in summaries:
                 skill_name = summary.name
                 plugin_name = summary.plugin_name
+                if not plugin_name:
+                    logger.warning("SkillSync: skill '%s' has no plugin_name; skipping.", skill_name)
+                    continue
                 try:
                     await self._sync_skill(skill_name=skill_name, plugin_name=plugin_name, result=result)
                 except Exception:

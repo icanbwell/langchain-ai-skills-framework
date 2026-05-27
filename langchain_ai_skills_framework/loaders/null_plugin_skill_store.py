@@ -76,14 +76,14 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails:
         raise SkillNotFoundError(
             f"Skill '{skill_name}' not found in plugin '{plugin_name}' — plugin skill storage is not configured."
         )
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
+    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool:
         return False
 
     # --- Resource operations ---
@@ -114,7 +114,7 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> str:
@@ -124,7 +124,7 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
         return ()
@@ -133,7 +133,7 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> bool:
@@ -167,7 +167,7 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> str:
@@ -177,7 +177,7 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
         return ()
@@ -186,7 +186,7 @@ class NullPluginSkillStore:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> bool:

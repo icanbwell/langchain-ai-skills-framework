@@ -98,7 +98,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # 1. User's own skills (highest precedence)
         try:
             return await self._user_loader.get_skill_details(
-                user_id=user_id, plugin_name=plugin_name or "", skill_name=normalized
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
             )
         except SkillNotFoundError:
             logger.debug(
@@ -139,9 +139,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         for skill in summaries:
             escaped_name = escape(skill.name, quote=True)
             escaped_description = escape(skill.description.strip(), quote=True)
-            escaped_plugin_name = escape(skill.plugin_name, quote=True)
             lines.append("<skill>")
-            lines.append(f"<plugin_name>{escaped_plugin_name}</plugin_name>")
+            if skill.plugin_name:
+                escaped_plugin_name = escape(skill.plugin_name, quote=True)
+                lines.append(f"<plugin_name>{escaped_plugin_name}</plugin_name>")
             lines.append(f"<name>{escaped_name}</name>")
             lines.append(f"<description>{escaped_description}</description>")
             lines.append(f"<usage_count>{usage_counts.get(skill.name, 0)}</usage_count>")
@@ -184,7 +185,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # Check user's own skills first
         try:
             return await self._user_loader.read_resource(
-                user_id=user_id, plugin_name=plugin_name or "", skill_name=normalized, resource_name=resource_name
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized, resource_name=resource_name
             )
         except SkillNotFoundError:
             logger.debug(
@@ -205,7 +206,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 try:
                     return await self._user_loader.read_resource(
                         user_id=owner_user_id,
-                        plugin_name=plugin_name or "",
+                        plugin_name=plugin_name,
                         skill_name=normalized,
                         resource_name=resource_name,
                     )
@@ -239,7 +240,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # Check user's own scripts first
         try:
             script_content = await self._user_loader.read_script(
-                user_id=user_id, plugin_name=plugin_name or "", skill_name=normalized, script_name=script_name
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
             )
             return await self._execute_script_content(
                 script_content=script_content,
@@ -260,7 +261,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 try:
                     script_content = await self._user_loader.read_script(
                         user_id=owner_user_id,
-                        plugin_name=plugin_name or "",
+                        plugin_name=plugin_name,
                         skill_name=normalized,
                         script_name=script_name,
                     )
@@ -288,7 +289,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # User's own scripts
         try:
             user_scripts = await self._user_loader.list_script_names(
-                user_id=user_id, plugin_name=plugin_name or "", skill_name=normalized
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
             )
             names.update(user_scripts)
         except (SkillNotFoundError, ValueError):
@@ -316,7 +317,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # User's own resources
         try:
             user_resources = await self._user_loader.list_resource_names(
-                user_id=user_id, plugin_name=plugin_name or "", skill_name=normalized
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
             )
             names.update(user_resources)
         except (SkillNotFoundError, ValueError):

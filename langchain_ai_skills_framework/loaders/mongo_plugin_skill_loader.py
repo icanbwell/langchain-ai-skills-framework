@@ -129,8 +129,7 @@ class MongoPluginSkillLoader:
 
     def _version_filter(self, query: dict[str, object]) -> dict[str, object]:
         """Add schema_version to a query filter."""
-        query[self.SCHEMA_VERSION_FIELD] = self._schema_version
-        return query
+        return {**query, self.SCHEMA_VERSION_FIELD: self._schema_version}
 
     # --- Skill write operations ----------------------------------------------
 

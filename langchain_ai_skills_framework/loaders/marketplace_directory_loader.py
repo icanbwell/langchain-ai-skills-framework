@@ -106,6 +106,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
         self._plugins_collection = environment_variables.plugins_collection
+        self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{environment_variables.skill_cache_schema_version}"
 
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
@@ -293,7 +294,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name, script_name, arguments, plugin_name=plugin_name)
 
-    _SNAPSHOT_CACHE_KEY = "marketplace_snapshot"
+    _SNAPSHOT_CACHE_KEY: str = "marketplace_snapshot"
 
     # --- Private implementation ------------------------------------------------
 

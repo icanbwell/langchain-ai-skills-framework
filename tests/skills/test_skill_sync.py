@@ -18,11 +18,12 @@ from langchain_ai_skills_framework.models.skills_model import (
 )
 
 
-def _make_summary(name: str, source_path: Path | None = None) -> SkillSummary:
+def _make_summary(name: str, source_path: Path | None = None, plugin_name: str = "test-plugin") -> SkillSummary:
     return SkillSummary(
         name=name,
         description=f"Description for {name}",
         source_path=source_path or Path(f"/skills/{name}/SKILL.md"),
+        plugin_name=plugin_name,
     )
 
 
@@ -56,6 +57,7 @@ def _make_shared_loader(
     loader.read_skill_resource.side_effect = lambda skill_name, resource_name, *, plugin_name=None: (
         f"content of {resource_name}"
     )
+    loader.list_plugin_definitions = AsyncMock(return_value=[])
     return loader
 
 

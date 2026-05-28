@@ -79,7 +79,7 @@ class SkillSync:
         Always upserts — replaces existing content with the latest from
         the marketplace so that updates to shared skills propagate on restart.
         """
-        details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
+        details = self._shared.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
         await self._store.save_skill(
             user_id=SYSTEM_USER_ID,
             plugin_name=plugin_name,
@@ -95,14 +95,16 @@ class SkillSync:
 
         # Sync resources
         try:
-            resource_names = self._shared.list_skill_resource_names(skill_name, plugin_name=plugin_name)
+            resource_names = self._shared.list_skill_resource_names(skill_name=skill_name, plugin_name=plugin_name)
         except Exception:
             logger.debug("SkillSync: could not list resources for skill '%s'.", skill_name)
             resource_names = []
 
         for resource_name in resource_names:
             try:
-                content = self._shared.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)
+                content = self._shared.read_skill_resource(
+                    skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name
+                )
                 await self._store.save_resource(
                     user_id=SYSTEM_USER_ID,
                     plugin_name=plugin_name,
@@ -127,14 +129,14 @@ class SkillSync:
 
         # Sync scripts
         try:
-            script_names = self._shared.list_skill_script_names(skill_name, plugin_name=plugin_name)
+            script_names = self._shared.list_skill_script_names(skill_name=skill_name, plugin_name=plugin_name)
         except Exception:
             logger.debug("SkillSync: could not list scripts for skill '%s'.", skill_name)
             script_names = []
 
         for script_name in script_names:
             try:
-                details = self._shared.get_skill_details(skill_name, plugin_name=plugin_name)
+                details = self._shared.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
                 if details.source_path:
                     skill_dir = details.source_path.parent
                     script_path = skill_dir / "scripts" / f"{script_name}.py"

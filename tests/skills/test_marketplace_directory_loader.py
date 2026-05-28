@@ -168,7 +168,7 @@ class TestLocalMarketplaceDiscovery:
             github_directory_downloader=MagicMock(),
         )
 
-        details = loader.get_skill_details("my-skill")
+        details = loader.get_skill_details(skill_name="my-skill")
         assert "Custom body." in details.content
 
     def test_get_skill_details_raises_not_found(self, tmp_path: Path) -> None:
@@ -181,7 +181,7 @@ class TestLocalMarketplaceDiscovery:
         )
 
         with pytest.raises(SkillNotFoundError):
-            loader.get_skill_details("does-not-exist")
+            loader.get_skill_details(skill_name="does-not-exist")
 
     def test_nonexistent_local_path_raises(self) -> None:
         env = FakeEnvVars(plugins_marketplace="/nonexistent/path/xyz")

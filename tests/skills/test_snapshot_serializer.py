@@ -73,8 +73,8 @@ class TestSnapshotSerializer:
 
     def test_round_trip_full_snapshot(self) -> None:
         original = _make_snapshot()
-        serialized = serialize_snapshot(original)
-        restored = deserialize_snapshot(serialized)
+        serialized = serialize_snapshot(snapshot=original)
+        restored = deserialize_snapshot(data=serialized)
 
         assert restored.ordered_summaries[0].name == original.ordered_summaries[0].name
         assert restored.ordered_summaries[0].description == original.ordered_summaries[0].description
@@ -85,8 +85,8 @@ class TestSnapshotSerializer:
 
     def test_round_trip_details(self) -> None:
         original = _make_snapshot()
-        serialized = serialize_snapshot(original)
-        restored = deserialize_snapshot(serialized)
+        serialized = serialize_snapshot(snapshot=original)
+        restored = deserialize_snapshot(data=serialized)
 
         assert "test_skill" in restored.details_by_name
         detail = restored.details_by_name["test_skill"]
@@ -95,8 +95,8 @@ class TestSnapshotSerializer:
 
     def test_round_trip_mcp_servers(self) -> None:
         original = _make_snapshot()
-        serialized = serialize_snapshot(original)
-        restored = deserialize_snapshot(serialized)
+        serialized = serialize_snapshot(snapshot=original)
+        restored = deserialize_snapshot(data=serialized)
 
         assert len(restored.mcp_servers) == 1
         entry = restored.mcp_servers[0]
@@ -119,7 +119,7 @@ class TestSnapshotSerializer:
         import json
 
         original = _make_snapshot()
-        serialized = serialize_snapshot(original)
+        serialized = serialize_snapshot(snapshot=original)
         # Should not raise
         json_str = json.dumps(serialized)
         assert isinstance(json_str, str)
@@ -130,8 +130,8 @@ class TestSnapshotSerializer:
             ordered_summaries=(),
             mcp_servers=(),
         )
-        serialized = serialize_snapshot(empty)
-        restored = deserialize_snapshot(serialized)
+        serialized = serialize_snapshot(snapshot=empty)
+        restored = deserialize_snapshot(data=serialized)
 
         assert len(restored.details_by_name) == 0
         assert len(restored.ordered_summaries) == 0
@@ -144,8 +144,8 @@ class TestSnapshotSerializer:
             skills=(_make_summary("skill-a"), _make_summary("skill-b")),
             mcp_servers=(_make_mcp_entry(),),
         )
-        serialized = serialize_plugin_definition(plugin)
-        restored = deserialize_plugin_definition(serialized)
+        serialized = serialize_plugin_definition(plugin=plugin)
+        restored = deserialize_plugin_definition(data=serialized)
 
         assert restored.name == "test-plugin"
         assert restored.description == "A test plugin"
@@ -157,8 +157,8 @@ class TestSnapshotSerializer:
 
     def test_round_trip_plugin_definition_minimal(self) -> None:
         plugin = PluginDefinition(name="bare-plugin")
-        serialized = serialize_plugin_definition(plugin)
-        restored = deserialize_plugin_definition(serialized)
+        serialized = serialize_plugin_definition(plugin=plugin)
+        restored = deserialize_plugin_definition(data=serialized)
 
         assert restored.name == "bare-plugin"
         assert restored.description is None
@@ -178,8 +178,8 @@ class TestSnapshotSerializer:
             ordered_summaries=(),
             mcp_servers=(entry,),
         )
-        serialized = serialize_snapshot(snapshot)
-        restored = deserialize_snapshot(serialized)
+        serialized = serialize_snapshot(snapshot=snapshot)
+        restored = deserialize_snapshot(data=serialized)
 
         assert restored.mcp_servers[0].url is None
         assert restored.mcp_servers[0].command is None

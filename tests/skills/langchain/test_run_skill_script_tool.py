@@ -46,14 +46,14 @@ class _StubSkillLoader(SkillLoaderProtocol):
         self._script_names_by_skill = dict(script_names_by_skill or {})
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
-    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         del allowed_skills
         return [detail.summary for detail in self._details.values()]
 
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
-        return self.list_skill_summaries(allowed_skills)
+        return self.list_skill_summaries(allowed_skills=allowed_skills)
 
-    def get_skill_details(self, skill_name: str, *, plugin_name: str | None = None) -> SkillDetails:
+    def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
         try:
             return self._details[skill_name]
         except KeyError as exc:
@@ -62,7 +62,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def get_skill_details_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> SkillDetails:
-        return self.get_skill_details(skill_name)
+        return self.get_skill_details(skill_name=skill_name)
 
     def refresh(self) -> None:
         return None
@@ -73,11 +73,11 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def get_instructions(self) -> str:  # pragma: no cover
         return ""
 
-    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str | None = None) -> str:
+    def read_skill_resource(self, *, skill_name: str, resource_name: str, plugin_name: str | None = None) -> str:
         raise NotImplementedError()
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str | None = None
+        self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
         self.calls.append((skill_name, script_name, arguments))
         if skill_name not in self._details:
@@ -93,7 +93,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
     async def read_skill_resource_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
-        return self.read_skill_resource(skill_name, resource_name)
+        return self.read_skill_resource(skill_name=skill_name, resource_name=resource_name)
 
     async def run_skill_script_for_user(
         self,
@@ -104,23 +104,23 @@ class _StubSkillLoader(SkillLoaderProtocol):
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
-        return await self.run_skill_script(skill_name, script_name, arguments)
+        return await self.run_skill_script(skill_name=skill_name, script_name=script_name, arguments=arguments)
 
-    def list_skill_script_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
+    def list_skill_script_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]:
         return self._script_names_by_skill.get(skill_name, [])
 
     async def list_skill_script_names_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
-        return self.list_skill_script_names(skill_name)
+        return self.list_skill_script_names(skill_name=skill_name)
 
-    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
+    def list_skill_resource_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]:
         return []
 
     async def list_skill_resource_names_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
-        return self.list_skill_resource_names(skill_name)
+        return self.list_skill_resource_names(skill_name=skill_name)
 
     async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]:
         return []
@@ -131,7 +131,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
 
 class _FailingScriptLoader(_StubSkillLoader):
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str | None = None
+        self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
         self.calls.append((skill_name, script_name, arguments))
         return MyScriptExecutionResult(
@@ -145,7 +145,7 @@ class _FailingScriptLoader(_StubSkillLoader):
 
 class _ScriptNotFoundLoader(_StubSkillLoader):
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str | None = None
+        self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
         self.calls.append((skill_name, script_name, arguments))
         raise ScriptNotFoundError(f"Script '{script_name}' not found")

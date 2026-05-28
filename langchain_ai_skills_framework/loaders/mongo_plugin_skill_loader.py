@@ -147,7 +147,7 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
 
         description = self._extract_description(content)
-        path = build_skill_path(plugin_name, normalized_name)
+        path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name)
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
         sv = self.SCHEMA_VERSION_FIELD
@@ -246,7 +246,9 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(resource_name.strip(), "resource_name")
 
-        path = build_resource_path(plugin_name, normalized_skill, resource_name.strip())
+        path = build_resource_path(
+            plugin_name=plugin_name, skill_name=normalized_skill, resource_name=resource_name.strip()
+        )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
         sv = self.SCHEMA_VERSION_FIELD
@@ -382,7 +384,7 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(script_name.strip(), "script_name")
 
-        path = build_script_path(plugin_name, normalized_skill, script_name.strip())
+        path = build_script_path(plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip())
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
         sv = self.SCHEMA_VERSION_FIELD
@@ -618,7 +620,7 @@ class MongoPluginSkillLoader:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return normalize_skill_name(value)
+        return normalize_skill_name(value=value)
 
     @staticmethod
     def _validate_user_id(user_id: str) -> None:

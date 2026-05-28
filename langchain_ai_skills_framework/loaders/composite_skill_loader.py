@@ -77,24 +77,24 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- SkillLoaderProtocol implementation ----------------------------------
 
-    def list_skill_summaries(self, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return shared skill summaries (user skills require async — see ``list_all_summaries``)."""
-        return self._shared_loader.list_skill_summaries(allowed_skills)
+        return self._shared_loader.list_skill_summaries(allowed_skills=allowed_skills)
 
     async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         """Return merged summaries from shared + user skills."""
         snapshot = await self._merged_snapshot(user_id=user_id)
         return snapshot.ordered_summaries
 
-    def get_skill_details(self, skill_name: str, *, plugin_name: str | None = None) -> SkillDetails:
+    def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
         """Get skill details from shared loader only (sync)."""
-        return self._shared_loader.get_skill_details(skill_name, plugin_name=plugin_name)
+        return self._shared_loader.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
 
     async def get_skill_details_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> SkillDetails:
         """Get skill details checking user skills first, then shared DB, then GitHub."""
-        normalized = normalize_skill_name(skill_name)
+        normalized = normalize_skill_name(value=skill_name)
         # 1. User's own skills (highest precedence)
         try:
             return await self._user_loader.get_skill_details(
@@ -113,7 +113,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             return shared_snapshot.details_by_name[normalized]
 
         # 3. GitHub/filesystem skills (lowest precedence)
-        return self._shared_loader.get_skill_details(normalized, plugin_name=plugin_name)
+        return self._shared_loader.get_skill_details(skill_name=normalized, plugin_name=plugin_name)
 
     def refresh(self) -> None:
         self._shared_loader.refresh()
@@ -173,14 +173,16 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             "Use progressive disclosure: load only what you need, when you need it."
         )
 
-    def read_skill_resource(self, skill_name: str, resource_name: str, *, plugin_name: str | None = None) -> str:
-        return self._shared_loader.read_skill_resource(skill_name, resource_name, plugin_name=plugin_name)
+    def read_skill_resource(self, *, skill_name: str, resource_name: str, plugin_name: str | None = None) -> str:
+        return self._shared_loader.read_skill_resource(
+            skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name
+        )
 
     async def read_skill_resource_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
         """Read a resource, checking user's MongoDB skills first, then shared loader."""
-        normalized = normalize_skill_name(skill_name)
+        normalized = normalize_skill_name(value=skill_name)
 
         # Check user's own skills first
         try:
@@ -214,12 +216,16 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                     pass
 
         # Fall back to shared filesystem loader
-        return self._shared_loader.read_skill_resource(normalized, resource_name, plugin_name=plugin_name)
+        return self._shared_loader.read_skill_resource(
+            skill_name=normalized, resource_name=resource_name, plugin_name=plugin_name
+        )
 
     async def run_skill_script(
-        self, skill_name: str, script_name: str, arguments: dict[str, Any] | None, *, plugin_name: str | None = None
+        self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
-        return await self._shared_loader.run_skill_script(skill_name, script_name, arguments, plugin_name=plugin_name)
+        return await self._shared_loader.run_skill_script(
+            skill_name=skill_name, script_name=script_name, arguments=arguments, plugin_name=plugin_name
+        )
 
     async def run_skill_script_for_user(
         self,
@@ -235,7 +241,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         MongoDB-stored scripts are executed in a subprocess with the script
         content written to a temporary file.
         """
-        normalized = normalize_skill_name(skill_name)
+        normalized = normalize_skill_name(value=skill_name)
 
         # Check user's own scripts first
         try:
@@ -274,16 +280,18 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                     pass
 
         # Fall back to shared filesystem loader
-        return await self._shared_loader.run_skill_script(normalized, script_name, arguments, plugin_name=plugin_name)
+        return await self._shared_loader.run_skill_script(
+            skill_name=normalized, script_name=script_name, arguments=arguments, plugin_name=plugin_name
+        )
 
-    def list_skill_script_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
-        return self._shared_loader.list_skill_script_names(skill_name, plugin_name=plugin_name)
+    def list_skill_script_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]:
+        return self._shared_loader.list_skill_script_names(skill_name=skill_name, plugin_name=plugin_name)
 
     async def list_skill_script_names_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         """List scripts, merging user MongoDB scripts with shared loader scripts."""
-        normalized = normalize_skill_name(skill_name)
+        normalized = normalize_skill_name(value=skill_name)
         names: set[str] = set()
 
         # User's own scripts
@@ -297,21 +305,21 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         # Shared loader scripts
         try:
-            shared_scripts = self._shared_loader.list_skill_script_names(normalized, plugin_name=plugin_name)
+            shared_scripts = self._shared_loader.list_skill_script_names(skill_name=normalized, plugin_name=plugin_name)
             names.update(shared_scripts)
         except SkillNotFoundError:
             pass
 
         return sorted(names)
 
-    def list_skill_resource_names(self, skill_name: str, *, plugin_name: str | None = None) -> Sequence[str]:
-        return self._shared_loader.list_skill_resource_names(skill_name, plugin_name=plugin_name)
+    def list_skill_resource_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]:
+        return self._shared_loader.list_skill_resource_names(skill_name=skill_name, plugin_name=plugin_name)
 
     async def list_skill_resource_names_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         """List resources, merging user MongoDB resources with shared loader resources."""
-        normalized = normalize_skill_name(skill_name)
+        normalized = normalize_skill_name(value=skill_name)
         names: set[str] = set()
 
         # User's own resources
@@ -325,7 +333,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         # Shared loader resources
         try:
-            shared_resources = self._shared_loader.list_skill_resource_names(normalized, plugin_name=plugin_name)
+            shared_resources = self._shared_loader.list_skill_resource_names(
+                skill_name=normalized, plugin_name=plugin_name
+            )
             names.update(shared_resources)
         except SkillNotFoundError:
             pass
@@ -423,7 +433,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         # 1. GitHub / filesystem skills (lowest precedence, sync + cached)
         for summary in self._shared_loader.list_skill_summaries(allowed_skills=set()):
-            detail = self._shared_loader.get_skill_details(summary.name, plugin_name=summary.plugin_name)
+            detail = self._shared_loader.get_skill_details(skill_name=summary.name, plugin_name=summary.plugin_name)
             details[summary.name] = detail
 
         # 2+3. Load shared and user snapshots concurrently

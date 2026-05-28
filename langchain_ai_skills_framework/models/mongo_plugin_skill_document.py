@@ -21,17 +21,17 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-def build_skill_path(plugin_name: str, skill_name: str) -> str:
+def build_skill_path(*, plugin_name: str, skill_name: str) -> str:
     """Return the canonical path for a skill's ``SKILL.md``."""
     return f"{plugin_name}/skills/{skill_name}/SKILL.md"
 
 
-def build_resource_path(plugin_name: str, skill_name: str, resource_name: str) -> str:
+def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str) -> str:
     """Return the canonical path for a skill resource file."""
     return f"{plugin_name}/skills/{skill_name}/{resource_name}"
 
 
-def build_script_path(plugin_name: str, skill_name: str, script_name: str) -> str:
+def build_script_path(*, plugin_name: str, skill_name: str, script_name: str) -> str:
     """Return the canonical path for a skill script file."""
     return f"{plugin_name}/skills/{skill_name}/scripts/{script_name}"
 

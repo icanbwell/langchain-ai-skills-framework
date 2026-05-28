@@ -45,16 +45,16 @@ def _make_shared_loader(
     loader = MagicMock()
     loader.list_skill_summaries.return_value = summaries or []
     _details = details or {}
-    loader.get_skill_details.side_effect = lambda skill_name, *, plugin_name=None: _details.get(
+    loader.get_skill_details.side_effect = lambda *, skill_name, plugin_name=None: _details.get(
         skill_name, _make_details(skill_name)
     )
     _resources = resource_names or {}
-    loader.list_skill_resource_names.side_effect = lambda skill_name, *, plugin_name=None: _resources.get(
+    loader.list_skill_resource_names.side_effect = lambda *, skill_name, plugin_name=None: _resources.get(
         skill_name, []
     )
     _scripts = script_names or {}
-    loader.list_skill_script_names.side_effect = lambda skill_name, *, plugin_name=None: _scripts.get(skill_name, [])
-    loader.read_skill_resource.side_effect = lambda skill_name, resource_name, *, plugin_name=None: (
+    loader.list_skill_script_names.side_effect = lambda *, skill_name, plugin_name=None: _scripts.get(skill_name, [])
+    loader.read_skill_resource.side_effect = lambda *, skill_name, resource_name, plugin_name=None: (
         f"content of {resource_name}"
     )
     loader.list_plugin_definitions = AsyncMock(return_value=[])

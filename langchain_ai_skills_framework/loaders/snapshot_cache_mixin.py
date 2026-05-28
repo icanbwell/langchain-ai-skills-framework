@@ -69,7 +69,7 @@ class SnapshotCacheMixin:
             )
             if data is None:
                 return None
-            snapshot = deserialize_snapshot(data)
+            snapshot = deserialize_snapshot(data=data)
             logger.info(
                 "%s loaded snapshot from cache (%d skills)",
                 self._loader_display_name,
@@ -89,7 +89,7 @@ class SnapshotCacheMixin:
         if not self._snapshot_cache_store:
             return
         try:
-            data = serialize_snapshot(snapshot)
+            data = serialize_snapshot(snapshot=snapshot)
             await self._snapshot_cache_store.put(
                 self._SNAPSHOT_CACHE_KEY,
                 data,
@@ -122,6 +122,7 @@ class SnapshotCacheMixin:
 
     @staticmethod
     def _resolve_reload_ttl_seconds(
+        *,
         environment_variables: SkillLoaderEnvironmentVariables,
     ) -> float | None:
         """Resolve loader TTL from environment, defaulting to one hour."""

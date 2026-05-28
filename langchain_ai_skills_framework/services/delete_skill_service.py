@@ -22,9 +22,9 @@ class DeleteSkillService:
         self._store = mongo_skill_loader
 
     async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> str:
-        require_user_id(user_id, "delete_skill")
-        require_non_empty(skill_name, "skill_name")
-        store = require_store(self._store)
+        require_user_id(user_id=user_id, operation="delete_skill")
+        require_non_empty(value=skill_name, label="skill_name")
+        store = require_store(store=self._store)
 
         try:
             deleted = await store.delete_skill(

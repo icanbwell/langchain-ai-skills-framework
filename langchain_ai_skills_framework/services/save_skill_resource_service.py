@@ -30,11 +30,11 @@ class SaveSkillResourceService:
         resource_name: str,
         content: str,
     ) -> str:
-        require_user_id(user_id, "save_skill_resource")
-        require_non_empty(skill_name, "skill_name")
-        require_non_empty(resource_name, "resource_name")
-        require_non_empty(content, "content")
-        store = require_store(self._store)
+        require_user_id(user_id=user_id, operation="save_skill_resource")
+        require_non_empty(value=skill_name, label="skill_name")
+        require_non_empty(value=resource_name, label="resource_name")
+        require_non_empty(value=content, label="content")
+        store = require_store(store=self._store)
 
         try:
             doc = await store.save_resource(

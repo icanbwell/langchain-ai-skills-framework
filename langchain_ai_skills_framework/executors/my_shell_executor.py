@@ -64,8 +64,8 @@ class MyShellExecutor(BaseScriptExecutor):
             ValueError: If argument keys are invalid.
         """
         normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
-        self._validate_argument_keys(normalized_arguments)
-        validated_path = self._validate_path(script_path, skill_base_dir)
+        self._validate_argument_keys(arguments=normalized_arguments)
+        validated_path = self._validate_path(script_path=script_path, skill_base_dir=skill_base_dir)
 
         effective_timeout = min(timeout or self.max_timeout, self.max_timeout)
 
@@ -142,9 +142,9 @@ class MyShellExecutor(BaseScriptExecutor):
 
         elapsed_ms = (time.monotonic() - start_time) * 1000
 
-        self._check_output_size(stdout_bytes)
+        self._check_output_size(output=stdout_bytes)
         if stderr_bytes:
-            self._check_output_size(stderr_bytes)
+            self._check_output_size(output=stderr_bytes)
 
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")

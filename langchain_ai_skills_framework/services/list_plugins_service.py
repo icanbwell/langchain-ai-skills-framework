@@ -32,7 +32,7 @@ class ListPluginsService:
 
     async def execute(self) -> Sequence[PluginInfo]:
         """Return registered plugins as a sorted sequence of ``PluginInfo``."""
-        store = require_store(self._store)
+        store = require_store(store=self._store)
 
         try:
             docs = await store.list_plugins()

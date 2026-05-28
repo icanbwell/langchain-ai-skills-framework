@@ -21,17 +21,17 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-def build_skill_path(plugin_name: str, skill_name: str) -> str:
+def build_skill_path(*, plugin_name: str, skill_name: str) -> str:
     """Return the canonical path for a skill's ``SKILL.md``."""
     return f"{plugin_name}/skills/{skill_name}/SKILL.md"
 
 
-def build_resource_path(plugin_name: str, skill_name: str, resource_name: str) -> str:
+def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str) -> str:
     """Return the canonical path for a skill resource file."""
     return f"{plugin_name}/skills/{skill_name}/{resource_name}"
 
 
-def build_script_path(plugin_name: str, skill_name: str, script_name: str) -> str:
+def build_script_path(*, plugin_name: str, skill_name: str, script_name: str) -> str:
     """Return the canonical path for a skill script file."""
     return f"{plugin_name}/skills/{skill_name}/scripts/{script_name}"
 
@@ -237,8 +237,11 @@ class MongoPluginDefinitionDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginDefinitionDocument:
+        plugin_name = data.get("plugin_name") or data.get("name", "")
+        if not plugin_name:
+            raise KeyError("plugin_name")
         return cls(
-            plugin_name=data["plugin_name"],
+            plugin_name=plugin_name,
             description=data.get("description", ""),
             skills=data.get("skills", []),
             mcp_servers=data.get("mcp_servers", []),
@@ -266,7 +269,7 @@ class MongoPluginSkillUsageDocument(BaseModel):
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillUsageDocument:
         return cls(
-            plugin_name=data.get("plugin_name", ""),
+            plugin_name=data["plugin_name"],
             skill_name=data["skill_name"],
             user_id=data["user_id"],
             date_used=data.get("date_used", datetime.now(timezone.utc)),

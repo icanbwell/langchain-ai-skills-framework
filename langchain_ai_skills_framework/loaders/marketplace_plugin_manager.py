@@ -322,7 +322,7 @@ class MarketplacePluginManager:
         """Apply include/exclude filters to a list of plugin entries."""
         result: list[PluginEntry] = []
         for entry in entries:
-            normalized = normalize_skill_name(entry.name)
+            normalized = normalize_skill_name(value=entry.name)
             if include_filter and normalized not in include_filter:
                 logger.debug(
                     "Marketplace: skipping plugin '%s' (not in include list)",

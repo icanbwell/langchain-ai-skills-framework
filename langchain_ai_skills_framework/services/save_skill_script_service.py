@@ -30,11 +30,11 @@ class SaveSkillScriptService:
         script_name: str,
         content: str,
     ) -> str:
-        require_user_id(user_id, "save_skill_script")
-        require_non_empty(skill_name, "skill_name")
-        require_non_empty(script_name, "script_name")
-        require_non_empty(content, "content")
-        store = require_store(self._store)
+        require_user_id(user_id=user_id, operation="save_skill_script")
+        require_non_empty(value=skill_name, label="skill_name")
+        require_non_empty(value=script_name, label="script_name")
+        require_non_empty(value=content, label="content")
+        store = require_store(store=self._store)
 
         try:
             doc = await store.save_script(

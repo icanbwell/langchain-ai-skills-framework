@@ -36,7 +36,9 @@ class ReadSkillResourceService:
         """Return ``(content, artifact)``."""
         normalized_name = skill_name.strip()
         if not normalized_name:
-            raise SkillOperationError(await format_skill_availability(self._loader, normalized_name, user_id=user_id))
+            raise SkillOperationError(
+                await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id)
+            )
 
         normalized_resource_name = resource_name.strip()
         if not normalized_resource_name:
@@ -65,7 +67,9 @@ class ReadSkillResourceService:
     ) -> str:
         normalized_name = skill_name.strip()
         if not normalized_name:
-            raise SkillOperationError(await format_skill_availability(self._loader, normalized_name, user_id=user_id))
+            raise SkillOperationError(
+                await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id)
+            )
 
         try:
             if user_id:
@@ -82,9 +86,9 @@ class ReadSkillResourceService:
             return resource
         except SkillNotFoundError:
             return await format_resource_availability(
-                self._loader,
-                normalized_name,
-                resource_name,
+                loader=self._loader,
+                skill_name=normalized_name,
+                resource_name=resource_name,
                 user_id=user_id,
                 plugin_name=plugin_name,
             )

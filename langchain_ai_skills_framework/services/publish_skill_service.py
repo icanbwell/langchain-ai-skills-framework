@@ -66,7 +66,7 @@ class PublishSkillService:
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the ``content`` frontmatter.
         """
-        require_user_id(user_id, "publish_skill")
+        require_user_id(user_id=user_id, operation="publish_skill")
 
         if not skill_name:
             if content:
@@ -76,8 +76,8 @@ class PublishSkillService:
                     "skill_name is required when content is not provided or does not contain a 'name' field."
                 )
 
-        require_non_empty(skill_name, "skill_name")
-        store = require_store(self._store)
+        require_non_empty(value=skill_name, label="skill_name")
+        store = require_store(store=self._store)
 
         if published and self._publisher is None:
             raise SkillOperationError(

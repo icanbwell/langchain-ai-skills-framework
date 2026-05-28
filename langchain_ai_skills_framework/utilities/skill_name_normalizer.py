@@ -1,7 +1,7 @@
 import re
 
 
-def normalize_skill_name(value: str) -> str:
+def normalize_skill_name(*, value: str) -> str:
     """Normalize a skill name to a canonical lowercase-hyphenated form.
 
     Strips whitespace, lowercases, replaces underscores and spaces with

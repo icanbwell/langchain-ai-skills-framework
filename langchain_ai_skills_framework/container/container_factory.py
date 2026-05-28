@@ -43,7 +43,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 logger = logging.getLogger(__name__)
 
 
-def _build_key_value_store(c: IContainer) -> BaseStore:
+def _build_key_value_store(*, c: IContainer) -> BaseStore:
     from langchain_ai_skills_framework.environment.environment_variables import (
         LangchainAISkillsFrameworkEnvironmentVariables,
     )
@@ -68,7 +68,7 @@ def _build_key_value_store(c: IContainer) -> BaseStore:
     return MongoDBStore(url=url, db_name=env.mongo_skills_db_name)
 
 
-def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
+def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
     """Build the shared skill loader from the plugin marketplace.
 
     Skills are loaded from the marketplace structure (plugins/*/skills/).
@@ -90,7 +90,7 @@ def _build_shared_loader(c: IContainer) -> SkillLoaderProtocol:
     )
 
 
-def _build_marketplace_publisher(c: IContainer) -> GitHubMarketplacePublisher | None:
+def _build_marketplace_publisher(*, c: IContainer) -> GitHubMarketplacePublisher | None:
     """Build the marketplace publisher from the PLUGINS_MARKETPLACE URI.
 
     Publishing is enabled when PLUGINS_MARKETPLACE is a github:// URI
@@ -135,7 +135,7 @@ class LangchainAISkillsFrameworkContainerFactory:
 
         container.singleton(
             BaseStore,
-            lambda c: _build_key_value_store(c),
+            lambda c: _build_key_value_store(c=c),
         )
 
         container.singleton(
@@ -156,7 +156,7 @@ class LangchainAISkillsFrameworkContainerFactory:
         # instance (avoiding redundant downloads and inconsistent cache state).
         container.singleton(
             MarketplaceDirectoryLoader,
-            lambda c: _build_shared_loader(c),
+            lambda c: _build_shared_loader(c=c),
         )
 
         container.singleton(
@@ -164,7 +164,7 @@ class LangchainAISkillsFrameworkContainerFactory:
             lambda c: CompositeSkillLoader(
                 shared_loader=c.resolve(MarketplaceDirectoryLoader),
                 user_loader=c.resolve(PluginSkillStore),
-                marketplace_publisher=_build_marketplace_publisher(c),
+                marketplace_publisher=_build_marketplace_publisher(c=c),
             ),
         )
 

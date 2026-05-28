@@ -141,9 +141,9 @@ class MyScriptExecutor(BaseScriptExecutor):
                 raise Exception(f"Script '{script_name}' timed out after {timeout} seconds")
 
             # Check output size before decoding
-            self._check_output_size(result.stdout)
+            self._check_output_size(output=result.stdout)
             if result.stderr:
-                self._check_output_size(result.stderr)
+                self._check_output_size(output=result.stderr)
 
             output: str = result.stdout.decode("utf-8", errors="replace")
             stderr = None
@@ -230,8 +230,8 @@ class MyScriptExecutor(BaseScriptExecutor):
 
         """
         # Security validations
-        self._validate_argument_keys(arguments)
-        validated_script_path = self._validate_path(script_path, skill_base_dir)
+        self._validate_argument_keys(arguments=arguments)
+        validated_script_path = self._validate_path(script_path=script_path, skill_base_dir=skill_base_dir)
 
         return await self._execute_validated_script(
             script_name=script_name,
@@ -256,7 +256,7 @@ class MyScriptExecutor(BaseScriptExecutor):
         if not script.strip():
             raise ValueError("Script content cannot be empty")
 
-        self._validate_argument_keys(arguments)
+        self._validate_argument_keys(arguments=arguments)
 
         temp_script_path: Path | None = None
         try:

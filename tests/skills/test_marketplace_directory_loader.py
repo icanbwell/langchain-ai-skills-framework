@@ -41,6 +41,7 @@ class FakeEnvVars:
     plugin_skills_collection: str | None = "plugin_skills"
     plugin_references_collection: str | None = "plugin_references"
     plugin_scripts_collection: str | None = "plugin_scripts"
+    skill_cache_schema_version: int = 1
 
 
 def _write_marketplace_skill(
@@ -167,7 +168,7 @@ class TestLocalMarketplaceDiscovery:
             github_directory_downloader=MagicMock(),
         )
 
-        details = loader.get_skill_details("my-skill")
+        details = loader.get_skill_details(skill_name="my-skill")
         assert "Custom body." in details.content
 
     def test_get_skill_details_raises_not_found(self, tmp_path: Path) -> None:
@@ -180,7 +181,7 @@ class TestLocalMarketplaceDiscovery:
         )
 
         with pytest.raises(SkillNotFoundError):
-            loader.get_skill_details("does-not-exist")
+            loader.get_skill_details(skill_name="does-not-exist")
 
     def test_nonexistent_local_path_raises(self) -> None:
         env = FakeEnvVars(plugins_marketplace="/nonexistent/path/xyz")

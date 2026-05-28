@@ -18,11 +18,12 @@ from langchain_ai_skills_framework.models.skills_model import (
 )
 
 
-def _make_summary(name: str, source_path: Path | None = None) -> SkillSummary:
+def _make_summary(name: str, source_path: Path | None = None, plugin_name: str = "test-plugin") -> SkillSummary:
     return SkillSummary(
         name=name,
         description=f"Description for {name}",
         source_path=source_path or Path(f"/skills/{name}/SKILL.md"),
+        plugin_name=plugin_name,
     )
 
 
@@ -44,16 +45,19 @@ def _make_shared_loader(
     loader = MagicMock()
     loader.list_skill_summaries.return_value = summaries or []
     _details = details or {}
-    loader.get_skill_details.side_effect = lambda skill_name, *, plugin_name="": _details.get(
+    loader.get_skill_details.side_effect = lambda *, skill_name, plugin_name=None: _details.get(
         skill_name, _make_details(skill_name)
     )
     _resources = resource_names or {}
-    loader.list_skill_resource_names.side_effect = lambda skill_name, *, plugin_name="": _resources.get(skill_name, [])
+    loader.list_skill_resource_names.side_effect = lambda *, skill_name, plugin_name=None: _resources.get(
+        skill_name, []
+    )
     _scripts = script_names or {}
-    loader.list_skill_script_names.side_effect = lambda skill_name, *, plugin_name="": _scripts.get(skill_name, [])
-    loader.read_skill_resource.side_effect = lambda skill_name, resource_name, *, plugin_name="": (
+    loader.list_skill_script_names.side_effect = lambda *, skill_name, plugin_name=None: _scripts.get(skill_name, [])
+    loader.read_skill_resource.side_effect = lambda *, skill_name, resource_name, plugin_name=None: (
         f"content of {resource_name}"
     )
+    loader.list_plugin_definitions = AsyncMock(return_value=[])
     return loader
 
 

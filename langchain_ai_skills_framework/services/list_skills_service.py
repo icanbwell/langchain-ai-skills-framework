@@ -19,7 +19,7 @@ class SkillInfo:
 
     name: str
     description: str
-    plugin_name: str = ""
+    plugin_name: str | None = None
 
 
 class ListSkillsService:
@@ -28,7 +28,7 @@ class ListSkillsService:
     def __init__(self, *, skill_loader: SkillLoaderProtocol) -> None:
         self._loader = skill_loader
 
-    async def execute(self, *, user_id: str, plugin_name: str = "") -> Sequence[SkillInfo]:
+    async def execute(self, *, user_id: str, plugin_name: str | None = None) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``."""
         if user_id:
             summaries = await self._loader.list_all_summaries(user_id=user_id, allowed_skills=set())
@@ -52,7 +52,8 @@ class ListSkillsService:
             return "<available_skills>\n</available_skills>"
         skill_elements = []
         for s in skills:
+            plugin_tag = f"<plugin_name>{s.plugin_name}</plugin_name>\n" if s.plugin_name else ""
             skill_elements.append(
-                f"<skill>\n<plugin_name>{s.plugin_name}</plugin_name>\n<name>{s.name}</name>\n<description>{s.description}</description>\n</skill>"
+                f"<skill>\n{plugin_tag}<name>{s.name}</name>\n<description>{s.description}</description>\n</skill>"
             )
         return "<available_skills>\n" + "\n".join(skill_elements) + "\n</available_skills>"

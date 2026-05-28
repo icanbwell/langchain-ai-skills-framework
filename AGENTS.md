@@ -283,3 +283,26 @@ Assume clients may receive unknown enum values and new fields at any time. Desig
 ## Code Style
 
 Follow whatever linter, formatter, and static analysis configuration exists in the repo. Do not duplicate what automated tooling already enforces. These instructions are for architectural and design decisions that linters cannot catch.
+
+---
+
+## Repo-Specific Conventions (langchain-ai-skills-framework)
+
+### IoC Container
+This project uses an IoC (Inversion of Control) container (`SimpleContainer` from the `ioc` package) for dependency registration and resolution. Register dependencies in `container/container_factory.py`. Services and loaders receive their dependencies via constructor injection resolved by the container. Do not instantiate infrastructure or service objects manually outside of the container factory.
+
+### Environment Variables
+Configuration is accessed through a dedicated `EnvironmentVariables` class (implementing `SkillLoaderEnvironmentVariables`), not through direct `os.environ` reads. All environment-specific values (feature flags, timeouts, collection names, connection strings) are fields on this class. When adding new configuration, add a field to the environment variables class rather than reading `os.environ` directly.
+
+### Keyword-Only Parameters
+All functions and methods in this codebase use keyword-only parameters (using the `*` separator). Do not use positional parameters. This applies to public APIs, internal helpers, protocol methods, and test stubs alike. When calling any function, always pass arguments by name.
+
+```python
+# Correct
+def build_skill_path(*, plugin_name: str, skill_name: str) -> str: ...
+result = build_skill_path(plugin_name="my-plugin", skill_name="my-skill")
+
+# Incorrect — do not use positional parameters
+def build_skill_path(plugin_name: str, skill_name: str) -> str: ...
+result = build_skill_path("my-plugin", "my-skill")
+```

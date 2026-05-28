@@ -72,10 +72,13 @@ class MongoPluginSkillLoader:
     USAGE_INDEX_NAME = "ix_plugin_skill_usage_lookup"
     PLUGIN_INDEX_NAME = "ux_plugin_name"
 
+    SCHEMA_VERSION_FIELD = "schema_version"
+
     def __init__(
         self,
         *,
         database: AsyncIOMotorDatabase[dict[str, object]],
+        schema_version: int = 1,
         skills_collection_name: str = DEFAULT_SKILLS_COLLECTION,
         references_collection_name: str = DEFAULT_REFERENCES_COLLECTION,
         scripts_collection_name: str = DEFAULT_SCRIPTS_COLLECTION,
@@ -83,6 +86,7 @@ class MongoPluginSkillLoader:
         plugins_collection_name: str = DEFAULT_PLUGINS_COLLECTION,
     ) -> None:
         self._database = database
+        self._schema_version = schema_version
         self._skills_collection: AsyncIOMotorCollection[dict[str, object]] = database[skills_collection_name]
         self._resources_collection: AsyncIOMotorCollection[dict[str, object]] = database[references_collection_name]
         self._scripts_collection: AsyncIOMotorCollection[dict[str, object]] = database[scripts_collection_name]
@@ -93,24 +97,24 @@ class MongoPluginSkillLoader:
 
     async def ensure_indexes(self) -> None:
         """Create compound unique indexes and Materialized Paths index."""
+        sv = self.SCHEMA_VERSION_FIELD
         await self._skills_collection.create_index(
-            [("user_id", 1), ("plugin_name", 1), ("skill_name", 1)],
+            [(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1)],
             unique=True,
             name=self.INDEX_NAME,
         )
         await self._resources_collection.create_index(
-            [("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("resource_name", 1)],
+            [(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("resource_name", 1)],
             unique=True,
             name=self.RESOURCE_INDEX_NAME,
         )
         await self._scripts_collection.create_index(
-            [("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("script_name", 1)],
+            [(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("script_name", 1)],
             unique=True,
             name=self.SCRIPT_INDEX_NAME,
         )
-        # Materialized Paths index for tree traversal queries
         await self._skills_collection.create_index(
-            [("plugin_name", 1), ("path", 1)],
+            [(sv, 1), ("plugin_name", 1), ("path", 1)],
             name=self.PATH_INDEX_NAME,
         )
         await self._usage_collection.create_index(
@@ -118,10 +122,14 @@ class MongoPluginSkillLoader:
             name=self.USAGE_INDEX_NAME,
         )
         await self._plugins_collection.create_index(
-            [("plugin_name", 1)],
+            [(sv, 1), ("plugin_name", 1)],
             unique=True,
             name=self.PLUGIN_INDEX_NAME,
         )
+
+    def _version_filter(self, query: dict[str, object]) -> dict[str, object]:
+        """Add schema_version to a query filter."""
+        return {**query, self.SCHEMA_VERSION_FIELD: self._schema_version}
 
     # --- Skill write operations ----------------------------------------------
 
@@ -139,12 +147,13 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
 
         description = self._extract_description(content)
-        path = build_skill_path(plugin_name, normalized_name)
+        path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name)
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
+        sv = self.SCHEMA_VERSION_FIELD
 
         raw = await self._skills_collection.find_one_and_update(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name},
+            self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {
                 "$set": {
                     "content": content,
@@ -157,6 +166,7 @@ class MongoPluginSkillLoader:
                     "user_id": user_id,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_name,
+                    sv: self._schema_version,
                     "date_created": now,
                 },
             },
@@ -188,7 +198,7 @@ class MongoPluginSkillLoader:
         if published_branch is not None:
             update_fields["published_branch"] = published_branch
         raw = await self._skills_collection.find_one_and_update(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name},
+            self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {"$set": update_fields},
             return_document=ReturnDocument.AFTER,
         )
@@ -201,21 +211,22 @@ class MongoPluginSkillLoader:
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
-        # Delete associated resources and scripts
-        filter_base = {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}
+        filter_base = self._version_filter(
+            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}
+        )
         await self._resources_collection.delete_many(filter_base)
         await self._scripts_collection.delete_many(filter_base)
 
         result = await self._skills_collection.delete_one(filter_base)
         return result.deleted_count > 0
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
+    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool:
         self._validate_user_id(user_id)
         normalized_name = self._normalize(skill_name)
-        count = await self._skills_collection.count_documents(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name},
-            limit=1,
-        )
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_name}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        count = await self._skills_collection.count_documents(self._version_filter(query), limit=1)
         return count > 0
 
     # --- Resource write operations -------------------------------------------
@@ -235,17 +246,22 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(resource_name.strip(), "resource_name")
 
-        path = build_resource_path(plugin_name, normalized_skill, resource_name.strip())
+        path = build_resource_path(
+            plugin_name=plugin_name, skill_name=normalized_skill, resource_name=resource_name.strip()
+        )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
+        sv = self.SCHEMA_VERSION_FIELD
 
         raw = await self._resources_collection.find_one_and_update(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "resource_name": resource_name.strip(),
-            },
+            self._version_filter(
+                {
+                    "user_id": user_id,
+                    "plugin_name": plugin_name,
+                    "skill_name": normalized_skill,
+                    "resource_name": resource_name.strip(),
+                }
+            ),
             {
                 "$set": {
                     "content": content,
@@ -258,6 +274,7 @@ class MongoPluginSkillLoader:
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "resource_name": resource_name.strip(),
+                    sv: self._schema_version,
                     "date_created": now,
                 },
             },
@@ -277,12 +294,14 @@ class MongoPluginSkillLoader:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
         result = await self._resources_collection.delete_one(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "resource_name": resource_name.strip(),
-            }
+            self._version_filter(
+                {
+                    "user_id": user_id,
+                    "plugin_name": plugin_name,
+                    "skill_name": normalized_skill,
+                    "resource_name": resource_name.strip(),
+                }
+            )
         )
         return result.deleted_count > 0
 
@@ -290,20 +309,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> str:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        raw = await self._resources_collection.find_one(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "resource_name": resource_name.strip(),
-            }
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "resource_name": resource_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        raw = await self._resources_collection.find_one(self._version_filter(query))
         if raw is None:
             raise SkillNotFoundError(
                 f"Resource '{resource_name}' not found in skill '{skill_name}' "
@@ -315,16 +334,16 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_skill}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
         names: list[str] = []
-        async for raw in self._resources_collection.find(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_skill},
-            {"resource_name": 1},
-        ):
+        async for raw in self._resources_collection.find(self._version_filter(query), {"resource_name": 1}):
             names.append(raw["resource_name"])
         return sorted(names)
 
@@ -332,21 +351,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> bool:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        count = await self._resources_collection.count_documents(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "resource_name": resource_name.strip(),
-            },
-            limit=1,
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "resource_name": resource_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        count = await self._resources_collection.count_documents(self._version_filter(query), limit=1)
         return count > 0
 
     # --- Script write operations ---------------------------------------------
@@ -366,17 +384,20 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(script_name.strip(), "script_name")
 
-        path = build_script_path(plugin_name, normalized_skill, script_name.strip())
+        path = build_script_path(plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip())
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
+        sv = self.SCHEMA_VERSION_FIELD
 
         raw = await self._scripts_collection.find_one_and_update(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "script_name": script_name.strip(),
-            },
+            self._version_filter(
+                {
+                    "user_id": user_id,
+                    "plugin_name": plugin_name,
+                    "skill_name": normalized_skill,
+                    "script_name": script_name.strip(),
+                }
+            ),
             {
                 "$set": {
                     "content": content,
@@ -389,6 +410,7 @@ class MongoPluginSkillLoader:
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "script_name": script_name.strip(),
+                    sv: self._schema_version,
                     "date_created": now,
                 },
             },
@@ -408,12 +430,14 @@ class MongoPluginSkillLoader:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
         result = await self._scripts_collection.delete_one(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "script_name": script_name.strip(),
-            }
+            self._version_filter(
+                {
+                    "user_id": user_id,
+                    "plugin_name": plugin_name,
+                    "skill_name": normalized_skill,
+                    "script_name": script_name.strip(),
+                }
+            )
         )
         return result.deleted_count > 0
 
@@ -421,20 +445,20 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> str:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        raw = await self._scripts_collection.find_one(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "script_name": script_name.strip(),
-            }
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "script_name": script_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        raw = await self._scripts_collection.find_one(self._version_filter(query))
         if raw is None:
             raise SkillNotFoundError(
                 f"Script '{script_name}' not found in skill '{skill_name}' "
@@ -446,16 +470,16 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_skill}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
         names: list[str] = []
-        async for raw in self._scripts_collection.find(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_skill},
-            {"script_name": 1},
-        ):
+        async for raw in self._scripts_collection.find(self._version_filter(query), {"script_name": 1}):
             names.append(raw["script_name"])
         return sorted(names)
 
@@ -463,50 +487,50 @@ class MongoPluginSkillLoader:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> bool:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
-        count = await self._scripts_collection.count_documents(
-            {
-                "user_id": user_id,
-                "plugin_name": plugin_name,
-                "skill_name": normalized_skill,
-                "script_name": script_name.strip(),
-            },
-            limit=1,
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "skill_name": normalized_skill,
+            "script_name": script_name.strip(),
+        }
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        count = await self._scripts_collection.count_documents(self._version_filter(query), limit=1)
         return count > 0
 
     # --- Skill read operations -----------------------------------------------
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str = "") -> SkillSnapshot:
+    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot:
         self._validate_user_id(user_id)
         query: dict[str, object] = {"user_id": user_id}
         if plugin_name:
             query["plugin_name"] = plugin_name
-        return await self._build_snapshot(query=query, owner_label=user_id)
+        return await self._build_snapshot(query=self._version_filter(query), owner_label=user_id)
 
-    async def load_shared_snapshot(self, *, plugin_name: str = "") -> SkillSnapshot:
+    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
         query: dict[str, object] = {"$or": [{"published": True}, {"shared": True}]}
         if plugin_name:
             query["plugin_name"] = plugin_name
-        return await self._build_snapshot(query=query, owner_label="shared")
+        return await self._build_snapshot(query=self._version_filter(query), owner_label="shared")
 
     async def get_skill_details(
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails:
         self._validate_user_id(user_id)
         normalized_name = self._normalize(skill_name)
-        raw = await self._skills_collection.find_one(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}
-        )
+        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_name}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        raw = await self._skills_collection.find_one(self._version_filter(query))
         if raw is None:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)
@@ -540,17 +564,19 @@ class MongoPluginSkillLoader:
             skill_name=skill_name,
             user_id=user_id,
         )
-        await self._usage_collection.insert_one(doc.to_mongo_dict())
+        data = doc.to_mongo_dict()
+        data[self.SCHEMA_VERSION_FIELD] = self._schema_version
+        await self._usage_collection.insert_one(data)
         return doc
 
     async def get_skill_usage_count(self, *, skill_name: str) -> int:
-        return int(await self._usage_collection.count_documents({"skill_name": skill_name}))
+        return int(await self._usage_collection.count_documents(self._version_filter({"skill_name": skill_name})))
 
     async def get_skill_usage_counts(self, *, skill_names: Sequence[str]) -> Mapping[str, int]:
         if not skill_names:
             return {}
         pipeline: list[dict[str, Any]] = [
-            {"$match": {"skill_name": {"$in": list(skill_names)}}},
+            {"$match": {self.SCHEMA_VERSION_FIELD: self._schema_version, "skill_name": {"$in": list(skill_names)}}},
             {"$group": {"_id": "$skill_name", "count": {"$sum": 1}}},
         ]
         counts: dict[str, int] = {name: 0 for name in skill_names}
@@ -594,7 +620,7 @@ class MongoPluginSkillLoader:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return normalize_skill_name(value)
+        return normalize_skill_name(value=value)
 
     @staticmethod
     def _validate_user_id(user_id: str) -> None:
@@ -638,13 +664,14 @@ class MongoPluginSkillLoader:
     ) -> MongoPluginDefinitionDocument:
         """Upsert a plugin definition document."""
         now = datetime.now(timezone.utc)
+        sv = self.SCHEMA_VERSION_FIELD
         logger.info(
             "save_plugin: upserting plugin '%s' to collection '%s'",
             plugin_name,
             self._plugins_collection.name,
         )
         raw = await self._plugins_collection.find_one_and_update(
-            {"plugin_name": plugin_name},
+            self._version_filter({"plugin_name": plugin_name}),
             {
                 "$set": {
                     "description": description,
@@ -652,7 +679,11 @@ class MongoPluginSkillLoader:
                     "mcp_servers": [dict(s) for s in mcp_servers],
                     "date_modified": now,
                 },
-                "$setOnInsert": {"plugin_name": plugin_name, "date_created": now},
+                "$setOnInsert": {
+                    "plugin_name": plugin_name,
+                    sv: self._schema_version,
+                    "date_created": now,
+                },
             },
             upsert=True,
             return_document=ReturnDocument.AFTER,
@@ -661,11 +692,21 @@ class MongoPluginSkillLoader:
         return MongoPluginDefinitionDocument.from_mongo_dict(raw)
 
     async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
-        """Return all plugin definitions."""
-        cursor = self._plugins_collection.find().sort("plugin_name", 1)
-        return [MongoPluginDefinitionDocument.from_mongo_dict(doc) async for doc in cursor]
+        """Return all plugin definitions for the current schema version, skipping malformed documents."""
+        cursor = self._plugins_collection.find(self._version_filter({})).sort("plugin_name", 1)
+        results: list[MongoPluginDefinitionDocument] = []
+        async for doc in cursor:
+            try:
+                results.append(MongoPluginDefinitionDocument.from_mongo_dict(doc))
+            except (KeyError, ValueError) as exc:
+                logger.warning(
+                    "list_plugins: skipping malformed plugin document _id=%s: %s",
+                    doc.get("_id"),
+                    exc,
+                )
+        return results
 
     async def has_plugins(self) -> bool:
-        """Return True if the plugins collection has at least one document."""
-        count = await self._plugins_collection.count_documents({}, limit=1)
+        """Return True if the plugins collection has at least one document for the current schema version."""
+        count = await self._plugins_collection.count_documents(self._version_filter({}), limit=1)
         return count > 0

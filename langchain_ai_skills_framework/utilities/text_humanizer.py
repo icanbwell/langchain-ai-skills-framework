@@ -1,6 +1,6 @@
 class Humanizer:
     @staticmethod
-    def humanize_tool_name(key: str) -> str:
+    def humanize_tool_name(*, key: str) -> str:
         normalized = key.replace("-", "_")
         parts = [part for part in normalized.split("_") if part]
         if not parts:

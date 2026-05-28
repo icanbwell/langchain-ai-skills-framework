@@ -59,9 +59,9 @@ class SaveSkillService:
         When ``update_if_exists`` is False, returns an error message if a
         skill with the same name already exists for this user/plugin.
         """
-        require_user_id(user_id, "save_skill")
-        require_non_empty(content, "content")
-        store = require_store(self._store)
+        require_user_id(user_id=user_id, operation="save_skill")
+        require_non_empty(value=content, label="content")
+        store = require_store(store=self._store)
 
         # Validate skill content
         try:
@@ -77,7 +77,7 @@ class SaveSkillService:
             if not skill_name:
                 return "Skill validation failed: 'name' field missing from frontmatter and no skill_name provided."
 
-        require_non_empty(skill_name, "skill_name")
+        require_non_empty(value=skill_name, label="skill_name")
 
         validation_errors = validate_metadata(metadata)
         if validation_errors:

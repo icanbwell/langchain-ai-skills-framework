@@ -191,6 +191,32 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return val.strip()
 
     @property
+    def skill_cache_schema_version(self) -> int:
+        """Schema version for MongoDB skill cache documents.
+
+        Expected environment variable: SKILL_CACHE_SCHEMA_VERSION
+        Default: ``1``
+        """
+        raw = os.environ.get("SKILL_CACHE_SCHEMA_VERSION")
+        if raw is None:
+            return 1
+        try:
+            version = int(raw)
+        except ValueError:
+            _LOGGER.warning(
+                "Invalid SKILL_CACHE_SCHEMA_VERSION value %r; using default 1",
+                raw,
+            )
+            return 1
+        if version < 1:
+            _LOGGER.warning(
+                "SKILL_CACHE_SCHEMA_VERSION must be >= 1; got %d. Using default 1",
+                version,
+            )
+            return 1
+        return version
+
+    @property
     def key_value_store_type(self) -> str:
         """Backend type for the key-value store ('mongodb' or 'redis').
 

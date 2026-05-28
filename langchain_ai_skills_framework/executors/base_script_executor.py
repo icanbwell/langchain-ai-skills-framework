@@ -33,7 +33,7 @@ class BaseScriptExecutor:
         self.max_timeout = max_timeout
         self.max_output_size = max_output_size
 
-    def _validate_path(self, script_path: Path, skill_base_dir: Path) -> Path:
+    def _validate_path(self, *, script_path: Path, skill_base_dir: Path) -> Path:
         """Validate that the script path is safe.
 
         Raises:
@@ -87,13 +87,13 @@ class BaseScriptExecutor:
 
         return resolved_path
 
-    def _validate_argument_keys(self, arguments: dict[str, Any]) -> None:
+    def _validate_argument_keys(self, *, arguments: dict[str, Any]) -> None:
         """Reject argument keys that don't match safe identifier pattern."""
         for key in arguments:
             if not self._ARGUMENT_KEY_PATTERN.fullmatch(key):
                 raise ValueError(f"Invalid argument key: {key}")
 
-    def _check_output_size(self, output: bytes) -> None:
+    def _check_output_size(self, *, output: bytes) -> None:
         """Prevent memory exhaustion from oversized script output."""
         if len(output) > self.max_output_size:
             raise Exception(f"Script output too large: {len(output)} bytes (max {self.max_output_size})")

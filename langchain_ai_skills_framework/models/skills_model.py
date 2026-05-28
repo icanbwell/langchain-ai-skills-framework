@@ -13,7 +13,7 @@ class SkillSummary:
 
     name: str
     description: str
-    plugin_name: str = ""
+    plugin_name: str | None = None
     source_path: Path | None = None
     license: str | None = None
     compatibility: str | None = None

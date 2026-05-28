@@ -159,3 +159,17 @@ class SkillLoaderEnvironmentVariables(Protocol):
         Default: ``true``
         """
         ...
+
+    @property
+    def skill_cache_schema_version(self) -> int:
+        """Schema version for MongoDB skill cache documents.
+
+        When incremented, old cached documents are automatically ignored
+        (reads filter by this version, writes stamp it on every document).
+        This avoids backwards-compatibility concerns when the cache schema
+        changes.
+
+        Expected environment variable: SKILL_CACHE_SCHEMA_VERSION
+        Default: ``1``
+        """
+        ...

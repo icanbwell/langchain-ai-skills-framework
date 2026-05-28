@@ -48,7 +48,9 @@ class RunSkillScriptService:
         """
         normalized_name = skill_name.strip()
         if not normalized_name:
-            raise SkillOperationError(await format_skill_availability(self._loader, normalized_name, user_id=user_id))
+            raise SkillOperationError(
+                await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id)
+            )
 
         normalized_script_name = script_name.strip()
         if not normalized_script_name:
@@ -87,9 +89,9 @@ class RunSkillScriptService:
         except ScriptNotFoundError:
             return (
                 await format_script_availability(
-                    self._loader,
-                    normalized_name,
-                    normalized_script_name,
+                    loader=self._loader,
+                    skill_name=normalized_name,
+                    script_name=normalized_script_name,
                     user_id=user_id,
                     plugin_name=plugin_name,
                 ),
@@ -97,7 +99,7 @@ class RunSkillScriptService:
             )
         except SkillNotFoundError:
             return (
-                await format_skill_availability(self._loader, normalized_name, user_id=user_id),
+                await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id),
                 "",
             )
         except SkillOperationError:

@@ -79,8 +79,8 @@ class GitHubMarketplacePublisher:
             httpx.HTTPStatusError: If any GitHub API call fails.
             ValueError: If any name contains path traversal segments.
         """
-        self._validate_path_segment(plugin_name, "plugin_name")
-        self._validate_path_segment(skill_name, "skill_name")
+        self._validate_path_segment(value=plugin_name, label="plugin_name")
+        self._validate_path_segment(value=skill_name, label="skill_name")
 
         branch = branch_name or f"skill-publish/{plugin_name}/{skill_name}"
         files = self._build_file_map(
@@ -138,8 +138,8 @@ class GitHubMarketplacePublisher:
             httpx.HTTPStatusError: If any GitHub API call fails.
             ValueError: If any name contains path traversal segments.
         """
-        self._validate_path_segment(plugin_name, "plugin_name")
-        self._validate_path_segment(skill_name, "skill_name")
+        self._validate_path_segment(value=plugin_name, label="plugin_name")
+        self._validate_path_segment(value=skill_name, label="skill_name")
 
         branch = f"skill-unpublish/{plugin_name}/{skill_name}"
         skill_dir = f"plugins/{plugin_name}/skills/{skill_name}"
@@ -179,7 +179,7 @@ class GitHubMarketplacePublisher:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _validate_path_segment(value: str, label: str) -> None:
+    def _validate_path_segment(*, value: str, label: str) -> None:
         """Reject path segments that could escape the intended directory.
 
         Raises ``ValueError`` for empty strings, absolute paths, ``..``
@@ -207,12 +207,12 @@ class GitHubMarketplacePublisher:
         scripts: dict[str, str],
     ) -> dict[str, str]:
         """Build path -> content mapping matching the marketplace directory layout."""
-        GitHubMarketplacePublisher._validate_path_segment(plugin_name, "plugin_name")
-        GitHubMarketplacePublisher._validate_path_segment(skill_name, "skill_name")
+        GitHubMarketplacePublisher._validate_path_segment(value=plugin_name, label="plugin_name")
+        GitHubMarketplacePublisher._validate_path_segment(value=skill_name, label="skill_name")
         for name in resources:
-            GitHubMarketplacePublisher._validate_path_segment(name, "resource name")
+            GitHubMarketplacePublisher._validate_path_segment(value=name, label="resource name")
         for name in scripts:
-            GitHubMarketplacePublisher._validate_path_segment(name, "script name")
+            GitHubMarketplacePublisher._validate_path_segment(value=name, label="script name")
 
         base = f"plugins/{plugin_name}/skills/{skill_name}"
         files: dict[str, str] = {f"{base}/SKILL.md": skill_content}

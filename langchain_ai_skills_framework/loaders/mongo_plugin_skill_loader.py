@@ -20,6 +20,7 @@ from typing import Any, Mapping, Sequence
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo import ReturnDocument
+from pymongo.errors import OperationFailure
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -96,36 +97,71 @@ class MongoPluginSkillLoader:
     # --- Index management ---------------------------------------------------
 
     async def ensure_indexes(self) -> None:
-        """Create compound unique indexes and Materialized Paths index."""
+        """Create compound unique indexes and Materialized Paths index.
+
+        Handles migration from older index schemas by dropping indexes whose
+        key spec no longer matches the expected definition.
+        """
         sv = self.SCHEMA_VERSION_FIELD
-        await self._skills_collection.create_index(
-            [(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1)],
+        await self._ensure_index(
+            self._skills_collection,
+            keys=[(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1)],
             unique=True,
             name=self.INDEX_NAME,
         )
-        await self._resources_collection.create_index(
-            [(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("resource_name", 1)],
+        await self._ensure_index(
+            self._resources_collection,
+            keys=[(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("resource_name", 1)],
             unique=True,
             name=self.RESOURCE_INDEX_NAME,
         )
-        await self._scripts_collection.create_index(
-            [(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("script_name", 1)],
+        await self._ensure_index(
+            self._scripts_collection,
+            keys=[(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("script_name", 1)],
             unique=True,
             name=self.SCRIPT_INDEX_NAME,
         )
-        await self._skills_collection.create_index(
-            [(sv, 1), ("plugin_name", 1), ("path", 1)],
+        await self._ensure_index(
+            self._skills_collection,
+            keys=[(sv, 1), ("plugin_name", 1), ("path", 1)],
+            unique=False,
             name=self.PATH_INDEX_NAME,
         )
-        await self._usage_collection.create_index(
-            [("skill_name", 1), ("user_id", 1), ("date_used", -1)],
+        await self._ensure_index(
+            self._usage_collection,
+            keys=[("skill_name", 1), ("user_id", 1), ("date_used", -1)],
+            unique=False,
             name=self.USAGE_INDEX_NAME,
         )
-        await self._plugins_collection.create_index(
-            [(sv, 1), ("plugin_name", 1)],
+        await self._ensure_index(
+            self._plugins_collection,
+            keys=[(sv, 1), ("plugin_name", 1)],
             unique=True,
             name=self.PLUGIN_INDEX_NAME,
         )
+
+    @staticmethod
+    async def _ensure_index(
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        *,
+        keys: list[tuple[str, int]],
+        unique: bool,
+        name: str,
+    ) -> None:
+        """Create an index, dropping the old one first if its key spec conflicts."""
+        try:
+            await collection.create_index(keys, unique=unique, name=name)
+        except OperationFailure as exc:
+            if exc.code == 86:
+                logger.warning(
+                    "Index '%s' on %s has conflicting key spec — dropping and recreating.",
+                    name,
+                    collection.name,
+                )
+                await collection.drop_index(name)
+                await collection.create_index(keys, unique=unique, name=name)
+            else:
+                raise
 
     def _version_filter(self, query: dict[str, object]) -> dict[str, object]:
         """Add schema_version to a query filter."""

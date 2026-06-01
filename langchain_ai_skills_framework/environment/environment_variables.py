@@ -262,3 +262,8 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
     def plugins_history_collection(self) -> str:
         """Collection name for plugin definition history (default: plugins_history)."""
         return os.environ.get("PLUGINS_HISTORY_COLLECTION") or "plugins_history"
+
+    @property
+    def plugin_errors_collection(self) -> str:
+        """Collection name for operation errors (default: plugin_errors)."""
+        return os.environ.get("PLUGIN_ERRORS_COLLECTION") or "plugin_errors"

@@ -15,6 +15,7 @@ from langchain_ai_skills_framework.loaders.null_plugin_skill_store import (
     NullPluginSkillStore,
 )
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.persistence.error_writer import ErrorWriter
 from langchain_ai_skills_framework.persistence.history_writer import HistoryWriter
 from langchain_ai_skills_framework.persistence.mongo_database_factory import (
     MongoDatabaseFactory,
@@ -65,7 +66,13 @@ class PluginSkillStoreFactory:
             plugins_history_collection_name=self._environment_variables.plugins_history_collection,
         )
 
+        error_writer = ErrorWriter(
+            database=database,
+            errors_collection_name=self._environment_variables.plugin_errors_collection,
+        )
+
         return HistoryTrackingPluginSkillStore(
             inner_store=inner_store,
             history_writer=history_writer,
+            error_writer=error_writer,
         )

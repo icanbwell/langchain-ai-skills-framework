@@ -99,6 +99,7 @@ def inner_store() -> AsyncMock:
     store.record_skill_usage = AsyncMock()
     store.get_skill_usage_count = AsyncMock(return_value=5)
     store.get_skill_usage_counts = AsyncMock(return_value={"my-skill": 5})
+    store.plugin_exists = AsyncMock(return_value=False)
     store.list_plugins = AsyncMock(return_value=[])
     store.has_plugins = AsyncMock(return_value=True)
     return store
@@ -274,6 +275,27 @@ async def test_delete_skill_snapshot_failure_still_deletes(
     assert record.document_snapshot == {}
 
 
+async def test_delete_skill_records_cascade_deleted_children(
+    store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
+) -> None:
+    inner_store.list_resource_names.return_value = ["data.json", "config.yaml"]
+    inner_store.list_script_names.return_value = ["run.py"]
+
+    await store.delete_skill(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+
+    assert history_writer.write_reference_history.await_count == 2
+    assert history_writer.write_script_history.await_count == 1
+    assert history_writer.write_skill_history.await_count == 1
+
+    ref_record_1 = history_writer.write_reference_history.call_args_list[0].kwargs["record"]
+    assert ref_record_1.action == "deleted"
+    assert ref_record_1.resource_name == "data.json"
+
+    script_record = history_writer.write_script_history.call_args_list[0].kwargs["record"]
+    assert script_record.action == "deleted"
+    assert script_record.script_name == "run.py"
+
+
 # ------------------------------------------------------------------
 # save_resource
 # ------------------------------------------------------------------
@@ -401,9 +423,11 @@ async def test_delete_script_records_deleted_action(
 # ------------------------------------------------------------------
 
 
-async def test_save_plugin_records_updated_action(
-    store: HistoryTrackingPluginSkillStore, history_writer: AsyncMock
+async def test_save_plugin_new_records_created_action(
+    store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
+    inner_store.plugin_exists.return_value = False
+
     await store.save_plugin(
         plugin_name="my-plugin",
         description="A plugin",
@@ -413,9 +437,25 @@ async def test_save_plugin_records_updated_action(
 
     history_writer.write_plugin_history.assert_awaited_once()
     record = history_writer.write_plugin_history.call_args.kwargs["record"]
-    assert record.action == "updated"
+    assert record.action == "created"
     assert record.source_collection == "plugins"
     assert record.plugin_name == "my-plugin"
+
+
+async def test_save_plugin_existing_records_updated_action(
+    store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
+) -> None:
+    inner_store.plugin_exists.return_value = True
+
+    await store.save_plugin(
+        plugin_name="my-plugin",
+        description="A plugin",
+        skills=["my-skill"],
+        mcp_servers=[],
+    )
+
+    record = history_writer.write_plugin_history.call_args.kwargs["record"]
+    assert record.action == "updated"
 
 
 # ------------------------------------------------------------------
@@ -467,3 +507,51 @@ async def test_get_skill_history_delegates_to_writer(
     history_writer.get_skill_history.assert_awaited_once_with(
         user_id="user-1", plugin_name="my-plugin", skill_name="my-skill", limit=50, offset=0
     )
+
+
+# ------------------------------------------------------------------
+# Error recording
+# ------------------------------------------------------------------
+
+
+async def test_save_skill_failure_records_error(inner_store: AsyncMock, history_writer: AsyncMock) -> None:
+    error_writer = AsyncMock()
+    error_writer.write_error = AsyncMock()
+    store_with_errors = HistoryTrackingPluginSkillStore(
+        inner_store=inner_store, history_writer=history_writer, error_writer=error_writer
+    )
+    inner_store.save_skill.side_effect = RuntimeError("connection lost")
+
+    with pytest.raises(RuntimeError, match="connection lost"):
+        await store_with_errors.save_skill(
+            user_id="user-1",
+            plugin_name="my-plugin",
+            skill_name="my-skill",
+            content="# Content",
+        )
+
+    error_writer.write_error.assert_awaited_once()
+    error_record = error_writer.write_error.call_args.kwargs["record"]
+    assert error_record.operation == "save"
+    assert error_record.error_type == "RuntimeError"
+    assert "connection lost" in error_record.error_message
+
+
+async def test_set_skill_published_failure_records_error(inner_store: AsyncMock, history_writer: AsyncMock) -> None:
+    error_writer = AsyncMock()
+    error_writer.write_error = AsyncMock()
+    store_with_errors = HistoryTrackingPluginSkillStore(
+        inner_store=inner_store, history_writer=history_writer, error_writer=error_writer
+    )
+    inner_store.set_skill_published.side_effect = RuntimeError("publish failed")
+
+    with pytest.raises(RuntimeError, match="publish failed"):
+        await store_with_errors.set_skill_published(
+            user_id="user-1",
+            plugin_name="my-plugin",
+            skill_name="my-skill",
+            published=True,
+        )
+
+    error_record = error_writer.write_error.call_args.kwargs["record"]
+    assert error_record.operation == "publish"

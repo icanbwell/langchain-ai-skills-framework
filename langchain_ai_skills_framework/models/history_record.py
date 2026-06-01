@@ -1,0 +1,52 @@
+"""Pydantic model for document change history records."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Literal, Mapping
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class HistoryRecord(BaseModel):
+    """A single history entry representing a document state change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["created", "updated", "deleted", "published", "unpublished"] = Field(
+        description="Type of mutation that produced this record"
+    )
+    document_snapshot: dict[str, Any] = Field(
+        description="Full document state (after for create/update, before for delete)"
+    )
+    changed_by: str = Field(description="User who triggered the change")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When the change occurred (UTC)",
+    )
+    source_collection: str = Field(
+        description="Origin collection: plugin_skills, plugin_scripts, plugin_references, or plugins"
+    )
+    user_id: str = Field(description="Owner of the document")
+    plugin_name: str = Field(description="Plugin the document belongs to")
+    skill_name: str = Field(default="", description="Skill name (empty for plugin-level history)")
+    resource_name: str | None = Field(default=None, description="Resource name (for reference history)")
+    script_name: str | None = Field(default=None, description="Script name (for script history)")
+
+    def to_mongo_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    @classmethod
+    def from_mongo_dict(cls, data: Mapping[str, Any]) -> HistoryRecord:
+        return cls(
+            action=data["action"],
+            document_snapshot=data.get("document_snapshot", {}),
+            changed_by=data.get("changed_by", ""),
+            timestamp=data.get("timestamp", datetime.now(timezone.utc)),
+            source_collection=data["source_collection"],
+            user_id=data["user_id"],
+            plugin_name=data["plugin_name"],
+            skill_name=data.get("skill_name", ""),
+            resource_name=data.get("resource_name"),
+            script_name=data.get("script_name"),
+        )

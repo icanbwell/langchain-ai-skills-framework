@@ -236,3 +236,29 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         if not url or not url.strip():
             raise RuntimeError("REDIS_URL is not set. A Redis URL is required when KEY_VALUE_STORE_TYPE is 'redis'.")
         return url.strip()
+
+    @property
+    def enable_skill_history(self) -> bool:
+        """Whether document history tracking is enabled (default: true)."""
+        raw = os.environ.get("ENABLE_SKILL_HISTORY", "true")
+        return raw.strip().lower() in ("true", "1", "yes")
+
+    @property
+    def plugin_skills_history_collection(self) -> str:
+        """Collection name for skill history (default: plugin_skills_history)."""
+        return os.environ.get("PLUGIN_SKILLS_HISTORY_COLLECTION") or "plugin_skills_history"
+
+    @property
+    def plugin_scripts_history_collection(self) -> str:
+        """Collection name for script history (default: plugin_scripts_history)."""
+        return os.environ.get("PLUGIN_SCRIPTS_HISTORY_COLLECTION") or "plugin_scripts_history"
+
+    @property
+    def plugin_references_history_collection(self) -> str:
+        """Collection name for reference history (default: plugin_references_history)."""
+        return os.environ.get("PLUGIN_REFERENCES_HISTORY_COLLECTION") or "plugin_references_history"
+
+    @property
+    def plugins_history_collection(self) -> str:
+        """Collection name for plugin definition history (default: plugins_history)."""
+        return os.environ.get("PLUGINS_HISTORY_COLLECTION") or "plugins_history"

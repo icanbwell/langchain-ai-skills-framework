@@ -221,6 +221,9 @@ class NullPluginSkillStore:
     ) -> MongoPluginDefinitionDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
+    async def plugin_exists(self, *, plugin_name: str) -> bool:
+        return False
+
     async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
         return ()
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Mapping, Sequence, Any
-from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -20,13 +19,7 @@ from langchain_ai_skills_framework.models.plugin_definition import PluginDefinit
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
 from langchain_ai_skills_framework.langchain.tools.load_skill_tool import LoadSkillTool
-
-
-def _make_runtime(user_id: str = "user-1") -> MagicMock:
-    """Create a mock ToolRuntime with the given user_id in context."""
-    runtime = MagicMock()
-    runtime.context = {"user_id": user_id}
-    return runtime
+from tests.skills.langchain.conftest import make_runtime
 
 
 class _StubSkillLoader(SkillLoaderProtocol):
@@ -124,7 +117,7 @@ async def test_load_skill_tool_returns_availability_for_empty_name() -> None:
     tool = LoadSkillTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided"):
-        await tool._arun(plugin_name="test-plugin", skill_name="", runtime=_make_runtime())
+        await tool._arun(plugin_name="test-plugin", skill_name="", runtime=make_runtime())
 
 
 @pytest.mark.asyncio
@@ -134,7 +127,7 @@ async def test_load_skill_tool_returns_availability_when_missing() -> None:
     loader = _StubSkillLoader({"beta": details_beta, "alpha": details_alpha})
     tool = LoadSkillTool(skill_loader=loader)
 
-    result, _ = await tool._arun(plugin_name="test-plugin", skill_name="gamma", runtime=_make_runtime())
+    result, _ = await tool._arun(plugin_name="test-plugin", skill_name="gamma", runtime=make_runtime())
 
     assert "Skill 'gamma' not found" in result
     assert "Available skills: alpha, beta" in result
@@ -144,7 +137,7 @@ async def test_load_skill_tool_returns_availability_when_missing() -> None:
 async def test_load_skill_tool_returns_none_configured_when_no_skills_exist() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
-    result, _ = await tool._arun(plugin_name="test-plugin", skill_name="alpha", runtime=_make_runtime())
+    result, _ = await tool._arun(plugin_name="test-plugin", skill_name="alpha", runtime=make_runtime())
 
     assert "Skill 'alpha' not found" in result
     assert "Available skills: None configured" in result
@@ -156,26 +149,16 @@ async def test_load_skill_tool_returns_skill_content() -> None:
     loader = _StubSkillLoader({"alpha": details})
     tool = LoadSkillTool(skill_loader=loader)
 
-    message, _ = await tool._arun(plugin_name="test-plugin", skill_name=" alpha ", runtime=_make_runtime())
+    message, _ = await tool._arun(plugin_name="test-plugin", skill_name=" alpha ", runtime=make_runtime())
 
     assert message == "Body for alpha"
-
-
-@pytest.mark.asyncio
-async def test_arun_validates_empty_skill_name() -> None:
-    details = _make_skill("alpha", content="Body for alpha")
-    loader = _StubSkillLoader({"alpha": details})
-    tool = LoadSkillTool(skill_loader=loader)
-
-    with pytest.raises(ToolException, match="No skill name provided."):
-        await tool._arun(plugin_name="test-plugin", skill_name="", runtime=_make_runtime())
 
 
 def test_sync_run_raises() -> None:
     tool = LoadSkillTool(skill_loader=_StubSkillLoader({}))
 
     with pytest.raises(NotImplementedError):
-        tool._run(plugin_name="test-plugin", skill_name="test", runtime=_make_runtime())
+        tool._run(plugin_name="test-plugin", skill_name="test", runtime=make_runtime())
 
 
 def test_get_friendly_name_casts_skill_name_to_string() -> None:

@@ -18,6 +18,7 @@ from langchain_ai_skills_framework.langchain.tools.publish_skill_tool import (
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
+from tests.skills.langchain.conftest import make_runtime
 
 
 def _make_doc(skill_name: str = "test-skill", published: bool = True) -> MongoPluginSkillDocument:
@@ -49,13 +50,6 @@ def _make_publisher_mock() -> MagicMock:
     return publisher
 
 
-def _make_runtime(user_id: str = "user-1") -> MagicMock:
-    """Create a mock ToolRuntime with the given user_id in context."""
-    runtime = MagicMock()
-    runtime.context = {"user_id": user_id}
-    return runtime
-
-
 class TestPublishSkillTool:
     @pytest.mark.asyncio
     async def test_publishes_skill_successfully(self) -> None:
@@ -64,7 +58,7 @@ class TestPublishSkillTool:
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=publisher)
 
         result, artifact = await tool._arun(
-            plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=_make_runtime("user-1")
+            plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime("user-1")
         )
 
         assert "published" in result
@@ -82,7 +76,7 @@ class TestPublishSkillTool:
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         result, _ = await tool._arun(
-            plugin_name="test-plugin", skill_name="test-skill", published=False, runtime=_make_runtime("user-1")
+            plugin_name="test-plugin", skill_name="test-skill", published=False, runtime=make_runtime("user-1")
         )
 
         assert "unpublished" in result
@@ -92,14 +86,14 @@ class TestPublishSkillTool:
         tool = PublishSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime(""))
+            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=make_runtime(""))
 
     @pytest.mark.asyncio
     async def test_rejects_empty_skill_name(self) -> None:
         tool = PublishSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="skill_name must be a non-empty"):
-            await tool._arun(plugin_name="test-plugin", skill_name="  ", published=True, runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="  ", published=True, runtime=make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_publish_when_publisher_not_configured(self) -> None:
@@ -107,16 +101,14 @@ class TestPublishSkillTool:
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         with pytest.raises(ToolException, match="GitHub marketplace publisher is not configured"):
-            await tool._arun(
-                plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=_make_runtime()
-            )
+            await tool._arun(plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime())
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:
         tool = PublishSkillTool(marketplace_publisher=_make_publisher_mock())
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=make_runtime())
 
     @pytest.mark.asyncio
     async def test_wraps_unexpected_exception(self) -> None:
@@ -125,13 +117,13 @@ class TestPublishSkillTool:
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=_make_publisher_mock())
 
         with pytest.raises(ToolException, match="Unable to update publishing"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="test", published=True, runtime=make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = PublishSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(plugin_name="test-plugin", skill_name="test", published=True, runtime=_make_runtime())
+            tool._run(plugin_name="test-plugin", skill_name="test", published=True, runtime=make_runtime())
 
     def test_get_friendly_name(self) -> None:
         name = PublishSkillTool.get_friendly_name(tool_input={"skill_name": "my-skill"})

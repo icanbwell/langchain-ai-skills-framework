@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping, Sequence
-from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -22,13 +21,7 @@ from langchain_ai_skills_framework.models.skills_model import SkillDetails, Skil
 from langchain_ai_skills_framework.langchain.tools.read_skill_resource_tool import (
     ReadSkillResourceTool,
 )
-
-
-def _make_runtime(user_id: str = "user-1") -> MagicMock:
-    """Create a mock ToolRuntime with the given user_id in context."""
-    runtime = MagicMock()
-    runtime.context = {"user_id": user_id}
-    return runtime
+from tests.skills.langchain.conftest import make_runtime
 
 
 class _StubSkillLoader(SkillLoaderProtocol):
@@ -144,7 +137,7 @@ async def test_run_reads_named_resource() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     message, artifact = await tool._arun(
-        plugin_name="test-plugin", skill_name="alpha", resource_name="FORMS.md", runtime=_make_runtime()
+        plugin_name="test-plugin", skill_name="alpha", resource_name="FORMS.md", runtime=make_runtime()
     )
 
     assert message == "alpha:FORMS.md"
@@ -158,7 +151,7 @@ async def test_run_returns_not_found_message_for_missing_skill() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     message, artifact = await tool._arun(
-        plugin_name="test-plugin", skill_name="missing", resource_name="FORMS.md", runtime=_make_runtime()
+        plugin_name="test-plugin", skill_name="missing", resource_name="FORMS.md", runtime=make_runtime()
     )
 
     assert "not found" in message
@@ -172,7 +165,7 @@ async def test_run_raises_tool_exception_for_empty_skill_name() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     with pytest.raises(ToolException, match="No skill name provided"):
-        await tool._arun(plugin_name="test-plugin", skill_name=" ", resource_name="FORMS.md", runtime=_make_runtime())
+        await tool._arun(plugin_name="test-plugin", skill_name=" ", resource_name="FORMS.md", runtime=make_runtime())
 
 
 @pytest.mark.asyncio
@@ -185,7 +178,7 @@ async def test_arun_validates_empty_skill_name_raises() -> None:
             plugin_name="test-plugin",
             skill_name="",
             resource_name="FORMS.md",
-            runtime=_make_runtime(),
+            runtime=make_runtime(),
         )
 
 
@@ -198,7 +191,7 @@ async def test_arun_validates_empty_resource_name_returns_error() -> None:
         plugin_name="test-plugin",
         skill_name="alpha",
         resource_name="",
-        runtime=_make_runtime(),
+        runtime=make_runtime(),
     )
     assert result == "No resource name provided."
     assert artifact == ""
@@ -213,7 +206,7 @@ async def test_run_resource_not_found_lists_available_resources() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     message, artifact = await tool._arun(
-        plugin_name="test-plugin", skill_name="alpha", resource_name="MISSING.md", runtime=_make_runtime()
+        plugin_name="test-plugin", skill_name="alpha", resource_name="MISSING.md", runtime=make_runtime()
     )
     assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
     assert "FORMS.md" in message
@@ -227,7 +220,7 @@ async def test_run_resource_not_found_no_resources_shows_none() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     message, artifact = await tool._arun(
-        plugin_name="test-plugin", skill_name="alpha", resource_name="MISSING.md", runtime=_make_runtime()
+        plugin_name="test-plugin", skill_name="alpha", resource_name="MISSING.md", runtime=make_runtime()
     )
     assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
     assert "Available resources: none" in message
@@ -238,7 +231,7 @@ def test_sync_run_raises() -> None:
     tool = ReadSkillResourceTool(skill_loader=loader)
 
     with pytest.raises(NotImplementedError):
-        tool._run(plugin_name="test-plugin", skill_name="alpha", resource_name="FORMS.md", runtime=_make_runtime())
+        tool._run(plugin_name="test-plugin", skill_name="alpha", resource_name="FORMS.md", runtime=make_runtime())
 
 
 def test_get_friendly_name_casts_inputs_to_string() -> None:

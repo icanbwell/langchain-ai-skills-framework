@@ -13,6 +13,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillDocument,
 )
 from langchain_ai_skills_framework.langchain.tools.save_skill_tool import SaveSkillTool
+from tests.skills.langchain.conftest import make_runtime
 
 VALID_SKILL_CONTENT = "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nContent"
 
@@ -33,13 +34,6 @@ def _make_loader_mock() -> AsyncMock:
     return loader
 
 
-def _make_runtime(user_id: str = "user-1") -> MagicMock:
-    """Create a mock ToolRuntime with the given user_id in context."""
-    runtime = MagicMock()
-    runtime.context = {"user_id": user_id}
-    return runtime
-
-
 class TestSaveSkillTool:
     @pytest.mark.asyncio
     async def test_saves_skill_successfully(self) -> None:
@@ -50,7 +44,7 @@ class TestSaveSkillTool:
             plugin_name="test-plugin",
             skill_name="test-skill",
             content=VALID_SKILL_CONTENT,
-            runtime=_make_runtime("user-1"),
+            runtime=make_runtime("user-1"),
         )
 
         assert "saved successfully" in result
@@ -67,7 +61,7 @@ class TestSaveSkillTool:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="user_id is required"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", content="content", runtime=_make_runtime(""))
+            await tool._arun(plugin_name="test-plugin", skill_name="test", content="content", runtime=make_runtime(""))
 
     @pytest.mark.asyncio
     async def test_rejects_missing_user_id_in_context(self) -> None:
@@ -83,7 +77,7 @@ class TestSaveSkillTool:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         result, artifact = await tool._arun(
-            plugin_name="test-plugin", skill_name="", content="content", runtime=_make_runtime()
+            plugin_name="test-plugin", skill_name="", content="content", runtime=make_runtime()
         )
 
         assert "Skill validation failed" in result
@@ -93,7 +87,7 @@ class TestSaveSkillTool:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(ToolException, match="content must be a non-empty"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", content="", runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="test", content="", runtime=make_runtime())
 
     @pytest.mark.asyncio
     async def test_returns_error_for_invalid_frontmatter(self) -> None:
@@ -103,7 +97,7 @@ class TestSaveSkillTool:
             plugin_name="test-plugin",
             skill_name="test",
             content="# No frontmatter here",
-            runtime=_make_runtime(),
+            runtime=make_runtime(),
         )
 
         assert "Skill validation failed" in result
@@ -116,7 +110,7 @@ class TestSaveSkillTool:
             plugin_name="test-plugin",
             skill_name="test",
             content="---\ninvalid_field: true\n---\n# Missing required fields",
-            runtime=_make_runtime(),
+            runtime=make_runtime(),
         )
 
         assert "Skill validation failed" in result
@@ -126,13 +120,13 @@ class TestSaveSkillTool:
         tool = SaveSkillTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test", content="content", runtime=_make_runtime())
+            await tool._arun(plugin_name="test-plugin", skill_name="test", content="content", runtime=make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = SaveSkillTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(plugin_name="test-plugin", skill_name="test", content="content", runtime=_make_runtime())
+            tool._run(plugin_name="test-plugin", skill_name="test", content="content", runtime=make_runtime())
 
     def test_get_friendly_name(self) -> None:
         name = SaveSkillTool.get_friendly_name(tool_input={"skill_name": "my-skill"})

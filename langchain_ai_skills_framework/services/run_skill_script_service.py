@@ -123,22 +123,18 @@ class RunSkillScriptService:
         plugin_name: str,
         user_id: str,
     ) -> MyScriptExecutionResult:
-        normalized_name = skill_name.strip()
-        if not normalized_name:
-            raise SkillOperationError("Skill name must not be empty.")
-
         try:
             if user_id:
                 result: MyScriptExecutionResult = await self._loader.run_skill_script_for_user(
                     user_id=user_id,
                     plugin_name=plugin_name,
-                    skill_name=normalized_name,
+                    skill_name=skill_name,
                     script_name=script_name,
                     arguments=arguments,
                 )
             else:
                 result = await self._loader.run_skill_script(
-                    skill_name=normalized_name,
+                    skill_name=skill_name,
                     script_name=script_name,
                     arguments=arguments,
                     plugin_name=plugin_name,
@@ -149,9 +145,9 @@ class RunSkillScriptService:
         except Exception as exc:
             logger.exception(
                 "RunSkillScriptService failed for skill_name=%s script_name=%s",
-                normalized_name,
+                skill_name,
                 script_name,
             )
             raise SkillOperationError(
-                f"Unable to run script '{script_name}' in skill '{normalized_name}' due to an internal error."
+                f"Unable to run script '{script_name}' in skill '{skill_name}' due to an internal error."
             ) from exc

@@ -727,6 +727,13 @@ class MongoPluginSkillLoader:
         assert raw is not None
         return MongoPluginDefinitionDocument.from_mongo_dict(raw)
 
+    async def plugin_exists(self, *, plugin_name: str) -> bool:
+        """Return True if a plugin definition exists for the given name."""
+        count = await self._plugins_collection.count_documents(
+            self._version_filter({"plugin_name": plugin_name}), limit=1
+        )
+        return count > 0
+
     async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
         """Return all plugin definitions for the current schema version, skipping malformed documents."""
         cursor = self._plugins_collection.find(self._version_filter({})).sort("plugin_name", 1)

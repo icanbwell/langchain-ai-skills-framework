@@ -44,13 +44,13 @@ def build_script_path(*, plugin_name: str, skill_name: str, script_name: str) ->
 class MongoPluginSkillDocument(BaseModel):
     """A skill stored in the ``plugin_skills`` collection."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     plugin_name: str = Field(description="Plugin that owns this skill")
     skill_name: str = Field(description="Normalized name of the skill")
-    path: str = Field(description="Materialized path: plugin/skills/name/SKILL.md")
-    description: str = Field(description="Short description of what the skill does")
-    content: str = Field(description="Full skill content (SKILL.md body)")
+    path: str = Field(default="", description="Materialized path: plugin/skills/name/SKILL.md")
+    description: str = Field(default="", description="Short description of what the skill does")
+    content: str = Field(default="", description="Full skill content (SKILL.md body)")
     allowed_tools: tuple[str, ...] = Field(
         default=(),
         description="Tool names this skill is allowed to use",
@@ -84,34 +84,16 @@ class MongoPluginSkillDocument(BaseModel):
 
     def to_mongo_dict(self) -> dict[str, Any]:
         data = self.model_dump()
-        # Convert tuple to list for MongoDB compatibility
         data["allowed_tools"] = list(self.allowed_tools)
         return data
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillDocument:
-        allowed_tools_raw = data.get("allowed_tools", ())
-        if isinstance(allowed_tools_raw, list):
-            allowed_tools = tuple(allowed_tools_raw)
-        else:
-            allowed_tools = tuple(allowed_tools_raw) if allowed_tools_raw else ()
-
-        return cls(
-            plugin_name=data["plugin_name"],
-            skill_name=data["skill_name"],
-            path=data.get("path", ""),
-            description=data.get("description", ""),
-            content=data.get("content", ""),
-            allowed_tools=allowed_tools,
-            metadata=data.get("metadata"),
-            user_id=data["user_id"],
-            published=data.get("published", data.get("shared", False)),
-            published_date=data.get("published_date"),
-            published_branch=data.get("published_branch"),
-            modified_by=data.get("modified_by", ""),
-            date_created=data.get("date_created", datetime.now(timezone.utc)),
-            date_modified=data.get("date_modified", datetime.now(timezone.utc)),
-        )
+        # Handle legacy "shared" field migrated to "published"
+        normalized = dict(data)
+        if "published" not in normalized and "shared" in normalized:
+            normalized["published"] = normalized.pop("shared")
+        return cls.model_validate(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +104,13 @@ class MongoPluginSkillDocument(BaseModel):
 class MongoPluginResourceDocument(BaseModel):
     """A resource file stored in the ``plugin_references`` collection."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     plugin_name: str = Field(description="Plugin that owns this resource")
     skill_name: str = Field(description="Normalized name of the parent skill")
     resource_name: str = Field(description="Name of the resource file")
-    path: str = Field(description="Materialized path: plugin/skills/name/resource")
-    content: str = Field(description="Content of the resource file")
+    path: str = Field(default="", description="Materialized path: plugin/skills/name/resource")
+    content: str = Field(default="", description="Content of the resource file")
     user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this resource")
     date_created: datetime = Field(
@@ -145,17 +127,7 @@ class MongoPluginResourceDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginResourceDocument:
-        return cls(
-            plugin_name=data["plugin_name"],
-            skill_name=data["skill_name"],
-            resource_name=data["resource_name"],
-            path=data.get("path", ""),
-            content=data.get("content", ""),
-            user_id=data["user_id"],
-            modified_by=data.get("modified_by", ""),
-            date_created=data.get("date_created", datetime.now(timezone.utc)),
-            date_modified=data.get("date_modified", datetime.now(timezone.utc)),
-        )
+        return cls.model_validate(data)
 
 
 # ---------------------------------------------------------------------------
@@ -166,13 +138,13 @@ class MongoPluginResourceDocument(BaseModel):
 class MongoPluginScriptDocument(BaseModel):
     """An executable script stored in the ``plugin_scripts`` collection."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     plugin_name: str = Field(description="Plugin that owns this script")
     skill_name: str = Field(description="Normalized name of the parent skill")
     script_name: str = Field(description="Name of the script file")
-    path: str = Field(description="Materialized path: plugin/skills/name/scripts/script")
-    content: str = Field(description="Content of the script file")
+    path: str = Field(default="", description="Materialized path: plugin/skills/name/scripts/script")
+    content: str = Field(default="", description="Content of the script file")
     user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this script")
     date_created: datetime = Field(
@@ -189,17 +161,7 @@ class MongoPluginScriptDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginScriptDocument:
-        return cls(
-            plugin_name=data["plugin_name"],
-            skill_name=data["skill_name"],
-            script_name=data["script_name"],
-            path=data.get("path", ""),
-            content=data.get("content", ""),
-            user_id=data["user_id"],
-            modified_by=data.get("modified_by", ""),
-            date_created=data.get("date_created", datetime.now(timezone.utc)),
-            date_modified=data.get("date_modified", datetime.now(timezone.utc)),
-        )
+        return cls.model_validate(data)
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +176,7 @@ class MongoPluginDefinitionDocument(BaseModel):
     configuration so the gateway has a queryable catalog of available plugins.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     plugin_name: str = Field(description="Canonical plugin name (directory name)")
     description: str = Field(default="", description="Human-readable description")
@@ -240,20 +202,15 @@ class MongoPluginDefinitionDocument(BaseModel):
         plugin_name = data.get("plugin_name") or data.get("name", "")
         if not plugin_name:
             raise KeyError("plugin_name")
-        return cls(
-            plugin_name=plugin_name,
-            description=data.get("description", ""),
-            skills=data.get("skills", []),
-            mcp_servers=data.get("mcp_servers", []),
-            date_created=data.get("date_created", datetime.now(timezone.utc)),
-            date_modified=data.get("date_modified", datetime.now(timezone.utc)),
-        )
+        normalized = dict(data)
+        normalized["plugin_name"] = plugin_name
+        return cls.model_validate(normalized)
 
 
 class MongoPluginSkillUsageDocument(BaseModel):
     """A single usage event for a skill within a plugin."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     plugin_name: str = Field(description="Plugin containing the skill")
     skill_name: str = Field(description="Name of the skill that was used")
@@ -268,9 +225,4 @@ class MongoPluginSkillUsageDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillUsageDocument:
-        return cls(
-            plugin_name=data["plugin_name"],
-            skill_name=data["skill_name"],
-            user_id=data["user_id"],
-            date_used=data.get("date_used", datetime.now(timezone.utc)),
-        )
+        return cls.model_validate(data)

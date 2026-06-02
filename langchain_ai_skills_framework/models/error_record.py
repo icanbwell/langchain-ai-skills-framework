@@ -11,11 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 class ErrorRecord(BaseModel):
     """A single error entry for troubleshooting failed skill operations."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     operation: Literal["save", "publish", "retrieve", "delete"] = Field(description="The operation that failed")
-    error_type: str = Field(description="Exception class name")
-    error_message: str = Field(description="Human-readable error description")
+    error_type: str = Field(default="", description="Exception class name")
+    error_message: str = Field(default="", description="Human-readable error description")
     traceback: str = Field(default="", description="Full traceback if available")
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -36,16 +36,4 @@ class ErrorRecord(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> ErrorRecord:
-        return cls(
-            operation=data["operation"],
-            error_type=data.get("error_type", ""),
-            error_message=data.get("error_message", ""),
-            traceback=data.get("traceback", ""),
-            timestamp=data.get("timestamp", datetime.now(timezone.utc)),
-            user_id=data.get("user_id", ""),
-            plugin_name=data.get("plugin_name", ""),
-            skill_name=data.get("skill_name", ""),
-            resource_name=data.get("resource_name"),
-            script_name=data.get("script_name"),
-            context=data.get("context", {}),
-        )
+        return cls.model_validate(data)

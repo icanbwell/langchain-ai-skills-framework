@@ -61,27 +61,19 @@ class LoadSkillService:
         return content
 
     async def _load_skill(self, skill_name: str, *, plugin_name: str, user_id: str) -> str:
-        normalized_name = skill_name.strip()
-        if not normalized_name:
-            raise SkillOperationError(
-                await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id)
-            )
-
         try:
             if user_id:
                 skill = await self._loader.get_skill_details_for_user(
-                    user_id=user_id, plugin_name=plugin_name, skill_name=normalized_name
+                    user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
                 )
             else:
-                skill = self._loader.get_skill_details(skill_name=normalized_name, plugin_name=plugin_name)
+                skill = self._loader.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
             author = skill.summary.metadata.get("user_id") if skill.summary.metadata else None
             if author:
                 return f"Author: {author}\n\n{skill.content}"
-            return f"{skill.content}"
+            return skill.content
         except SkillNotFoundError:
-            return await format_skill_availability(
-                loader=self._loader, normalized_name=normalized_name, user_id=user_id
-            )
+            return await format_skill_availability(loader=self._loader, normalized_name=skill_name, user_id=user_id)
         except Exception as exc:
-            logger.exception("LoadSkillService failed for skill_name=%s", normalized_name)
-            raise SkillOperationError(f"Unable to load skill '{normalized_name}' due to an internal error.") from exc
+            logger.exception("LoadSkillService failed for skill_name=%s", skill_name)
+            raise SkillOperationError(f"Unable to load skill '{skill_name}' due to an internal error.") from exc

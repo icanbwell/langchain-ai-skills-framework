@@ -11,15 +11,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class HistoryRecord(BaseModel):
     """A single history entry representing a document state change."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     action: Literal["created", "updated", "deleted", "published", "unpublished"] = Field(
         description="Type of mutation that produced this record"
     )
     document_snapshot: dict[str, Any] = Field(
-        description="Full document state (after for create/update, before for delete)"
+        default_factory=dict,
+        description="Full document state (after for create/update, before for delete)",
     )
-    changed_by: str = Field(description="User who triggered the change")
+    changed_by: str = Field(default="", description="User who triggered the change")
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the change occurred (UTC)",
@@ -38,15 +39,4 @@ class HistoryRecord(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> HistoryRecord:
-        return cls(
-            action=data["action"],
-            document_snapshot=data.get("document_snapshot", {}),
-            changed_by=data.get("changed_by", ""),
-            timestamp=data.get("timestamp", datetime.now(timezone.utc)),
-            source_collection=data["source_collection"],
-            user_id=data["user_id"],
-            plugin_name=data["plugin_name"],
-            skill_name=data.get("skill_name", ""),
-            resource_name=data.get("resource_name"),
-            script_name=data.get("script_name"),
-        )
+        return cls.model_validate(data)

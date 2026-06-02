@@ -65,29 +65,23 @@ class ReadSkillResourceService:
         plugin_name: str,
         user_id: str,
     ) -> str:
-        normalized_name = skill_name.strip()
-        if not normalized_name:
-            raise SkillOperationError(
-                await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id)
-            )
-
         try:
             if user_id:
                 resource: str = await self._loader.read_skill_resource_for_user(
                     user_id=user_id,
                     plugin_name=plugin_name,
-                    skill_name=normalized_name,
+                    skill_name=skill_name,
                     resource_name=resource_name,
                 )
             else:
                 resource = self._loader.read_skill_resource(
-                    skill_name=normalized_name, resource_name=resource_name, plugin_name=plugin_name
+                    skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name
                 )
             return resource
         except SkillNotFoundError:
             return await format_resource_availability(
                 loader=self._loader,
-                skill_name=normalized_name,
+                skill_name=skill_name,
                 resource_name=resource_name,
                 user_id=user_id,
                 plugin_name=plugin_name,
@@ -95,9 +89,9 @@ class ReadSkillResourceService:
         except Exception as exc:
             logger.exception(
                 "ReadSkillResourceService failed for skill_name=%s resource_name=%s",
-                normalized_name,
+                skill_name,
                 resource_name,
             )
             raise SkillOperationError(
-                f"Unable to read resource '{resource_name}' from skill '{normalized_name}' due to an internal error."
+                f"Unable to read resource '{resource_name}' from skill '{skill_name}' due to an internal error."
             ) from exc

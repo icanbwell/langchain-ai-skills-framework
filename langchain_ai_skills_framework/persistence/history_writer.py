@@ -60,54 +60,25 @@ class HistoryWriter:
             name=self.PLUGINS_HISTORY_INDEX,
         )
 
+    # ------------------------------------------------------------------
+    # Write methods
+    # ------------------------------------------------------------------
+
     async def write_skill_history(self, *, record: HistoryRecord) -> None:
-        try:
-            await self._skills_history.insert_one(record.to_mongo_dict())
-        except Exception:
-            logger.warning(
-                "Failed to write skill history for %s/%s (action=%s)",
-                record.plugin_name,
-                record.skill_name,
-                record.action,
-                exc_info=True,
-            )
+        await self._write(collection=self._skills_history, record=record, entity_type="skill")
 
     async def write_script_history(self, *, record: HistoryRecord) -> None:
-        try:
-            await self._scripts_history.insert_one(record.to_mongo_dict())
-        except Exception:
-            logger.warning(
-                "Failed to write script history for %s/%s/%s (action=%s)",
-                record.plugin_name,
-                record.skill_name,
-                record.script_name,
-                record.action,
-                exc_info=True,
-            )
+        await self._write(collection=self._scripts_history, record=record, entity_type="script")
 
     async def write_reference_history(self, *, record: HistoryRecord) -> None:
-        try:
-            await self._references_history.insert_one(record.to_mongo_dict())
-        except Exception:
-            logger.warning(
-                "Failed to write reference history for %s/%s/%s (action=%s)",
-                record.plugin_name,
-                record.skill_name,
-                record.resource_name,
-                record.action,
-                exc_info=True,
-            )
+        await self._write(collection=self._references_history, record=record, entity_type="reference")
 
     async def write_plugin_history(self, *, record: HistoryRecord) -> None:
-        try:
-            await self._plugins_history.insert_one(record.to_mongo_dict())
-        except Exception:
-            logger.warning(
-                "Failed to write plugin history for %s (action=%s)",
-                record.plugin_name,
-                record.action,
-                exc_info=True,
-            )
+        await self._write(collection=self._plugins_history, record=record, entity_type="plugin")
+
+    # ------------------------------------------------------------------
+    # Query methods
+    # ------------------------------------------------------------------
 
     async def get_skill_history(
         self,
@@ -118,14 +89,12 @@ class HistoryWriter:
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[HistoryRecord]:
-        cursor = (
-            self._skills_history.find({"user_id": user_id, "plugin_name": plugin_name, "skill_name": skill_name})
-            .sort("timestamp", -1)
-            .skip(offset)
-            .limit(limit)
+        return await self._query(
+            collection=self._skills_history,
+            query={"user_id": user_id, "plugin_name": plugin_name, "skill_name": skill_name},
+            limit=limit,
+            offset=offset,
         )
-        docs = await cursor.to_list(length=limit)
-        return [HistoryRecord.from_mongo_dict(doc) for doc in docs]
 
     async def get_script_history(
         self,
@@ -137,21 +106,17 @@ class HistoryWriter:
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[HistoryRecord]:
-        cursor = (
-            self._scripts_history.find(
-                {
-                    "user_id": user_id,
-                    "plugin_name": plugin_name,
-                    "skill_name": skill_name,
-                    "script_name": script_name,
-                }
-            )
-            .sort("timestamp", -1)
-            .skip(offset)
-            .limit(limit)
+        return await self._query(
+            collection=self._scripts_history,
+            query={
+                "user_id": user_id,
+                "plugin_name": plugin_name,
+                "skill_name": skill_name,
+                "script_name": script_name,
+            },
+            limit=limit,
+            offset=offset,
         )
-        docs = await cursor.to_list(length=limit)
-        return [HistoryRecord.from_mongo_dict(doc) for doc in docs]
 
     async def get_resource_history(
         self,
@@ -163,21 +128,17 @@ class HistoryWriter:
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[HistoryRecord]:
-        cursor = (
-            self._references_history.find(
-                {
-                    "user_id": user_id,
-                    "plugin_name": plugin_name,
-                    "skill_name": skill_name,
-                    "resource_name": resource_name,
-                }
-            )
-            .sort("timestamp", -1)
-            .skip(offset)
-            .limit(limit)
+        return await self._query(
+            collection=self._references_history,
+            query={
+                "user_id": user_id,
+                "plugin_name": plugin_name,
+                "skill_name": skill_name,
+                "resource_name": resource_name,
+            },
+            limit=limit,
+            offset=offset,
         )
-        docs = await cursor.to_list(length=limit)
-        return [HistoryRecord.from_mongo_dict(doc) for doc in docs]
 
     async def get_plugin_history(
         self,
@@ -186,8 +147,44 @@ class HistoryWriter:
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[HistoryRecord]:
-        cursor = (
-            self._plugins_history.find({"plugin_name": plugin_name}).sort("timestamp", -1).skip(offset).limit(limit)
+        return await self._query(
+            collection=self._plugins_history,
+            query={"plugin_name": plugin_name},
+            limit=limit,
+            offset=offset,
         )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _write(
+        *,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        record: HistoryRecord,
+        entity_type: str,
+    ) -> None:
+        try:
+            await collection.insert_one(record.to_mongo_dict())
+        except Exception:
+            logger.warning(
+                "Failed to write %s history for %s/%s (action=%s)",
+                entity_type,
+                record.plugin_name,
+                record.skill_name or record.plugin_name,
+                record.action,
+                exc_info=True,
+            )
+
+    @staticmethod
+    async def _query(
+        *,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        query: dict[str, object],
+        limit: int,
+        offset: int,
+    ) -> Sequence[HistoryRecord]:
+        cursor = collection.find(query).sort("timestamp", -1).skip(offset).limit(limit)
         docs = await cursor.to_list(length=limit)
         return [HistoryRecord.from_mongo_dict(doc) for doc in docs]

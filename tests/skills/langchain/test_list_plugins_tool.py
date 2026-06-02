@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.tools import ToolException
@@ -10,6 +10,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
 )
 from langchain_ai_skills_framework.langchain.tools.list_plugins_tool import ListPluginsTool
+from tests.skills.langchain.conftest import make_runtime
 
 
 def _make_loader_mock(
@@ -18,12 +19,6 @@ def _make_loader_mock(
     loader = AsyncMock(spec=PluginSkillStore)
     loader.list_plugins.return_value = plugins or []
     return loader
-
-
-def _make_runtime(user_id: str = "user-1") -> MagicMock:
-    runtime = MagicMock()
-    runtime.context = {"user_id": user_id}
-    return runtime
 
 
 def _make_plugin(
@@ -48,7 +43,7 @@ class TestListPluginsTool:
         loader = _make_loader_mock(plugins)
         tool = ListPluginsTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(runtime=_make_runtime())
+        result, artifact = await tool._arun(runtime=make_runtime())
 
         assert "alpha-plugin" in result
         assert "beta-plugin" in result
@@ -61,7 +56,7 @@ class TestListPluginsTool:
         loader = _make_loader_mock([])
         tool = ListPluginsTool(mongo_skill_loader=loader)
 
-        result, _ = await tool._arun(runtime=_make_runtime())
+        result, _ = await tool._arun(runtime=make_runtime())
 
         assert "<available_plugins>" in result
         assert "<plugin>" not in result
@@ -72,7 +67,7 @@ class TestListPluginsTool:
         loader = _make_loader_mock(plugins)
         tool = ListPluginsTool(mongo_skill_loader=loader)
 
-        result, _ = await tool._arun(runtime=_make_runtime())
+        result, _ = await tool._arun(runtime=make_runtime())
 
         assert "skill-a" in result
         assert "skill-b" in result
@@ -82,13 +77,13 @@ class TestListPluginsTool:
         tool = ListPluginsTool()
 
         with pytest.raises(ToolException, match="mongo_skill_loader is not configured"):
-            await tool._arun(runtime=_make_runtime())
+            await tool._arun(runtime=make_runtime())
 
     def test_sync_run_raises(self) -> None:
         tool = ListPluginsTool(mongo_skill_loader=_make_loader_mock())
 
         with pytest.raises(NotImplementedError):
-            tool._run(runtime=_make_runtime())
+            tool._run(runtime=make_runtime())
 
     @pytest.mark.asyncio
     async def test_includes_description_in_output(self) -> None:
@@ -96,6 +91,6 @@ class TestListPluginsTool:
         loader = _make_loader_mock(plugins)
         tool = ListPluginsTool(mongo_skill_loader=loader)
 
-        result, _ = await tool._arun(runtime=_make_runtime())
+        result, _ = await tool._arun(runtime=make_runtime())
 
         assert "Does amazing things" in result

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Sequence
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
@@ -15,6 +16,31 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 SYSTEM_USER_ID = "system"
+
+
+def derive_folder_from_source_path(*, source_path: Path | None) -> str | None:
+    """Extract the folder path between 'skills/' and the skill directory.
+
+    Given: .../plugins/bailey/skills/preventative-task-force/uspstf-xxx/SKILL.md
+    Returns: "preventative-task-force"
+
+    Given: .../plugins/bailey/skills/sub1/sub2/skill-name/SKILL.md
+    Returns: "sub1/sub2"
+
+    Given: .../plugins/bailey/skills/skill-name/SKILL.md  (no subfolder)
+    Returns: None
+    """
+    if source_path is None:
+        return None
+    parts = source_path.parts
+    try:
+        skills_idx = len(parts) - 1 - list(reversed(parts)).index("skills")
+    except ValueError:
+        return None
+    folder_parts = parts[skills_idx + 1 : -2]
+    if not folder_parts:
+        return None
+    return "/".join(folder_parts)
 
 
 class SkillSync:
@@ -80,12 +106,14 @@ class SkillSync:
         the marketplace so that updates to shared skills propagate on restart.
         """
         details = self._shared.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
+        folder = derive_folder_from_source_path(source_path=details.source_path)
         await self._store.save_skill(
             user_id=SYSTEM_USER_ID,
             plugin_name=plugin_name,
             skill_name=skill_name,
             content=details.content,
             modified_by=SYSTEM_USER_ID,
+            folder=folder,
         )
         await self._store.set_skill_published(
             user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, published=True

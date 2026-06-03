@@ -8,7 +8,23 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     build_resource_path,
     build_script_path,
     build_skill_path,
+    normalize_folder,
 )
+
+
+class TestNormalizeFolder:
+    @pytest.mark.parametrize(
+        ("input_val", "expected"),
+        [
+            (None, None),
+            ("", None),
+            ("  ", None),
+            ("foo", "foo"),
+            ("  bar  ", "bar"),
+        ],
+    )
+    def test_normalize_folder(self, *, input_val: str | None, expected: str | None) -> None:
+        assert normalize_folder(input_val) == expected
 
 
 class TestBuildSkillPath:
@@ -16,6 +32,8 @@ class TestBuildSkillPath:
         ("plugin_name", "skill_name", "folder", "expected"),
         [
             ("my-plugin", "my-skill", None, "my-plugin/skills/my-skill/SKILL.md"),
+            ("my-plugin", "my-skill", "", "my-plugin/skills/my-skill/SKILL.md"),
+            ("my-plugin", "my-skill", "  ", "my-plugin/skills/my-skill/SKILL.md"),
             ("my-plugin", "my-skill", "sub", "my-plugin/skills/sub/my-skill/SKILL.md"),
             ("my-plugin", "my-skill", "a/b", "my-plugin/skills/a/b/my-skill/SKILL.md"),
         ],

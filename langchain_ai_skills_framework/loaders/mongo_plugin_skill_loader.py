@@ -34,6 +34,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     build_resource_path,
     build_script_path,
     build_skill_path,
+    normalize_folder,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -183,6 +184,18 @@ class MongoPluginSkillLoader:
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
+        folder = normalize_folder(folder)
+
+        # When folder is not explicitly provided, preserve the existing skill's folder
+        if folder is None:
+            existing = await self._skills_collection.find_one(
+                self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
+                {"folder": 1},
+            )
+            if existing:
+                raw_folder = existing.get("folder")
+                folder = normalize_folder(raw_folder if isinstance(raw_folder, str) else None)
+
         description = self._extract_description(content)
         path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name, folder=folder)
         now = datetime.now(timezone.utc)
@@ -193,11 +206,10 @@ class MongoPluginSkillLoader:
             "content": content,
             "description": description,
             "path": path,
+            "folder": folder,
             "modified_by": effective_modified_by,
             "date_modified": now,
         }
-        if folder is not None:
-            set_fields["folder"] = folder
 
         raw = await self._skills_collection.find_one_and_update(
             self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
@@ -281,14 +293,21 @@ class MongoPluginSkillLoader:
         resource_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginResourceDocument:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(resource_name.strip(), "resource_name")
 
+        folder = normalize_folder(folder)
+        if folder is None:
+            folder = await self._resolve_skill_folder(
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized_skill
+            )
+
         path = build_resource_path(
-            plugin_name=plugin_name, skill_name=normalized_skill, resource_name=resource_name.strip()
+            plugin_name=plugin_name, skill_name=normalized_skill, resource_name=resource_name.strip(), folder=folder
         )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
@@ -419,13 +438,22 @@ class MongoPluginSkillLoader:
         script_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginScriptDocument:
         self._validate_user_id(user_id)
         normalized_skill = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(script_name.strip(), "script_name")
 
-        path = build_script_path(plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip())
+        folder = normalize_folder(folder)
+        if folder is None:
+            folder = await self._resolve_skill_folder(
+                user_id=user_id, plugin_name=plugin_name, skill_name=normalized_skill
+            )
+
+        path = build_script_path(
+            plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip(), folder=folder
+        )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
         sv = self.SCHEMA_VERSION_FIELD
@@ -660,6 +688,23 @@ class MongoPluginSkillLoader:
         )
 
     # --- Helpers -------------------------------------------------------------
+
+    async def _resolve_skill_folder(
+        self,
+        *,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+    ) -> str | None:
+        """Look up the parent skill's stored folder value."""
+        doc = await self._skills_collection.find_one(
+            self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": skill_name}),
+            {"folder": 1},
+        )
+        if doc:
+            raw_folder = doc.get("folder")
+            return normalize_folder(raw_folder if isinstance(raw_folder, str) else None)
+        return None
 
     @staticmethod
     def _normalize(value: str) -> str:

@@ -234,6 +234,7 @@ class HistoryTrackingPluginSkillStore:
         resource_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginResourceDocument:
         exists = await self._inner.resource_exists(
             user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
@@ -248,6 +249,7 @@ class HistoryTrackingPluginSkillStore:
                 resource_name=resource_name,
                 content=content,
                 modified_by=modified_by,
+                folder=folder,
             )
         except Exception as exc:
             await self._record_error(
@@ -338,6 +340,7 @@ class HistoryTrackingPluginSkillStore:
         script_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginScriptDocument:
         exists = await self._inner.script_exists(
             user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
@@ -352,6 +355,7 @@ class HistoryTrackingPluginSkillStore:
                 script_name=script_name,
                 content=content,
                 modified_by=modified_by,
+                folder=folder,
             )
         except Exception as exc:
             await self._record_error(

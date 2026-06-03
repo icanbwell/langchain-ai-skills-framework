@@ -83,6 +83,7 @@ class PluginSkillStore(Protocol):
         resource_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginResourceDocument: ...
 
     async def delete_resource(
@@ -131,6 +132,7 @@ class PluginSkillStore(Protocol):
         script_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginScriptDocument: ...
 
     async def delete_script(

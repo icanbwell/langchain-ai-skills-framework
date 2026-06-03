@@ -98,6 +98,7 @@ class NullPluginSkillStore:
         resource_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginResourceDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -151,6 +152,7 @@ class NullPluginSkillStore:
         script_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginScriptDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 

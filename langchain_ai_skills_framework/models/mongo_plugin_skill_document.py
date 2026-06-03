@@ -21,11 +21,25 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
+def _normalize_folder(folder: str | None) -> str | None:
+    """Coerce empty-string folder to None for consistent truthiness checks."""
+    if folder is None:
+        return None
+    stripped = folder.strip()
+    return stripped if stripped else None
+
+
 def _skill_base_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:
     """Return the base path prefix for a skill: ``plugin/skills/[folder/]name``."""
-    if folder:
+    folder = _normalize_folder(folder)
+    if folder is not None:
         return f"{plugin_name}/skills/{folder}/{skill_name}"
     return f"{plugin_name}/skills/{skill_name}"
+
+
+def normalize_folder(folder: str | None) -> str | None:
+    """Public alias for folder normalization (coerces '' to None)."""
+    return _normalize_folder(folder)
 
 
 def build_skill_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:

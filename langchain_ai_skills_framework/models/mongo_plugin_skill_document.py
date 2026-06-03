@@ -21,25 +21,26 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
+def _skill_base_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:
+    """Return the base path prefix for a skill: ``plugin/skills/[folder/]name``."""
+    if folder:
+        return f"{plugin_name}/skills/{folder}/{skill_name}"
+    return f"{plugin_name}/skills/{skill_name}"
+
+
 def build_skill_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill's ``SKILL.md``."""
-    if folder:
-        return f"{plugin_name}/skills/{folder}/{skill_name}/SKILL.md"
-    return f"{plugin_name}/skills/{skill_name}/SKILL.md"
+    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/SKILL.md"
 
 
 def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill resource file."""
-    if folder:
-        return f"{plugin_name}/skills/{folder}/{skill_name}/{resource_name}"
-    return f"{plugin_name}/skills/{skill_name}/{resource_name}"
+    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/{resource_name}"
 
 
 def build_script_path(*, plugin_name: str, skill_name: str, script_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill script file."""
-    if folder:
-        return f"{plugin_name}/skills/{folder}/{skill_name}/scripts/{script_name}"
-    return f"{plugin_name}/skills/{skill_name}/scripts/{script_name}"
+    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/scripts/{script_name}"
 
 
 # ---------------------------------------------------------------------------

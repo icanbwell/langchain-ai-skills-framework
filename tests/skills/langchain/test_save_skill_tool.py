@@ -54,6 +54,30 @@ class TestSaveSkillTool:
             skill_name="test-skill",
             content=VALID_SKILL_CONTENT,
             modified_by="user-1",
+            folder=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_saves_skill_with_folder(self) -> None:
+        loader = _make_loader_mock()
+        tool = SaveSkillTool(mongo_skill_loader=loader)
+
+        result, artifact = await tool._arun(
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            content=VALID_SKILL_CONTENT,
+            folder="sub/dir",
+            runtime=make_runtime("user-1"),
+        )
+
+        assert "saved successfully" in result
+        loader.save_skill.assert_awaited_once_with(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            content=VALID_SKILL_CONTENT,
+            modified_by="user-1",
+            folder="sub/dir",
         )
 
     @pytest.mark.asyncio

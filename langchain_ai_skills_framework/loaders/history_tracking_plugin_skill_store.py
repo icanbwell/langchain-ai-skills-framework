@@ -66,6 +66,7 @@ class HistoryTrackingPluginSkillStore:
         skill_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginSkillDocument:
         exists = await self._inner.skill_exists(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
         action: Literal["created", "updated"] = "updated" if exists else "created"
@@ -77,6 +78,7 @@ class HistoryTrackingPluginSkillStore:
                 skill_name=skill_name,
                 content=content,
                 modified_by=modified_by,
+                folder=folder,
             )
         except Exception as exc:
             await self._record_error(

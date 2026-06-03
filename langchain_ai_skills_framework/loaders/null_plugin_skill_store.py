@@ -49,6 +49,7 @@ class NullPluginSkillStore:
         skill_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 

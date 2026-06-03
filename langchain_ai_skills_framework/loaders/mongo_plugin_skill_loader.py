@@ -177,27 +177,32 @@ class MongoPluginSkillLoader:
         skill_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginSkillDocument:
         self._validate_user_id(user_id)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
         description = self._extract_description(content)
-        path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name)
+        path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name, folder=folder)
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or user_id
         sv = self.SCHEMA_VERSION_FIELD
 
+        set_fields: dict[str, object] = {
+            "content": content,
+            "description": description,
+            "path": path,
+            "modified_by": effective_modified_by,
+            "date_modified": now,
+        }
+        if folder is not None:
+            set_fields["folder"] = folder
+
         raw = await self._skills_collection.find_one_and_update(
             self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {
-                "$set": {
-                    "content": content,
-                    "description": description,
-                    "path": path,
-                    "modified_by": effective_modified_by,
-                    "date_modified": now,
-                },
+                "$set": set_fields,
                 "$setOnInsert": {
                     "user_id": user_id,
                     "plugin_name": plugin_name,
@@ -574,6 +579,7 @@ class MongoPluginSkillLoader:
             name=doc.skill_name,
             description=doc.description,
             plugin_name=doc.plugin_name,
+            folder=doc.folder,
             source_path=Path(f"mongodb://{user_id}/{doc.plugin_name}/{doc.skill_name}"),
             license=None,
             compatibility=None,
@@ -632,6 +638,7 @@ class MongoPluginSkillLoader:
                 name=doc.skill_name,
                 description=doc.description,
                 plugin_name=doc.plugin_name,
+                folder=doc.folder,
                 source_path=Path(f"mongodb://{owner_label}/{doc.plugin_name}/{doc.skill_name}"),
                 license=None,
                 compatibility=None,

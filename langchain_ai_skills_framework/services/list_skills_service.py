@@ -20,6 +20,7 @@ class SkillInfo:
     name: str
     description: str
     plugin_name: str | None = None
+    folder: str | None = None
 
 
 class ListSkillsService:
@@ -39,7 +40,10 @@ class ListSkillsService:
             summaries = [s for s in summaries if s.plugin_name == plugin_name]
 
         results = sorted(
-            (SkillInfo(name=s.name, description=s.description, plugin_name=s.plugin_name) for s in summaries),
+            (
+                SkillInfo(name=s.name, description=s.description, plugin_name=s.plugin_name, folder=s.folder)
+                for s in summaries
+            ),
             key=lambda s: s.name,
         )
         logger.debug("ListSkillsService: found %d skills for user_id=%s", len(results), user_id)

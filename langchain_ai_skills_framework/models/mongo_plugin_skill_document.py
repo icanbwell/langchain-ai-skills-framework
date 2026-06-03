@@ -21,18 +21,24 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-def build_skill_path(*, plugin_name: str, skill_name: str) -> str:
+def build_skill_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill's ``SKILL.md``."""
+    if folder:
+        return f"{plugin_name}/skills/{folder}/{skill_name}/SKILL.md"
     return f"{plugin_name}/skills/{skill_name}/SKILL.md"
 
 
-def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str) -> str:
+def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill resource file."""
+    if folder:
+        return f"{plugin_name}/skills/{folder}/{skill_name}/{resource_name}"
     return f"{plugin_name}/skills/{skill_name}/{resource_name}"
 
 
-def build_script_path(*, plugin_name: str, skill_name: str, script_name: str) -> str:
+def build_script_path(*, plugin_name: str, skill_name: str, script_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill script file."""
+    if folder:
+        return f"{plugin_name}/skills/{folder}/{skill_name}/scripts/{script_name}"
     return f"{plugin_name}/skills/{skill_name}/scripts/{script_name}"
 
 
@@ -48,6 +54,7 @@ class MongoPluginSkillDocument(BaseModel):
 
     plugin_name: str = Field(description="Plugin that owns this skill")
     skill_name: str = Field(description="Normalized name of the skill")
+    folder: str | None = Field(default=None, description="Optional subfolder path within the plugin")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/SKILL.md")
     description: str = Field(default="", description="Short description of what the skill does")
     content: str = Field(default="", description="Full skill content (SKILL.md body)")

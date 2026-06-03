@@ -46,6 +46,7 @@ class SaveSkillService:
         skill_name: str | None = None,
         content: str,
         update_if_exists: bool = True,
+        folder: str | None = None,
     ) -> str:
         """Validate and persist the skill, returning a status message.
 
@@ -100,6 +101,7 @@ class SaveSkillService:
                 skill_name=skill_name,
                 content=content,
                 modified_by=user_id,
+                folder=folder,
             )
             message = f"Skill '{doc.skill_name}' saved successfully."
             logger.info("SaveSkillService: %s (user=%s)", message, user_id)

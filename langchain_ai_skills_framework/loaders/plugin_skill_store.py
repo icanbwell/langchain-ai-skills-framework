@@ -43,6 +43,7 @@ class PluginSkillStore(Protocol):
         skill_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginSkillDocument: ...
 
     async def set_skill_published(

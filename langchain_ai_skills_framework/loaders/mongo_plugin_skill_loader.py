@@ -214,18 +214,21 @@ class MongoPluginSkillLoader:
         if state is not None:
             set_fields["state"] = state
 
+        set_on_insert: dict[str, object] = {
+            "author": author,
+            "plugin_name": plugin_name,
+            "skill_name": normalized_name,
+            sv: self._schema_version,
+            "date_created": now,
+        }
+        if state is None:
+            set_on_insert["state"] = "personal"
+
         raw = await self._skills_collection.find_one_and_update(
             self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {
                 "$set": set_fields,
-                "$setOnInsert": {
-                    "author": author,
-                    "plugin_name": plugin_name,
-                    "skill_name": normalized_name,
-                    "state": "personal",
-                    sv: self._schema_version,
-                    "date_created": now,
-                },
+                "$setOnInsert": set_on_insert,
             },
             upsert=True,
             return_document=ReturnDocument.AFTER,

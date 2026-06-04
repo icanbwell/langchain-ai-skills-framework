@@ -49,7 +49,7 @@ class LoadSkillService:
         if self._user_skill_store and user_id:
             try:
                 await self._user_skill_store.record_skill_usage(
-                    plugin_name=plugin_name, skill_name=normalized_name, user_id=user_id
+                    plugin_name=plugin_name, skill_name=normalized_name, author=user_id
                 )
             except Exception:
                 logger.debug(
@@ -64,7 +64,7 @@ class LoadSkillService:
         try:
             if user_id:
                 skill = await self._loader.get_skill_details_for_user(
-                    user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+                    author=user_id, plugin_name=plugin_name, skill_name=skill_name
                 )
             else:
                 skill = self._loader.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)

@@ -47,7 +47,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     and resources).  The *user_loader* handles MongoDB-persisted skills
     including their resources and scripts.
 
-    This class is a **singleton**.  Per-user context (``user_id``) is
+    This class is a **singleton**.  Per-user context (``author``) is
     provided on each call that needs it, not at construction time.
     """
 
@@ -81,9 +81,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """Return shared skill summaries (user skills require async — see ``list_all_summaries``)."""
         return self._shared_loader.list_skill_summaries(allowed_skills=allowed_skills)
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, author: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         """Return merged summaries from shared + user skills."""
-        snapshot = await self._merged_snapshot(user_id=user_id)
+        snapshot = await self._merged_snapshot(author=author, include_testing=include_testing)
         return snapshot.ordered_summaries
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
@@ -91,20 +93,20 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return self._shared_loader.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
 
     async def get_skill_details_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> SkillDetails:
         """Get skill details checking user skills first, then shared DB, then GitHub."""
         normalized = normalize_skill_name(value=skill_name)
         # 1. User's own skills (highest precedence)
         try:
             return await self._user_loader.get_skill_details(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
+                author=author, plugin_name=plugin_name, skill_name=normalized
             )
         except SkillNotFoundError:
             logger.debug(
                 "Skill '%s' not found in user skills for user '%s', trying shared skills",
                 normalized,
-                user_id,
+                author,
             )
 
         # 2. Shared DB skills from other users
@@ -125,9 +127,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """Return shared skill instructions (no user context available here)."""
         return await self._shared_loader.get_instructions()
 
-    async def get_instructions_for_user(self, *, user_id: str) -> str:
+    async def get_instructions_for_user(self, *, author: str) -> str:
         """Return merged skill instructions including user skills."""
-        summaries = await self.list_all_summaries(user_id=user_id, allowed_skills=set())
+        summaries = await self.list_all_summaries(author=author, allowed_skills=set())
         if not summaries:
             return await self._shared_loader.get_instructions()
 
@@ -146,9 +148,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             lines.append(f"<name>{escaped_name}</name>")
             lines.append(f"<description>{escaped_description}</description>")
             lines.append(f"<usage_count>{usage_counts.get(skill.name, 0)}</usage_count>")
-            author = skill.metadata.get("user_id") if skill.metadata else None
-            if author:
-                escaped_author = escape(str(author), quote=True)
+            skill_author = skill.metadata.get("user_id") if skill.metadata else None
+            if skill_author:
+                escaped_author = escape(str(skill_author), quote=True)
                 lines.append(f"<author>{escaped_author}</author>")
             lines.append("</skill>")
         skills_list = "\n".join(lines)
@@ -179,7 +181,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         )
 
     async def read_skill_resource_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
         """Read a resource, checking user's MongoDB skills first, then shared loader."""
         normalized = normalize_skill_name(value=skill_name)
@@ -187,14 +189,14 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # Check user's own skills first
         try:
             return await self._user_loader.read_resource(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized, resource_name=resource_name
+                author=author, plugin_name=plugin_name, skill_name=normalized, resource_name=resource_name
             )
         except SkillNotFoundError:
             logger.debug(
                 "Resource '%s' not found in user skill '%s' for user '%s', trying shared skills",
                 resource_name,
                 normalized,
-                user_id,
+                author,
             )
 
         # Check shared DB skills
@@ -207,7 +209,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             if owner_user_id:
                 try:
                     return await self._user_loader.read_resource(
-                        user_id=owner_user_id,
+                        author=owner_user_id,
                         plugin_name=plugin_name,
                         skill_name=normalized,
                         resource_name=resource_name,
@@ -230,7 +232,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
     async def run_skill_script_for_user(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
@@ -246,7 +248,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # Check user's own scripts first
         try:
             script_content = await self._user_loader.read_script(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
+                author=author, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
             )
             return await self._execute_script_content(
                 script_content=script_content,
@@ -266,7 +268,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             if owner_user_id:
                 try:
                     script_content = await self._user_loader.read_script(
-                        user_id=owner_user_id,
+                        author=owner_user_id,
                         plugin_name=plugin_name,
                         skill_name=normalized,
                         script_name=script_name,
@@ -288,7 +290,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return self._shared_loader.list_skill_script_names(skill_name=skill_name, plugin_name=plugin_name)
 
     async def list_skill_script_names_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         """List scripts, merging user MongoDB scripts with shared loader scripts."""
         normalized = normalize_skill_name(value=skill_name)
@@ -297,7 +299,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # User's own scripts
         try:
             user_scripts = await self._user_loader.list_script_names(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
+                author=author, plugin_name=plugin_name, skill_name=normalized
             )
             names.update(user_scripts)
         except (SkillNotFoundError, ValueError):
@@ -316,7 +318,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return self._shared_loader.list_skill_resource_names(skill_name=skill_name, plugin_name=plugin_name)
 
     async def list_skill_resource_names_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         """List resources, merging user MongoDB resources with shared loader resources."""
         normalized = normalize_skill_name(value=skill_name)
@@ -325,7 +327,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # User's own resources
         try:
             user_resources = await self._user_loader.list_resource_names(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
+                author=author, plugin_name=plugin_name, skill_name=normalized
             )
             names.update(user_resources)
         except (SkillNotFoundError, ValueError):
@@ -422,7 +424,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Merging -------------------------------------------------------------
 
-    async def _merged_snapshot(self, *, user_id: str) -> SkillSnapshot:
+    async def _merged_snapshot(self, *, author: str, include_testing: bool = False) -> SkillSnapshot:
         """Build a merged snapshot with precedence: GitHub -> shared DB -> user DB.
 
         GitHub/filesystem skills form the base.  Shared database skills
@@ -439,7 +441,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # 2+3. Load shared and user snapshots concurrently
         shared_snapshot, user_snapshot = await asyncio.gather(
             self._user_loader.load_shared_snapshot(),
-            self._user_loader.load_snapshot(user_id=user_id),
+            self._user_loader.load_snapshot(author=author, include_testing=include_testing),
         )
 
         # Shared database skills (override GitHub on collision)

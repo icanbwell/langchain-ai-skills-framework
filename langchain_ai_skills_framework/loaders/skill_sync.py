@@ -108,7 +108,7 @@ class SkillSync:
         details = self._shared.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
         folder = derive_folder_from_source_path(source_path=details.source_path)
         await self._store.save_skill(
-            user_id=SYSTEM_USER_ID,
+            author=SYSTEM_USER_ID,
             plugin_name=plugin_name,
             skill_name=skill_name,
             content=details.content,
@@ -116,7 +116,7 @@ class SkillSync:
             folder=folder,
         )
         await self._store.set_skill_published(
-            user_id=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, published=True
+            author=SYSTEM_USER_ID, plugin_name=plugin_name, skill_name=skill_name, published=True
         )
         result.skills_added += 1
         logger.debug("SkillSync: upserted skill '%s' from plugin '%s'.", skill_name, plugin_name)
@@ -134,7 +134,7 @@ class SkillSync:
                     skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name
                 )
                 await self._store.save_resource(
-                    user_id=SYSTEM_USER_ID,
+                    author=SYSTEM_USER_ID,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     resource_name=resource_name,
@@ -178,7 +178,7 @@ class SkillSync:
                     if script_path.is_file():
                         content = script_path.read_text(encoding="utf-8")
                         await self._store.save_script(
-                            user_id=SYSTEM_USER_ID,
+                            author=SYSTEM_USER_ID,
                             plugin_name=plugin_name,
                             skill_name=skill_name,
                             script_name=script_name,

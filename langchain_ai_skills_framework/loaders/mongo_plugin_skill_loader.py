@@ -62,7 +62,7 @@ DEFAULT_PLUGINS_COLLECTION = "plugins"
 class MongoPluginSkillLoader:
     """Reads and writes plugin-scoped skills in MongoDB.
 
-    This is a **singleton** service — ``user_id`` and ``plugin_name`` are
+    This is a **singleton** service — ``author`` and ``plugin_name`` are
     provided on each call, matching the gateway pattern where tools
     receive identity as a tool-input parameter.
     """
@@ -106,19 +106,19 @@ class MongoPluginSkillLoader:
         sv = self.SCHEMA_VERSION_FIELD
         await self._ensure_index(
             self._skills_collection,
-            keys=[(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1)],
+            keys=[(sv, 1), ("author", 1), ("plugin_name", 1), ("skill_name", 1)],
             unique=True,
             name=self.INDEX_NAME,
         )
         await self._ensure_index(
             self._resources_collection,
-            keys=[(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("resource_name", 1)],
+            keys=[(sv, 1), ("author", 1), ("plugin_name", 1), ("skill_name", 1), ("resource_name", 1)],
             unique=True,
             name=self.RESOURCE_INDEX_NAME,
         )
         await self._ensure_index(
             self._scripts_collection,
-            keys=[(sv, 1), ("user_id", 1), ("plugin_name", 1), ("skill_name", 1), ("script_name", 1)],
+            keys=[(sv, 1), ("author", 1), ("plugin_name", 1), ("skill_name", 1), ("script_name", 1)],
             unique=True,
             name=self.SCRIPT_INDEX_NAME,
         )
@@ -130,7 +130,7 @@ class MongoPluginSkillLoader:
         )
         await self._ensure_index(
             self._usage_collection,
-            keys=[("skill_name", 1), ("user_id", 1), ("date_used", -1)],
+            keys=[("skill_name", 1), ("author", 1), ("date_used", -1)],
             unique=False,
             name=self.USAGE_INDEX_NAME,
         )
@@ -173,14 +173,15 @@ class MongoPluginSkillLoader:
     async def save_skill(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        in_testing: bool | None = None,
     ) -> MongoPluginSkillDocument:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
@@ -189,7 +190,7 @@ class MongoPluginSkillLoader:
         # When folder is not explicitly provided, preserve the existing skill's folder
         if folder is None:
             existing = await self._skills_collection.find_one(
-                self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
+                self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}),
                 {"folder": 1},
             )
             if existing:
@@ -199,7 +200,7 @@ class MongoPluginSkillLoader:
         description = self._extract_description(content)
         path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name, folder=folder)
         now = datetime.now(timezone.utc)
-        effective_modified_by = modified_by or user_id
+        effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
         set_fields: dict[str, object] = {
@@ -211,16 +212,20 @@ class MongoPluginSkillLoader:
             "date_modified": now,
         }
 
+        if in_testing is not None:
+            set_fields["in_testing"] = in_testing
+
         raw = await self._skills_collection.find_one_and_update(
-            self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
+            self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {
                 "$set": set_fields,
                 "$setOnInsert": {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_name,
                     sv: self._schema_version,
                     "date_created": now,
+                    "in_testing": False,
                 },
             },
             upsert=True,
@@ -232,13 +237,13 @@ class MongoPluginSkillLoader:
     async def set_skill_published(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         published: bool,
         published_branch: str | None = None,
     ) -> MongoPluginSkillDocument:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
@@ -251,21 +256,21 @@ class MongoPluginSkillLoader:
         if published_branch is not None:
             update_fields["published_branch"] = published_branch
         raw = await self._skills_collection.find_one_and_update(
-            self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}),
+            self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {"$set": update_fields},
             return_document=ReturnDocument.AFTER,
         )
         if raw is None:
-            raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'")
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{author}'")
         return MongoPluginSkillDocument.from_mongo_dict(raw)
 
-    async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
-        self._validate_user_id(user_id)
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
+        self._validate_author(author)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
         filter_base = self._version_filter(
-            {"user_id": user_id, "plugin_name": plugin_name, "skill_name": normalized_name}
+            {"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}
         )
         await self._resources_collection.delete_many(filter_base)
         await self._scripts_collection.delete_many(filter_base)
@@ -273,10 +278,10 @@ class MongoPluginSkillLoader:
         result = await self._skills_collection.delete_one(filter_base)
         return result.deleted_count > 0
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool:
-        self._validate_user_id(user_id)
+    async def skill_exists(self, *, author: str, plugin_name: str | None = None, skill_name: str) -> bool:
+        self._validate_author(author)
         normalized_name = self._normalize(skill_name)
-        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_name}
+        query: dict[str, object] = {"author": author, "skill_name": normalized_name}
         if plugin_name:
             query["plugin_name"] = plugin_name
         count = await self._skills_collection.count_documents(self._version_filter(query), limit=1)
@@ -287,7 +292,7 @@ class MongoPluginSkillLoader:
     async def save_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
@@ -295,7 +300,7 @@ class MongoPluginSkillLoader:
         modified_by: str = "",
         folder: str | None = None,
     ) -> MongoPluginResourceDocument:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(resource_name.strip(), "resource_name")
@@ -303,20 +308,20 @@ class MongoPluginSkillLoader:
         folder = normalize_folder(folder)
         if folder is None:
             folder = await self._resolve_skill_folder(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized_skill
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill
             )
 
         path = build_resource_path(
             plugin_name=plugin_name, skill_name=normalized_skill, resource_name=resource_name.strip(), folder=folder
         )
         now = datetime.now(timezone.utc)
-        effective_modified_by = modified_by or user_id
+        effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
         raw = await self._resources_collection.find_one_and_update(
             self._version_filter(
                 {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "resource_name": resource_name.strip(),
@@ -330,7 +335,7 @@ class MongoPluginSkillLoader:
                     "date_modified": now,
                 },
                 "$setOnInsert": {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "resource_name": resource_name.strip(),
@@ -346,17 +351,17 @@ class MongoPluginSkillLoader:
     async def delete_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
     ) -> bool:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         result = await self._resources_collection.delete_one(
             self._version_filter(
                 {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "resource_name": resource_name.strip(),
@@ -368,15 +373,15 @@ class MongoPluginSkillLoader:
     async def read_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> str:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         query: dict[str, object] = {
-            "user_id": user_id,
+            "author": author,
             "skill_name": normalized_skill,
             "resource_name": resource_name.strip(),
         }
@@ -386,20 +391,20 @@ class MongoPluginSkillLoader:
         if raw is None:
             raise SkillNotFoundError(
                 f"Resource '{resource_name}' not found in skill '{skill_name}' "
-                f"of plugin '{plugin_name}' for user '{user_id}'"
+                f"of plugin '{plugin_name}' for user '{author}'"
             )
         return str(raw["content"])
 
     async def list_resource_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
-        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_skill}
+        query: dict[str, object] = {"author": author, "skill_name": normalized_skill}
         if plugin_name:
             query["plugin_name"] = plugin_name
         names: list[str] = []
@@ -410,15 +415,15 @@ class MongoPluginSkillLoader:
     async def resource_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> bool:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         query: dict[str, object] = {
-            "user_id": user_id,
+            "author": author,
             "skill_name": normalized_skill,
             "resource_name": resource_name.strip(),
         }
@@ -432,7 +437,7 @@ class MongoPluginSkillLoader:
     async def save_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
@@ -440,7 +445,7 @@ class MongoPluginSkillLoader:
         modified_by: str = "",
         folder: str | None = None,
     ) -> MongoPluginScriptDocument:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(script_name.strip(), "script_name")
@@ -448,20 +453,20 @@ class MongoPluginSkillLoader:
         folder = normalize_folder(folder)
         if folder is None:
             folder = await self._resolve_skill_folder(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized_skill
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill
             )
 
         path = build_script_path(
             plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip(), folder=folder
         )
         now = datetime.now(timezone.utc)
-        effective_modified_by = modified_by or user_id
+        effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
         raw = await self._scripts_collection.find_one_and_update(
             self._version_filter(
                 {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "script_name": script_name.strip(),
@@ -475,7 +480,7 @@ class MongoPluginSkillLoader:
                     "date_modified": now,
                 },
                 "$setOnInsert": {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "script_name": script_name.strip(),
@@ -491,17 +496,17 @@ class MongoPluginSkillLoader:
     async def delete_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
     ) -> bool:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         result = await self._scripts_collection.delete_one(
             self._version_filter(
                 {
-                    "user_id": user_id,
+                    "author": author,
                     "plugin_name": plugin_name,
                     "skill_name": normalized_skill,
                     "script_name": script_name.strip(),
@@ -513,15 +518,15 @@ class MongoPluginSkillLoader:
     async def read_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> str:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         query: dict[str, object] = {
-            "user_id": user_id,
+            "author": author,
             "skill_name": normalized_skill,
             "script_name": script_name.strip(),
         }
@@ -531,20 +536,20 @@ class MongoPluginSkillLoader:
         if raw is None:
             raise SkillNotFoundError(
                 f"Script '{script_name}' not found in skill '{skill_name}' "
-                f"of plugin '{plugin_name}' for user '{user_id}'"
+                f"of plugin '{plugin_name}' for user '{author}'"
             )
         return str(raw["content"])
 
     async def list_script_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
-        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_skill}
+        query: dict[str, object] = {"author": author, "skill_name": normalized_skill}
         if plugin_name:
             query["plugin_name"] = plugin_name
         names: list[str] = []
@@ -555,15 +560,15 @@ class MongoPluginSkillLoader:
     async def script_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> bool:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         query: dict[str, object] = {
-            "user_id": user_id,
+            "author": author,
             "skill_name": normalized_skill,
             "script_name": script_name.strip(),
         }
@@ -574,12 +579,16 @@ class MongoPluginSkillLoader:
 
     # --- Skill read operations -----------------------------------------------
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot:
-        self._validate_user_id(user_id)
-        query: dict[str, object] = {"user_id": user_id}
+    async def load_snapshot(
+        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+    ) -> SkillSnapshot:
+        self._validate_author(author)
+        query: dict[str, object] = {"author": author}
         if plugin_name:
             query["plugin_name"] = plugin_name
-        return await self._build_snapshot(query=self._version_filter(query), owner_label=user_id)
+        if not include_testing:
+            query["in_testing"] = {"$ne": True}
+        return await self._build_snapshot(query=self._version_filter(query), owner_label=author)
 
     async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
         query: dict[str, object] = {"$or": [{"published": True}, {"shared": True}]}
@@ -590,28 +599,28 @@ class MongoPluginSkillLoader:
     async def get_skill_details(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails:
-        self._validate_user_id(user_id)
+        self._validate_author(author)
         normalized_name = self._normalize(skill_name)
-        query: dict[str, object] = {"user_id": user_id, "skill_name": normalized_name}
+        query: dict[str, object] = {"author": author, "skill_name": normalized_name}
         if plugin_name:
             query["plugin_name"] = plugin_name
         raw = await self._skills_collection.find_one(self._version_filter(query))
         if raw is None:
-            raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{user_id}'")
+            raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for user '{author}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)
         summary = SkillSummary(
             name=doc.skill_name,
             description=doc.description,
             plugin_name=doc.plugin_name,
             folder=doc.folder,
-            source_path=Path(f"mongodb://{user_id}/{doc.plugin_name}/{doc.skill_name}"),
+            source_path=Path(f"mongodb://{author}/{doc.plugin_name}/{doc.skill_name}"),
             license=None,
             compatibility=None,
-            metadata={"source": "mongodb", "user_id": doc.user_id, "plugin_name": doc.plugin_name},
+            metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
             allowed_tools=doc.allowed_tools,
         )
         return SkillDetails(
@@ -627,12 +636,12 @@ class MongoPluginSkillLoader:
         *,
         plugin_name: str,
         skill_name: str,
-        user_id: str,
+        author: str,
     ) -> MongoPluginSkillUsageDocument:
         doc = MongoPluginSkillUsageDocument(
             plugin_name=plugin_name,
             skill_name=skill_name,
-            user_id=user_id,
+            author=author,
         )
         data = doc.to_mongo_dict()
         data[self.SCHEMA_VERSION_FIELD] = self._schema_version
@@ -670,7 +679,7 @@ class MongoPluginSkillLoader:
                 source_path=Path(f"mongodb://{owner_label}/{doc.plugin_name}/{doc.skill_name}"),
                 license=None,
                 compatibility=None,
-                metadata={"source": "mongodb", "user_id": doc.user_id, "plugin_name": doc.plugin_name},
+                metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
                 allowed_tools=doc.allowed_tools,
             )
             detail = SkillDetails(
@@ -692,13 +701,13 @@ class MongoPluginSkillLoader:
     async def _resolve_skill_folder(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
     ) -> str | None:
         """Look up the parent skill's stored folder value."""
         doc = await self._skills_collection.find_one(
-            self._version_filter({"user_id": user_id, "plugin_name": plugin_name, "skill_name": skill_name}),
+            self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": skill_name}),
             {"folder": 1},
         )
         if doc:
@@ -711,9 +720,9 @@ class MongoPluginSkillLoader:
         return normalize_skill_name(value=value)
 
     @staticmethod
-    def _validate_user_id(user_id: str) -> None:
-        if not user_id or not user_id.strip():
-            raise ValueError("user_id must be a non-empty string")
+    def _validate_author(author: str) -> None:
+        if not author or not author.strip():
+            raise ValueError("author must be a non-empty string")
 
     @staticmethod
     def _validate_not_empty(value: str, field_name: str) -> None:

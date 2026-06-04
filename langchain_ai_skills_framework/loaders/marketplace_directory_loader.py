@@ -129,7 +129,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         snapshot = self._get_snapshot()
         return snapshot.ordered_summaries
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, author: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         snapshot = await self._get_snapshot_async()
         return snapshot.ordered_summaries
 
@@ -142,7 +144,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in marketplace") from exc
 
     async def get_skill_details_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> SkillDetails:
         normalized = normalize_skill_name(value=skill_name)
         snapshot = await self._get_snapshot_async()
@@ -214,7 +216,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             ) from exc
 
     async def read_skill_resource_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
         return self.read_skill_resource(skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name)
 
@@ -231,7 +233,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         return sorted(f.name for f in references_dir.iterdir() if f.is_file())
 
     async def list_skill_resource_names_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         return self.list_skill_resource_names(skill_name=skill_name, plugin_name=plugin_name)
 
@@ -254,7 +256,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         return sorted(f.stem for f in scripts_dir.iterdir() if f.is_file() and f.suffix in (".py", ".sh"))
 
     async def list_skill_script_names_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]:
         return self.list_skill_script_names(skill_name=skill_name, plugin_name=plugin_name)
 
@@ -286,7 +288,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     async def run_skill_script_for_user(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,

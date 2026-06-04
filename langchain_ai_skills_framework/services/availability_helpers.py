@@ -20,7 +20,7 @@ async def format_skill_availability(
 ) -> str:
     """Return a message listing available skills when *normalized_name* is missing or not found."""
     if user_id:
-        summaries = await loader.list_all_summaries(user_id=user_id, allowed_skills=set())
+        summaries = await loader.list_all_summaries(author=user_id, allowed_skills=set())
         available_names = sorted(s.name for s in summaries)
     else:
         available_names = sorted(summary.name for summary in loader.list_skill_summaries(allowed_skills=set()))
@@ -45,7 +45,7 @@ async def format_script_availability(
     """Return a message listing available scripts for a given skill."""
     if user_id:
         script_names = await loader.list_skill_script_names_for_user(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+            author=user_id, plugin_name=plugin_name, skill_name=skill_name
         )
     else:
         script_names = loader.list_skill_script_names(skill_name=skill_name, plugin_name=plugin_name)
@@ -71,7 +71,7 @@ async def format_resource_availability(
 
     try:
         if user_id:
-            await loader.get_skill_details_for_user(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+            await loader.get_skill_details_for_user(author=user_id, plugin_name=plugin_name, skill_name=skill_name)
         else:
             loader.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
     except SkillNotFoundError:
@@ -79,7 +79,7 @@ async def format_resource_availability(
 
     if user_id:
         resource_names = await loader.list_skill_resource_names_for_user(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+            author=user_id, plugin_name=plugin_name, skill_name=skill_name
         )
     else:
         resource_names = loader.list_skill_resource_names(skill_name=skill_name, plugin_name=plugin_name)

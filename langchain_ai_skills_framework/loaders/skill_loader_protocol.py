@@ -12,12 +12,14 @@ from langchain_ai_skills_framework.models.skills_model import SkillDetails, Skil
 class SkillLoaderProtocol(Protocol):
     def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]: ...
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]: ...
+    async def list_all_summaries(
+        self, *, author: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]: ...
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails: ...
 
     async def get_skill_details_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> SkillDetails: ...
 
     def refresh(self) -> None: ...
@@ -29,7 +31,7 @@ class SkillLoaderProtocol(Protocol):
     def read_skill_resource(self, *, skill_name: str, resource_name: str, plugin_name: str | None = None) -> str: ...
 
     async def read_skill_resource_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str: ...
 
     async def run_skill_script(
@@ -39,7 +41,7 @@ class SkillLoaderProtocol(Protocol):
     async def run_skill_script_for_user(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
@@ -49,13 +51,13 @@ class SkillLoaderProtocol(Protocol):
     def list_skill_script_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]: ...
 
     async def list_skill_script_names_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]: ...
 
     def list_skill_resource_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]: ...
 
     async def list_skill_resource_names_for_user(
-        self, *, user_id: str, plugin_name: str | None = None, skill_name: str
+        self, *, author: str, plugin_name: str | None = None, skill_name: str
     ) -> Sequence[str]: ...
 
     async def get_plugin_mcp_configs(self) -> Sequence[PluginMcpServerEntry]: ...

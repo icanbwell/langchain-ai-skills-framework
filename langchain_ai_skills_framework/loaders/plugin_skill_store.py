@@ -1,7 +1,7 @@
 """Protocol for plugin-scoped skill persistence.
 
-Every operation is keyed by ``(user_id, plugin_name, skill_name)`` so that
-marketplace-synced skills (``user_id="system"``) and user-saved overrides
+Every operation is keyed by ``(author, plugin_name, skill_name)`` so that
+marketplace-synced skills (``author="system"``) and user-saved overrides
 coexist in the same collections.
 
 Replaces the legacy ``UserSkillStore`` protocol.
@@ -38,46 +38,49 @@ class PluginSkillStore(Protocol):
     async def save_skill(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        in_testing: bool | None = None,
     ) -> MongoPluginSkillDocument: ...
 
     async def set_skill_published(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         published: bool,
         published_branch: str | None = None,
     ) -> MongoPluginSkillDocument: ...
 
-    async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool: ...
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool: ...
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot: ...
+    async def load_snapshot(
+        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+    ) -> SkillSnapshot: ...
 
     async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot: ...
 
     async def get_skill_details(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails: ...
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool: ...
+    async def skill_exists(self, *, author: str, plugin_name: str | None = None, skill_name: str) -> bool: ...
 
     # --- Resource operations ---
 
     async def save_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
@@ -89,7 +92,7 @@ class PluginSkillStore(Protocol):
     async def delete_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
@@ -98,7 +101,7 @@ class PluginSkillStore(Protocol):
     async def read_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
@@ -107,7 +110,7 @@ class PluginSkillStore(Protocol):
     async def list_resource_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]: ...
@@ -115,7 +118,7 @@ class PluginSkillStore(Protocol):
     async def resource_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
@@ -126,7 +129,7 @@ class PluginSkillStore(Protocol):
     async def save_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
@@ -138,7 +141,7 @@ class PluginSkillStore(Protocol):
     async def delete_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
@@ -147,7 +150,7 @@ class PluginSkillStore(Protocol):
     async def read_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
@@ -156,7 +159,7 @@ class PluginSkillStore(Protocol):
     async def list_script_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]: ...
@@ -164,7 +167,7 @@ class PluginSkillStore(Protocol):
     async def script_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
@@ -177,7 +180,7 @@ class PluginSkillStore(Protocol):
         *,
         plugin_name: str,
         skill_name: str,
-        user_id: str,
+        author: str,
     ) -> MongoPluginSkillUsageDocument: ...
 
     async def get_skill_usage_count(self, *, skill_name: str) -> int: ...

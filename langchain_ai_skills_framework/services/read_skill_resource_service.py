@@ -68,7 +68,7 @@ class ReadSkillResourceService:
         try:
             if user_id:
                 resource: str = await self._loader.read_skill_resource_for_user(
-                    user_id=user_id,
+                    author=user_id,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     resource_name=resource_name,

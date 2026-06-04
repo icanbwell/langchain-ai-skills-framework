@@ -126,7 +126,7 @@ class RunSkillScriptService:
         try:
             if user_id:
                 result: MyScriptExecutionResult = await self._loader.run_skill_script_for_user(
-                    user_id=user_id,
+                    author=user_id,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     script_name=script_name,

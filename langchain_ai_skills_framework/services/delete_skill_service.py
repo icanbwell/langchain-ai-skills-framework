@@ -28,7 +28,7 @@ class DeleteSkillService:
 
         try:
             deleted = await store.delete_skill(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )

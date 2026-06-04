@@ -21,6 +21,7 @@ class SkillInfo:
     description: str
     plugin_name: str | None = None
     folder: str | None = None
+    state: str = "published"
 
 
 class ListSkillsService:
@@ -53,7 +54,9 @@ class ListSkillsService:
 
         results = sorted(
             (
-                SkillInfo(name=s.name, description=s.description, plugin_name=s.plugin_name, folder=s.folder)
+                SkillInfo(
+                    name=s.name, description=s.description, plugin_name=s.plugin_name, folder=s.folder, state=s.state
+                )
                 for s in summaries
             ),
             key=lambda s: s.name,

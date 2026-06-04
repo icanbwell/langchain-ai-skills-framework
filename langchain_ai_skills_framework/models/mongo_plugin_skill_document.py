@@ -81,7 +81,7 @@ class MongoPluginSkillDocument(BaseModel):
         default=None,
         description="Arbitrary metadata from the skill frontmatter",
     )
-    user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
+    author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     published: bool = Field(
         default=False,
         description="When True, this skill is visible to all users",
@@ -93,6 +93,10 @@ class MongoPluginSkillDocument(BaseModel):
     published_branch: str | None = Field(
         default=None,
         description="Git branch used for the marketplace publish PR",
+    )
+    in_testing: bool = Field(
+        default=False,
+        description="When True, this skill is hidden from default listing but can still be loaded/run by name",
     )
     modified_by: str = Field(default="", description="ID of the user who last modified this skill")
     date_created: datetime = Field(
@@ -115,6 +119,9 @@ class MongoPluginSkillDocument(BaseModel):
         normalized = dict(data)
         if "published" not in normalized and "shared" in normalized:
             normalized["published"] = normalized.pop("shared")
+        # Handle legacy "user_id" field migrated to "author"
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized["user_id"]
         return cls.model_validate(normalized)
 
 
@@ -133,7 +140,7 @@ class MongoPluginResourceDocument(BaseModel):
     resource_name: str = Field(description="Name of the resource file")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/resource")
     content: str = Field(default="", description="Content of the resource file")
-    user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
+    author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this resource")
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -149,7 +156,11 @@ class MongoPluginResourceDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginResourceDocument:
-        return cls.model_validate(data)
+        normalized = dict(data)
+        # Handle legacy "user_id" field migrated to "author"
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized["user_id"]
+        return cls.model_validate(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +178,7 @@ class MongoPluginScriptDocument(BaseModel):
     script_name: str = Field(description="Name of the script file")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/scripts/script")
     content: str = Field(default="", description="Content of the script file")
-    user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
+    author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this script")
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -183,7 +194,11 @@ class MongoPluginScriptDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginScriptDocument:
-        return cls.model_validate(data)
+        normalized = dict(data)
+        # Handle legacy "user_id" field migrated to "author"
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized["user_id"]
+        return cls.model_validate(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +251,7 @@ class MongoPluginSkillUsageDocument(BaseModel):
 
     plugin_name: str = Field(description="Plugin containing the skill")
     skill_name: str = Field(description="Name of the skill that was used")
-    user_id: str = Field(description="ID of the user who used the skill")
+    author: str = Field(description="ID of the user who used the skill")
     date_used: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the skill was used",
@@ -247,4 +262,8 @@ class MongoPluginSkillUsageDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillUsageDocument:
-        return cls.model_validate(data)
+        normalized = dict(data)
+        # Handle legacy "user_id" field migrated to "author"
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized["user_id"]
+        return cls.model_validate(normalized)

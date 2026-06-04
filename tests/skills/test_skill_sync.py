@@ -65,14 +65,15 @@ def _make_store() -> AsyncMock:
     store = AsyncMock()
     store.save_skill.return_value = MongoPluginSkillDocument(
         plugin_name="test-plugin",
-        user_id=SYSTEM_USER_ID,
+        author=SYSTEM_USER_ID,
         skill_name="test",
         path="test-plugin/skills/test/SKILL.md",
         description="test",
         content="test",
+        state="published",
         modified_by=SYSTEM_USER_ID,
     )
-    store.set_skill_published.return_value = store.save_skill.return_value
+    store.set_skill_state.return_value = store.save_skill.return_value
     return store
 
 
@@ -89,11 +90,11 @@ class TestSkillSync:
         assert result.skills_added == 1
         store.save_skill.assert_awaited_once()
         call_kwargs = store.save_skill.call_args.kwargs
-        assert call_kwargs["user_id"] == SYSTEM_USER_ID
+        assert call_kwargs["author"] == SYSTEM_USER_ID
         assert call_kwargs["skill_name"] == "my-skill"
         assert call_kwargs["modified_by"] == SYSTEM_USER_ID
-        # Should be marked as shared
-        store.set_skill_published.assert_awaited_once()
+        # Should be marked as published
+        store.set_skill_state.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_upserts_existing_skill(self) -> None:

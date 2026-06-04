@@ -37,7 +37,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return []
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         return []
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:

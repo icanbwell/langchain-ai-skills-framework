@@ -49,7 +49,9 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def list_skill_summaries(self, *, allowed_skills: set[str]) -> Sequence[SkillSummary]:
         return [d.summary for d in self._details.values()]
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills=allowed_skills)
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
@@ -139,7 +141,7 @@ def _make_user_loader_mock(
     loader.load_shared_snapshot.return_value = shared_snapshot
     loader.get_skill_usage_count.return_value = 0
     loader.get_skill_usage_counts.return_value = {}
-    loader.get_skill_details.side_effect = lambda *, user_id, plugin_name, skill_name: (
+    loader.get_skill_details.side_effect = lambda *, author, plugin_name, skill_name: (
         skills[skill_name]
         if skill_name in skills
         else (_ for _ in ()).throw(SkillNotFoundError(f"'{skill_name}' not found"))

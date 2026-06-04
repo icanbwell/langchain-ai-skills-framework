@@ -38,7 +38,7 @@ class SaveSkillResourceService:
 
         try:
             doc = await store.save_resource(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,

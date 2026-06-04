@@ -81,9 +81,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """Return shared skill summaries (user skills require async — see ``list_all_summaries``)."""
         return self._shared_loader.list_skill_summaries(allowed_skills=allowed_skills)
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         """Return merged summaries from shared + user skills."""
-        snapshot = await self._merged_snapshot(user_id=user_id)
+        snapshot = await self._merged_snapshot(user_id=user_id, include_testing=include_testing)
         return snapshot.ordered_summaries
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
@@ -98,7 +100,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # 1. User's own skills (highest precedence)
         try:
             return await self._user_loader.get_skill_details(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
+                author=user_id, plugin_name=plugin_name, skill_name=normalized
             )
         except SkillNotFoundError:
             logger.debug(
@@ -127,7 +129,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     async def get_instructions_for_user(self, *, user_id: str) -> str:
         """Return merged skill instructions including user skills."""
-        summaries = await self.list_all_summaries(user_id=user_id, allowed_skills=set())
+        summaries = await self.list_all_summaries(user_id=user_id, allowed_skills=set(), include_testing=False)
         if not summaries:
             return await self._shared_loader.get_instructions()
 
@@ -187,7 +189,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # Check user's own skills first
         try:
             return await self._user_loader.read_resource(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized, resource_name=resource_name
+                author=user_id, plugin_name=plugin_name, skill_name=normalized, resource_name=resource_name
             )
         except SkillNotFoundError:
             logger.debug(
@@ -207,7 +209,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             if owner_user_id:
                 try:
                     return await self._user_loader.read_resource(
-                        user_id=owner_user_id,
+                        author=owner_user_id,
                         plugin_name=plugin_name,
                         skill_name=normalized,
                         resource_name=resource_name,
@@ -246,7 +248,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # Check user's own scripts first
         try:
             script_content = await self._user_loader.read_script(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
+                author=user_id, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
             )
             return await self._execute_script_content(
                 script_content=script_content,
@@ -266,7 +268,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             if owner_user_id:
                 try:
                     script_content = await self._user_loader.read_script(
-                        user_id=owner_user_id,
+                        author=owner_user_id,
                         plugin_name=plugin_name,
                         skill_name=normalized,
                         script_name=script_name,
@@ -297,7 +299,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # User's own scripts
         try:
             user_scripts = await self._user_loader.list_script_names(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
+                author=user_id, plugin_name=plugin_name, skill_name=normalized
             )
             names.update(user_scripts)
         except (SkillNotFoundError, ValueError):
@@ -325,7 +327,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # User's own resources
         try:
             user_resources = await self._user_loader.list_resource_names(
-                user_id=user_id, plugin_name=plugin_name, skill_name=normalized
+                author=user_id, plugin_name=plugin_name, skill_name=normalized
             )
             names.update(user_resources)
         except (SkillNotFoundError, ValueError):
@@ -422,7 +424,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Merging -------------------------------------------------------------
 
-    async def _merged_snapshot(self, *, user_id: str) -> SkillSnapshot:
+    async def _merged_snapshot(self, *, user_id: str, include_testing: bool = False) -> SkillSnapshot:
         """Build a merged snapshot with precedence: GitHub -> shared DB -> user DB.
 
         GitHub/filesystem skills form the base.  Shared database skills
@@ -439,7 +441,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # 2+3. Load shared and user snapshots concurrently
         shared_snapshot, user_snapshot = await asyncio.gather(
             self._user_loader.load_shared_snapshot(),
-            self._user_loader.load_snapshot(user_id=user_id),
+            self._user_loader.load_snapshot(author=user_id, include_testing=include_testing),
         )
 
         # Shared database skills (override GitHub on collision)

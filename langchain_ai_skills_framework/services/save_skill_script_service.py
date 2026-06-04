@@ -38,7 +38,7 @@ class SaveSkillScriptService:
 
         try:
             doc = await store.save_script(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=script_name,

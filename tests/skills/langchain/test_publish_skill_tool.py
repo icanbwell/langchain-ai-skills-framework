@@ -21,24 +21,24 @@ from langchain_ai_skills_framework.publishing.github_marketplace_publisher impor
 from tests.skills.langchain.conftest import make_runtime
 
 
-def _make_doc(skill_name: str = "test-skill", published: bool = True) -> MongoPluginSkillDocument:
+def _make_doc(skill_name: str = "test-skill", state: str = "published") -> MongoPluginSkillDocument:
     return MongoPluginSkillDocument(
         plugin_name="test-plugin",
-        user_id="user-1",
+        author="user-1",
         skill_name=skill_name,
         path=f"test-plugin/skills/{skill_name}/SKILL.md",
         description="A test",
         content="# Test\nContent",
-        published=published,
+        state=state,
         modified_by="user-1",
         date_created=datetime.now(timezone.utc),
         date_modified=datetime.now(timezone.utc),
     )
 
 
-def _make_loader_mock(published: bool = True) -> AsyncMock:
+def _make_loader_mock(state: str = "published") -> AsyncMock:
     loader = AsyncMock(spec=PluginSkillStore)
-    loader.set_skill_published.return_value = _make_doc(published=published)
+    loader.set_skill_state.return_value = _make_doc(state=state)
     return loader
 
 
@@ -53,7 +53,7 @@ def _make_publisher_mock() -> MagicMock:
 class TestPublishSkillTool:
     @pytest.mark.asyncio
     async def test_publishes_skill_successfully(self) -> None:
-        loader = _make_loader_mock(published=True)
+        loader = _make_loader_mock(state="published")
         publisher = _make_publisher_mock()
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=publisher)
 
@@ -62,17 +62,17 @@ class TestPublishSkillTool:
         )
 
         assert "published" in result
-        loader.set_skill_published.assert_awaited_once_with(
-            user_id="user-1",
+        loader.set_skill_state.assert_awaited_once_with(
+            author="user-1",
             plugin_name="test-plugin",
             skill_name="test-skill",
-            published=True,
+            state="published",
             published_branch="skill-publish/test-plugin/test-skill",
         )
 
     @pytest.mark.asyncio
     async def test_unpublishes_skill(self) -> None:
-        loader = _make_loader_mock(published=False)
+        loader = _make_loader_mock(state="personal")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         result, _ = await tool._arun(
@@ -97,7 +97,7 @@ class TestPublishSkillTool:
 
     @pytest.mark.asyncio
     async def test_rejects_publish_when_publisher_not_configured(self) -> None:
-        loader = _make_loader_mock(published=True)
+        loader = _make_loader_mock(state="published")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         with pytest.raises(ToolException, match="GitHub marketplace publisher is not configured"):
@@ -113,7 +113,7 @@ class TestPublishSkillTool:
     @pytest.mark.asyncio
     async def test_wraps_unexpected_exception(self) -> None:
         loader = AsyncMock(spec=PluginSkillStore)
-        loader.set_skill_published.side_effect = RuntimeError("db down")
+        loader.set_skill_state.side_effect = RuntimeError("db down")
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=_make_publisher_mock())
 
         with pytest.raises(ToolException, match="Unable to update publishing"):

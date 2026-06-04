@@ -30,11 +30,18 @@ class ListSkillsService:
         self._loader = skill_loader
 
     async def execute(
-        self, *, user_id: str, plugin_name: str | None = None, folder: str | None = None
+        self,
+        *,
+        user_id: str,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        include_testing: bool = False,
     ) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``."""
         if user_id:
-            summaries = await self._loader.list_all_summaries(user_id=user_id, allowed_skills=set())
+            summaries = await self._loader.list_all_summaries(
+                user_id=user_id, allowed_skills=set(), include_testing=include_testing
+            )
         else:
             summaries = self._loader.list_skill_summaries(allowed_skills=set())
 

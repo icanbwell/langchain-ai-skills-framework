@@ -61,30 +61,32 @@ class HistoryTrackingPluginSkillStore:
     async def save_skill(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        state: str | None = None,
     ) -> MongoPluginSkillDocument:
-        exists = await self._inner.skill_exists(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+        exists = await self._inner.skill_exists(author=author, plugin_name=plugin_name, skill_name=skill_name)
         action: Literal["created", "updated"] = "updated" if exists else "created"
 
         try:
             doc = await self._inner.save_skill(
-                user_id=user_id,
+                author=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=content,
                 modified_by=modified_by,
                 folder=folder,
+                state=state,
             )
         except Exception as exc:
             await self._record_error(
                 operation="save",
                 exc=exc,
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )
@@ -93,71 +95,68 @@ class HistoryTrackingPluginSkillStore:
         record = HistoryRecord(
             action=action,
             document_snapshot=doc.to_mongo_dict(),
-            changed_by=modified_by or user_id,
+            changed_by=modified_by or author,
             timestamp=datetime.now(timezone.utc),
             source_collection="plugin_skills",
-            user_id=user_id,
+            user_id=author,
             plugin_name=doc.plugin_name,
             skill_name=doc.skill_name,
         )
         await self._history.write_skill_history(record=record)
         return doc
 
-    async def set_skill_published(
+    async def set_skill_state(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
-        published: bool,
+        state: str,
         published_branch: str | None = None,
     ) -> MongoPluginSkillDocument:
         try:
-            doc = await self._inner.set_skill_published(
-                user_id=user_id,
+            doc = await self._inner.set_skill_state(
+                author=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
-                published=published,
+                state=state,
                 published_branch=published_branch,
             )
         except Exception as exc:
             await self._record_error(
-                operation="publish",
+                operation="state_change",
                 exc=exc,
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )
             raise
 
-        action: Literal["published", "unpublished"] = "published" if published else "unpublished"
         record = HistoryRecord(
-            action=action,
-            document_snapshot=doc.to_mongo_dict(),
-            changed_by=user_id,
+            action="state_changed",
+            document_snapshot={**doc.to_mongo_dict(), "state": state},
+            changed_by=author,
             timestamp=datetime.now(timezone.utc),
             source_collection="plugin_skills",
-            user_id=user_id,
+            user_id=author,
             plugin_name=doc.plugin_name,
             skill_name=doc.skill_name,
         )
         await self._history.write_skill_history(record=record)
         return doc
 
-    async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
         normalized_name = normalize_skill_name(value=skill_name)
 
         snapshot: dict[str, object] = {}
         try:
-            details = await self._inner.get_skill_details(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
-            )
+            details = await self._inner.get_skill_details(author=author, plugin_name=plugin_name, skill_name=skill_name)
             snapshot = {
                 "skill_name": details.name,
                 "description": details.description,
                 "content": details.content,
                 "plugin_name": plugin_name,
-                "user_id": user_id,
+                "user_id": author,
             }
         except Exception:
             logger.debug("Could not capture pre-delete snapshot for skill %s/%s", plugin_name, skill_name)
@@ -166,29 +165,29 @@ class HistoryTrackingPluginSkillStore:
         script_names: Sequence[str] = []
         try:
             resource_names = await self._inner.list_resource_names(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+                author=author, plugin_name=plugin_name, skill_name=skill_name
             )
         except Exception:
             logger.debug("Could not enumerate resources before skill delete %s/%s", plugin_name, skill_name)
         try:
             script_names = await self._inner.list_script_names(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+                author=author, plugin_name=plugin_name, skill_name=skill_name
             )
         except Exception:
             logger.debug("Could not enumerate scripts before skill delete %s/%s", plugin_name, skill_name)
 
-        deleted = await self._inner.delete_skill(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+        deleted = await self._inner.delete_skill(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
         if deleted:
             now = datetime.now(timezone.utc)
             for resource in resource_names:
                 child_record = HistoryRecord(
                     action="deleted",
-                    document_snapshot={"resource_name": resource, "plugin_name": plugin_name, "user_id": user_id},
-                    changed_by=user_id,
+                    document_snapshot={"resource_name": resource, "plugin_name": plugin_name, "user_id": author},
+                    changed_by=author,
                     timestamp=now,
                     source_collection="plugin_references",
-                    user_id=user_id,
+                    user_id=author,
                     plugin_name=plugin_name,
                     skill_name=normalized_name,
                     resource_name=resource,
@@ -197,11 +196,11 @@ class HistoryTrackingPluginSkillStore:
             for script in script_names:
                 child_record = HistoryRecord(
                     action="deleted",
-                    document_snapshot={"script_name": script, "plugin_name": plugin_name, "user_id": user_id},
-                    changed_by=user_id,
+                    document_snapshot={"script_name": script, "plugin_name": plugin_name, "user_id": author},
+                    changed_by=author,
                     timestamp=now,
                     source_collection="plugin_scripts",
-                    user_id=user_id,
+                    user_id=author,
                     plugin_name=plugin_name,
                     skill_name=normalized_name,
                     script_name=script,
@@ -210,10 +209,10 @@ class HistoryTrackingPluginSkillStore:
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
-                changed_by=user_id,
+                changed_by=author,
                 timestamp=now,
                 source_collection="plugin_skills",
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=normalized_name,
             )
@@ -228,7 +227,7 @@ class HistoryTrackingPluginSkillStore:
     async def save_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
@@ -237,13 +236,13 @@ class HistoryTrackingPluginSkillStore:
         folder: str | None = None,
     ) -> MongoPluginResourceDocument:
         exists = await self._inner.resource_exists(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
         )
         action: Literal["created", "updated"] = "updated" if exists else "created"
 
         try:
             doc = await self._inner.save_resource(
-                user_id=user_id,
+                author=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
@@ -255,7 +254,7 @@ class HistoryTrackingPluginSkillStore:
             await self._record_error(
                 operation="save",
                 exc=exc,
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
@@ -265,10 +264,10 @@ class HistoryTrackingPluginSkillStore:
         record = HistoryRecord(
             action=action,
             document_snapshot=doc.to_mongo_dict(),
-            changed_by=modified_by or user_id,
+            changed_by=modified_by or author,
             timestamp=datetime.now(timezone.utc),
             source_collection="plugin_references",
-            user_id=user_id,
+            user_id=author,
             plugin_name=doc.plugin_name,
             skill_name=doc.skill_name,
             resource_name=doc.resource_name,
@@ -279,7 +278,7 @@ class HistoryTrackingPluginSkillStore:
     async def delete_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
@@ -290,14 +289,14 @@ class HistoryTrackingPluginSkillStore:
         snapshot: dict[str, object] = {}
         try:
             content = await self._inner.read_resource(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
+                author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
             )
             snapshot = {
                 "resource_name": normalized_resource,
                 "content": content,
                 "skill_name": normalized_skill,
                 "plugin_name": plugin_name,
-                "user_id": user_id,
+                "user_id": author,
             }
         except Exception:
             logger.debug(
@@ -308,17 +307,17 @@ class HistoryTrackingPluginSkillStore:
             )
 
         deleted = await self._inner.delete_resource(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
         )
 
         if deleted:
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
-                changed_by=user_id,
+                changed_by=author,
                 timestamp=datetime.now(timezone.utc),
                 source_collection="plugin_references",
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=normalized_skill,
                 resource_name=normalized_resource,
@@ -334,7 +333,7 @@ class HistoryTrackingPluginSkillStore:
     async def save_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
@@ -343,13 +342,13 @@ class HistoryTrackingPluginSkillStore:
         folder: str | None = None,
     ) -> MongoPluginScriptDocument:
         exists = await self._inner.script_exists(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
         )
         action: Literal["created", "updated"] = "updated" if exists else "created"
 
         try:
             doc = await self._inner.save_script(
-                user_id=user_id,
+                author=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=script_name,
@@ -361,7 +360,7 @@ class HistoryTrackingPluginSkillStore:
             await self._record_error(
                 operation="save",
                 exc=exc,
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=script_name,
@@ -371,10 +370,10 @@ class HistoryTrackingPluginSkillStore:
         record = HistoryRecord(
             action=action,
             document_snapshot=doc.to_mongo_dict(),
-            changed_by=modified_by or user_id,
+            changed_by=modified_by or author,
             timestamp=datetime.now(timezone.utc),
             source_collection="plugin_scripts",
-            user_id=user_id,
+            user_id=author,
             plugin_name=doc.plugin_name,
             skill_name=doc.skill_name,
             script_name=doc.script_name,
@@ -385,7 +384,7 @@ class HistoryTrackingPluginSkillStore:
     async def delete_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
@@ -396,14 +395,14 @@ class HistoryTrackingPluginSkillStore:
         snapshot: dict[str, object] = {}
         try:
             content = await self._inner.read_script(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
+                author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
             )
             snapshot = {
                 "script_name": normalized_script,
                 "content": content,
                 "skill_name": normalized_skill,
                 "plugin_name": plugin_name,
-                "user_id": user_id,
+                "user_id": author,
             }
         except Exception:
             logger.debug(
@@ -414,17 +413,17 @@ class HistoryTrackingPluginSkillStore:
             )
 
         deleted = await self._inner.delete_script(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
         )
 
         if deleted:
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
-                changed_by=user_id,
+                changed_by=author,
                 timestamp=datetime.now(timezone.utc),
                 source_collection="plugin_scripts",
-                user_id=user_id,
+                user_id=author,
                 plugin_name=plugin_name,
                 skill_name=normalized_skill,
                 script_name=normalized_script,
@@ -479,8 +478,10 @@ class HistoryTrackingPluginSkillStore:
     # Read-only pass-through methods
     # ------------------------------------------------------------------
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot:
-        return await self._inner.load_snapshot(user_id=user_id, plugin_name=plugin_name)
+    async def load_snapshot(
+        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+    ) -> SkillSnapshot:
+        return await self._inner.load_snapshot(author=author, plugin_name=plugin_name, include_testing=include_testing)
 
     async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
         return await self._inner.load_shared_snapshot(plugin_name=plugin_name)
@@ -488,79 +489,79 @@ class HistoryTrackingPluginSkillStore:
     async def get_skill_details(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails:
-        return await self._inner.get_skill_details(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+        return await self._inner.get_skill_details(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool:
-        return await self._inner.skill_exists(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+    async def skill_exists(self, *, author: str, plugin_name: str | None = None, skill_name: str) -> bool:
+        return await self._inner.skill_exists(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
     async def read_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> str:
         return await self._inner.read_resource(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
         )
 
     async def list_resource_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
-        return await self._inner.list_resource_names(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+        return await self._inner.list_resource_names(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
     async def resource_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> bool:
         return await self._inner.resource_exists(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
         )
 
     async def read_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> str:
         return await self._inner.read_script(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
         )
 
     async def list_script_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
-        return await self._inner.list_script_names(user_id=user_id, plugin_name=plugin_name, skill_name=skill_name)
+        return await self._inner.list_script_names(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
     async def script_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
     ) -> bool:
         return await self._inner.script_exists(
-            user_id=user_id, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
+            author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
         )
 
     async def record_skill_usage(

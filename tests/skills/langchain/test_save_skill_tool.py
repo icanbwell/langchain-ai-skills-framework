@@ -22,7 +22,7 @@ def _make_loader_mock() -> AsyncMock:
     loader = AsyncMock(spec=PluginSkillStore)
     loader.save_skill.return_value = MongoPluginSkillDocument(
         plugin_name="test-plugin",
-        user_id="user-1",
+        author="user-1",
         skill_name="test-skill",
         path="test-plugin/skills/test-skill/SKILL.md",
         description="A test",
@@ -49,12 +49,13 @@ class TestSaveSkillTool:
 
         assert "saved successfully" in result
         loader.save_skill.assert_awaited_once_with(
-            user_id="user-1",
+            author="user-1",
             plugin_name="test-plugin",
             skill_name="test-skill",
             content=VALID_SKILL_CONTENT,
             modified_by="user-1",
             folder=None,
+            state=None,
         )
 
     @pytest.mark.asyncio
@@ -72,12 +73,13 @@ class TestSaveSkillTool:
 
         assert "saved successfully" in result
         loader.save_skill.assert_awaited_once_with(
-            user_id="user-1",
+            author="user-1",
             plugin_name="test-plugin",
             skill_name="test-skill",
             content=VALID_SKILL_CONTENT,
             modified_by="user-1",
             folder="sub/dir",
+            state=None,
         )
 
     @pytest.mark.asyncio

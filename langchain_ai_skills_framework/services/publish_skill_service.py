@@ -98,14 +98,14 @@ class PublishSkillService:
                         else f"skill-unpublish/{plugin_name}/{skill_name}"
                     )
 
-            doc = await store.set_skill_published(
-                user_id=user_id,
+            doc = await store.set_skill_state(
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
-                published=published,
+                state="published" if published else "personal",
                 published_branch=branch,
             )
-            state = "published" if doc.published else "unpublished"
+            state = "published" if doc.state == "published" else "unpublished"
             message = f"Skill '{doc.skill_name}' is now {state}."
             logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
@@ -206,34 +206,34 @@ class PublishSkillService:
             user_id,
         )
         details = await self._store.get_skill_details(
-            user_id=user_id,
+            author=user_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
 
         resource_names = await self._store.list_resource_names(
-            user_id=user_id,
+            author=user_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
         resources: dict[str, str] = {}
         for name in resource_names:
             resources[name] = await self._store.read_resource(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=name,
             )
 
         script_names = await self._store.list_script_names(
-            user_id=user_id,
+            author=user_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
         scripts: dict[str, str] = {}
         for name in script_names:
             scripts[name] = await self._store.read_script(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=name,

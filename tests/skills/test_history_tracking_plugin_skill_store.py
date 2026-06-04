@@ -32,7 +32,7 @@ def inner_store() -> AsyncMock:
             path="my-plugin/skills/my-skill/SKILL.md",
             description="A test skill",
             content="# Skill content",
-            user_id="user-1",
+            author="user-1",
             modified_by="user-1",
         )
     )
@@ -43,7 +43,7 @@ def inner_store() -> AsyncMock:
             resource_name="data.json",
             path="my-plugin/skills/my-skill/data.json",
             content='{"key": "value"}',
-            user_id="user-1",
+            author="user-1",
             modified_by="user-1",
         )
     )
@@ -54,7 +54,7 @@ def inner_store() -> AsyncMock:
             script_name="run.py",
             path="my-plugin/skills/my-skill/scripts/run.py",
             content="print('hello')",
-            user_id="user-1",
+            author="user-1",
             modified_by="user-1",
         )
     )
@@ -66,15 +66,15 @@ def inner_store() -> AsyncMock:
             mcp_servers=[],
         )
     )
-    store.set_skill_published = AsyncMock(
+    store.set_skill_state = AsyncMock(
         return_value=MongoPluginSkillDocument(
             plugin_name="my-plugin",
             skill_name="my-skill",
             path="my-plugin/skills/my-skill/SKILL.md",
             description="A test skill",
             content="# Skill content",
-            user_id="user-1",
-            published=True,
+            author="user-1",
+            state="published",
         )
     )
     store.delete_skill = AsyncMock(return_value=True)
@@ -150,7 +150,7 @@ async def test_save_skill_new_records_created_action(
     inner_store.skill_exists.return_value = False
 
     await store.save_skill(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         content="# Skill content",
@@ -173,7 +173,7 @@ async def test_save_skill_existing_records_updated_action(
     inner_store.skill_exists.return_value = True
 
     await store.save_skill(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         content="# Updated",
@@ -184,13 +184,13 @@ async def test_save_skill_existing_records_updated_action(
     assert record.action == "updated"
 
 
-async def test_save_skill_uses_user_id_when_no_modified_by(
+async def test_save_skill_uses_author_when_no_modified_by(
     store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
     inner_store.skill_exists.return_value = False
 
     await store.save_skill(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         content="# Content",
@@ -201,37 +201,37 @@ async def test_save_skill_uses_user_id_when_no_modified_by(
 
 
 # ------------------------------------------------------------------
-# set_skill_published
+# set_skill_state
 # ------------------------------------------------------------------
 
 
-async def test_set_skill_published_true_records_published(
+async def test_set_skill_state_published_records_state_changed(
     store: HistoryTrackingPluginSkillStore, history_writer: AsyncMock
 ) -> None:
-    await store.set_skill_published(
-        user_id="user-1",
+    await store.set_skill_state(
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
-        published=True,
+        state="published",
     )
 
     record = history_writer.write_skill_history.call_args.kwargs["record"]
-    assert record.action == "published"
+    assert record.action == "state_changed"
     assert record.changed_by == "user-1"
 
 
-async def test_set_skill_published_false_records_unpublished(
+async def test_set_skill_state_personal_records_state_changed(
     store: HistoryTrackingPluginSkillStore, history_writer: AsyncMock
 ) -> None:
-    await store.set_skill_published(
-        user_id="user-1",
+    await store.set_skill_state(
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
-        published=False,
+        state="personal",
     )
 
     record = history_writer.write_skill_history.call_args.kwargs["record"]
-    assert record.action == "unpublished"
+    assert record.action == "state_changed"
 
 
 # ------------------------------------------------------------------
@@ -242,10 +242,10 @@ async def test_set_skill_published_false_records_unpublished(
 async def test_delete_skill_records_deleted_action(
     store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
-    result = await store.delete_skill(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    result = await store.delete_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert result is True
-    inner_store.delete_skill.assert_awaited_once_with(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    inner_store.delete_skill.assert_awaited_once_with(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
     record = history_writer.write_skill_history.call_args.kwargs["record"]
     assert record.action == "deleted"
     assert record.document_snapshot["skill_name"] == "my-skill"
@@ -256,7 +256,7 @@ async def test_delete_skill_no_history_when_not_deleted(
 ) -> None:
     inner_store.delete_skill.return_value = False
 
-    result = await store.delete_skill(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    result = await store.delete_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert result is False
     history_writer.write_skill_history.assert_not_awaited()
@@ -267,7 +267,7 @@ async def test_delete_skill_snapshot_failure_still_deletes(
 ) -> None:
     inner_store.get_skill_details.side_effect = Exception("not found")
 
-    result = await store.delete_skill(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    result = await store.delete_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert result is True
     record = history_writer.write_skill_history.call_args.kwargs["record"]
@@ -281,7 +281,7 @@ async def test_delete_skill_records_cascade_deleted_children(
     inner_store.list_resource_names.return_value = ["data.json", "config.yaml"]
     inner_store.list_script_names.return_value = ["run.py"]
 
-    await store.delete_skill(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    await store.delete_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert history_writer.write_reference_history.await_count == 2
     assert history_writer.write_script_history.await_count == 1
@@ -307,7 +307,7 @@ async def test_save_resource_new_records_created_action(
     inner_store.resource_exists.return_value = False
 
     await store.save_resource(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         resource_name="data.json",
@@ -328,7 +328,7 @@ async def test_save_resource_existing_records_updated_action(
     inner_store.resource_exists.return_value = True
 
     await store.save_resource(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         resource_name="data.json",
@@ -348,7 +348,7 @@ async def test_delete_resource_records_deleted_action(
     store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
     result = await store.delete_resource(
-        user_id="user-1", plugin_name="my-plugin", skill_name="my-skill", resource_name="data.json"
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", resource_name="data.json"
     )
 
     assert result is True
@@ -368,7 +368,7 @@ async def test_save_script_new_records_created_action(
     inner_store.script_exists.return_value = False
 
     await store.save_script(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         script_name="run.py",
@@ -389,7 +389,7 @@ async def test_save_script_existing_records_updated_action(
     inner_store.script_exists.return_value = True
 
     await store.save_script(
-        user_id="user-1",
+        author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
         script_name="run.py",
@@ -409,7 +409,7 @@ async def test_delete_script_records_deleted_action(
     store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
     result = await store.delete_script(
-        user_id="user-1", plugin_name="my-plugin", skill_name="my-skill", script_name="run.py"
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", script_name="run.py"
     )
 
     assert result is True
@@ -466,9 +466,9 @@ async def test_save_plugin_existing_records_updated_action(
 async def test_load_snapshot_passes_through(
     store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
-    await store.load_snapshot(user_id="user-1", plugin_name="my-plugin")
+    await store.load_snapshot(author="user-1", plugin_name="my-plugin")
 
-    inner_store.load_snapshot.assert_awaited_once_with(user_id="user-1", plugin_name="my-plugin")
+    inner_store.load_snapshot.assert_awaited_once_with(author="user-1", plugin_name="my-plugin", include_testing=False)
     history_writer.write_skill_history.assert_not_awaited()
 
 
@@ -477,7 +477,7 @@ async def test_skill_exists_passes_through(
 ) -> None:
     inner_store.skill_exists.return_value = True
 
-    result = await store.skill_exists(user_id="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    result = await store.skill_exists(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert result is True
     history_writer.write_skill_history.assert_not_awaited()
@@ -487,7 +487,7 @@ async def test_read_resource_passes_through(
     store: HistoryTrackingPluginSkillStore, inner_store: AsyncMock, history_writer: AsyncMock
 ) -> None:
     result = await store.read_resource(
-        user_id="user-1", plugin_name="my-plugin", skill_name="my-skill", resource_name="data.json"
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", resource_name="data.json"
     )
 
     assert result == '{"key": "value"}'
@@ -524,7 +524,7 @@ async def test_save_skill_failure_records_error(inner_store: AsyncMock, history_
 
     with pytest.raises(RuntimeError, match="connection lost"):
         await store_with_errors.save_skill(
-            user_id="user-1",
+            author="user-1",
             plugin_name="my-plugin",
             skill_name="my-skill",
             content="# Content",
@@ -537,21 +537,21 @@ async def test_save_skill_failure_records_error(inner_store: AsyncMock, history_
     assert "connection lost" in error_record.error_message
 
 
-async def test_set_skill_published_failure_records_error(inner_store: AsyncMock, history_writer: AsyncMock) -> None:
+async def test_set_skill_state_failure_records_error(inner_store: AsyncMock, history_writer: AsyncMock) -> None:
     error_writer = AsyncMock()
     error_writer.write_error = AsyncMock()
     store_with_errors = HistoryTrackingPluginSkillStore(
         inner_store=inner_store, history_writer=history_writer, error_writer=error_writer
     )
-    inner_store.set_skill_published.side_effect = RuntimeError("publish failed")
+    inner_store.set_skill_state.side_effect = RuntimeError("state change failed")
 
-    with pytest.raises(RuntimeError, match="publish failed"):
-        await store_with_errors.set_skill_published(
-            user_id="user-1",
+    with pytest.raises(RuntimeError, match="state change failed"):
+        await store_with_errors.set_skill_state(
+            author="user-1",
             plugin_name="my-plugin",
             skill_name="my-skill",
-            published=True,
+            state="published",
         )
 
     error_record = error_writer.write_error.call_args.kwargs["record"]
-    assert error_record.operation == "publish"
+    assert error_record.operation == "state_change"

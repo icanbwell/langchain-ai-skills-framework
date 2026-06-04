@@ -43,7 +43,9 @@ class _StubSkillLoader(SkillLoaderProtocol):
         del allowed_skills
         return [detail.summary for detail in self._details.values()]
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills=allowed_skills)
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:

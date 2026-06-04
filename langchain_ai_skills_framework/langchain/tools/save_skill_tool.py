@@ -33,6 +33,10 @@ class SaveSkillInput(BaseModel):
             "Full content of the skill in SKILL.md format. May include YAML frontmatter with description and metadata."
         ),
     )
+    folder: str | None = Field(
+        default=None,
+        description="Optional subfolder path within the plugin to organize skills.",
+    )
     runtime: ToolRuntime
 
 
@@ -57,6 +61,7 @@ class SaveSkillTool(BaseTool):
         plugin_name: str,
         skill_name: str,
         content: str,
+        folder: str | None = None,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -69,6 +74,7 @@ class SaveSkillTool(BaseTool):
         plugin_name: str,
         skill_name: str,
         content: str,
+        folder: str | None = None,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -82,6 +88,7 @@ class SaveSkillTool(BaseTool):
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=content,
+                folder=folder,
             )
             return message, message
         except SkillOperationError as exc:

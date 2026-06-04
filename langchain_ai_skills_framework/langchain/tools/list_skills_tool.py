@@ -26,6 +26,10 @@ class ListSkillsInput(BaseModel):
         default=None,
         description="Optional plugin name to filter skills by. If not provided, lists skills from all plugins.",
     )
+    folder: str | None = Field(
+        default=None,
+        description="Optional folder path to filter skills by. If not provided, lists skills from all folders.",
+    )
     runtime: ToolRuntime
 
 
@@ -46,6 +50,7 @@ class ListSkillsTool(BaseTool):
         self,
         *,
         plugin_name: str | None = None,
+        folder: str | None = None,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -56,6 +61,7 @@ class ListSkillsTool(BaseTool):
         self,
         *,
         plugin_name: str | None = None,
+        folder: str | None = None,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> Tuple[str, str]:
@@ -64,7 +70,7 @@ class ListSkillsTool(BaseTool):
 
         service = ListSkillsService(skill_loader=self.skill_loader)
         try:
-            skills = await service.execute(user_id=user_id, plugin_name=plugin_name)
+            skills = await service.execute(user_id=user_id, plugin_name=plugin_name, folder=folder)
             message = ListSkillsService.format_as_text(skills)
             return message, message
         except SkillOperationError as exc:

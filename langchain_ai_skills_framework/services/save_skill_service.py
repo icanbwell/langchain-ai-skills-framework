@@ -46,6 +46,8 @@ class SaveSkillService:
         skill_name: str | None = None,
         content: str,
         update_if_exists: bool = True,
+        folder: str | None = None,
+        state: str | None = None,
     ) -> str:
         """Validate and persist the skill, returning a status message.
 
@@ -86,7 +88,7 @@ class SaveSkillService:
 
         if not update_if_exists:
             exists = await store.skill_exists(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )
@@ -95,11 +97,13 @@ class SaveSkillService:
 
         try:
             doc = await store.save_skill(
-                user_id=user_id,
+                author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=content,
                 modified_by=user_id,
+                folder=folder,
+                state=state,
             )
             message = f"Skill '{doc.skill_name}' saved successfully."
             logger.info("SaveSkillService: %s (user=%s)", message, user_id)

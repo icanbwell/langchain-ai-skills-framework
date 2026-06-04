@@ -44,29 +44,33 @@ class NullPluginSkillStore:
     async def save_skill(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
+        state: str | None = None,
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def set_skill_published(
+    async def set_skill_state(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
-        published: bool,
+        state: str,
         published_branch: str | None = None,
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def delete_skill(self, *, user_id: str, plugin_name: str, skill_name: str) -> bool:
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def load_snapshot(self, *, user_id: str, plugin_name: str | None = None) -> SkillSnapshot:
+    async def load_snapshot(
+        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+    ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
     async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
@@ -75,7 +79,7 @@ class NullPluginSkillStore:
     async def get_skill_details(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> SkillDetails:
@@ -83,7 +87,7 @@ class NullPluginSkillStore:
             f"Skill '{skill_name}' not found in plugin '{plugin_name}' — plugin skill storage is not configured."
         )
 
-    async def skill_exists(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> bool:
+    async def skill_exists(self, *, author: str, plugin_name: str | None = None, skill_name: str) -> bool:
         return False
 
     # --- Resource operations ---
@@ -91,19 +95,20 @@ class NullPluginSkillStore:
     async def save_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginResourceDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
     async def delete_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         resource_name: str,
@@ -113,7 +118,7 @@ class NullPluginSkillStore:
     async def read_resource(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
@@ -123,7 +128,7 @@ class NullPluginSkillStore:
     async def list_resource_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
@@ -132,7 +137,7 @@ class NullPluginSkillStore:
     async def resource_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
@@ -144,19 +149,20 @@ class NullPluginSkillStore:
     async def save_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
         content: str,
         modified_by: str = "",
+        folder: str | None = None,
     ) -> MongoPluginScriptDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
     async def delete_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str,
         skill_name: str,
         script_name: str,
@@ -166,7 +172,7 @@ class NullPluginSkillStore:
     async def read_script(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
@@ -176,7 +182,7 @@ class NullPluginSkillStore:
     async def list_script_names(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
@@ -185,7 +191,7 @@ class NullPluginSkillStore:
     async def script_exists(
         self,
         *,
-        user_id: str,
+        author: str,
         plugin_name: str | None = None,
         skill_name: str,
         script_name: str,

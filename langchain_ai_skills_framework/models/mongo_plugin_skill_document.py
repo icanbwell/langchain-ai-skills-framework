@@ -21,19 +21,40 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 
-def build_skill_path(*, plugin_name: str, skill_name: str) -> str:
+def _normalize_folder(folder: str | None) -> str | None:
+    """Coerce empty-string folder to None for consistent truthiness checks."""
+    if folder is None:
+        return None
+    stripped = folder.strip()
+    return stripped if stripped else None
+
+
+def _skill_base_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:
+    """Return the base path prefix for a skill: ``plugin/skills/[folder/]name``."""
+    folder = _normalize_folder(folder)
+    if folder is not None:
+        return f"{plugin_name}/skills/{folder}/{skill_name}"
+    return f"{plugin_name}/skills/{skill_name}"
+
+
+def normalize_folder(folder: str | None) -> str | None:
+    """Public alias for folder normalization (coerces '' to None)."""
+    return _normalize_folder(folder)
+
+
+def build_skill_path(*, plugin_name: str, skill_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill's ``SKILL.md``."""
-    return f"{plugin_name}/skills/{skill_name}/SKILL.md"
+    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/SKILL.md"
 
 
-def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str) -> str:
+def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill resource file."""
-    return f"{plugin_name}/skills/{skill_name}/{resource_name}"
+    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/{resource_name}"
 
 
-def build_script_path(*, plugin_name: str, skill_name: str, script_name: str) -> str:
+def build_script_path(*, plugin_name: str, skill_name: str, script_name: str, folder: str | None = None) -> str:
     """Return the canonical path for a skill script file."""
-    return f"{plugin_name}/skills/{skill_name}/scripts/{script_name}"
+    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/scripts/{script_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +69,7 @@ class MongoPluginSkillDocument(BaseModel):
 
     plugin_name: str = Field(description="Plugin that owns this skill")
     skill_name: str = Field(description="Normalized name of the skill")
+    folder: str | None = Field(default=None, description="Optional subfolder path within the plugin")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/SKILL.md")
     description: str = Field(default="", description="Short description of what the skill does")
     content: str = Field(default="", description="Full skill content (SKILL.md body)")
@@ -59,11 +81,8 @@ class MongoPluginSkillDocument(BaseModel):
         default=None,
         description="Arbitrary metadata from the skill frontmatter",
     )
-    user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
-    published: bool = Field(
-        default=False,
-        description="When True, this skill is visible to all users",
-    )
+    author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
+    state: str = Field(default="personal", description="Skill lifecycle state: personal, testing, or published")
     published_date: datetime | None = Field(
         default=None,
         description="When the skill was last published (or unpublished)",
@@ -89,10 +108,14 @@ class MongoPluginSkillDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillDocument:
-        # Handle legacy "shared" field migrated to "published"
         normalized = dict(data)
-        if "published" not in normalized and "shared" in normalized:
-            normalized["published"] = normalized.pop("shared")
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized.pop("user_id")
+        if "state" not in normalized:
+            if normalized.get("published") or normalized.get("shared"):
+                normalized["state"] = "published"
+            else:
+                normalized["state"] = "personal"
         return cls.model_validate(normalized)
 
 
@@ -111,7 +134,7 @@ class MongoPluginResourceDocument(BaseModel):
     resource_name: str = Field(description="Name of the resource file")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/resource")
     content: str = Field(default="", description="Content of the resource file")
-    user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
+    author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this resource")
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -127,7 +150,10 @@ class MongoPluginResourceDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginResourceDocument:
-        return cls.model_validate(data)
+        normalized = dict(data)
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized.pop("user_id")
+        return cls.model_validate(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +171,7 @@ class MongoPluginScriptDocument(BaseModel):
     script_name: str = Field(description="Name of the script file")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/scripts/script")
     content: str = Field(default="", description="Content of the script file")
-    user_id: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
+    author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this script")
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -161,7 +187,10 @@ class MongoPluginScriptDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginScriptDocument:
-        return cls.model_validate(data)
+        normalized = dict(data)
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized.pop("user_id")
+        return cls.model_validate(normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +243,7 @@ class MongoPluginSkillUsageDocument(BaseModel):
 
     plugin_name: str = Field(description="Plugin containing the skill")
     skill_name: str = Field(description="Name of the skill that was used")
-    user_id: str = Field(description="ID of the user who used the skill")
+    author: str = Field(description="ID of the user who used the skill")
     date_used: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="When the skill was used",
@@ -225,4 +254,7 @@ class MongoPluginSkillUsageDocument(BaseModel):
 
     @classmethod
     def from_mongo_dict(cls, data: Mapping[str, Any]) -> MongoPluginSkillUsageDocument:
-        return cls.model_validate(data)
+        normalized = dict(data)
+        if "author" not in normalized and "user_id" in normalized:
+            normalized["author"] = normalized.pop("user_id")
+        return cls.model_validate(normalized)

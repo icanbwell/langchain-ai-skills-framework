@@ -129,7 +129,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         snapshot = self._get_snapshot()
         return snapshot.ordered_summaries
 
-    async def list_all_summaries(self, *, user_id: str, allowed_skills: set[str]) -> Sequence[SkillSummary]:
+    async def list_all_summaries(
+        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+    ) -> Sequence[SkillSummary]:
         snapshot = await self._get_snapshot_async()
         return snapshot.ordered_summaries
 

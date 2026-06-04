@@ -13,7 +13,9 @@ class ErrorRecord(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    operation: Literal["save", "publish", "retrieve", "delete"] = Field(description="The operation that failed")
+    operation: Literal["save", "publish", "retrieve", "delete", "state_change"] = Field(
+        description="The operation that failed"
+    )
     error_type: str = Field(default="", description="Exception class name")
     error_message: str = Field(default="", description="Human-readable error description")
     traceback: str = Field(default="", description="Full traceback if available")

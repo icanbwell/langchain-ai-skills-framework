@@ -13,7 +13,7 @@ class HistoryRecord(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    action: Literal["created", "updated", "deleted", "published", "unpublished"] = Field(
+    action: Literal["created", "updated", "deleted", "published", "unpublished", "state_changed"] = Field(
         description="Type of mutation that produced this record"
     )
     document_snapshot: dict[str, Any] = Field(

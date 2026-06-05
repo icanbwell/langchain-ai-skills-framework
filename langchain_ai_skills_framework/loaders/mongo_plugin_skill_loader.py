@@ -626,6 +626,7 @@ class MongoPluginSkillLoader:
             compatibility=None,
             metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
             allowed_tools=doc.allowed_tools,
+            date_modified=doc.date_modified,
         )
         return SkillDetails(
             summary=summary,
@@ -686,6 +687,7 @@ class MongoPluginSkillLoader:
                 compatibility=None,
                 metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
                 allowed_tools=doc.allowed_tools,
+                date_modified=doc.date_modified,
             )
             detail = SkillDetails(
                 summary=summary,

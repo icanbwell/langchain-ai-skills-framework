@@ -39,6 +39,9 @@ from langchain_ai_skills_framework.loaders.snapshot_cache_mixin import (
 )
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
+from langchain_ai_skills_framework.models.schema_version import (
+    SKILL_CACHE_SCHEMA_VERSION,
+)
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
@@ -106,7 +109,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
         self._plugins_collection = environment_variables.plugins_collection
-        self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{environment_variables.skill_cache_schema_version}"
+        self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{SKILL_CACHE_SCHEMA_VERSION}"
 
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None

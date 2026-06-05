@@ -48,7 +48,6 @@ class PluginSkillStoreFactory:
         database = self._mongo_database_factory.create_database()
         inner_store = MongoPluginSkillLoader(
             database=database,
-            schema_version=self._environment_variables.skill_cache_schema_version,
             skills_collection_name=self._environment_variables.plugin_skills_collection or "plugin_skills",
             references_collection_name=self._environment_variables.plugin_references_collection or "plugin_references",
             scripts_collection_name=self._environment_variables.plugin_scripts_collection or "plugin_scripts",

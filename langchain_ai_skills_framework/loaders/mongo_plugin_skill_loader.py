@@ -36,6 +36,9 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     build_skill_path,
     normalize_folder,
 )
+from langchain_ai_skills_framework.models.schema_version import (
+    SKILL_CACHE_SCHEMA_VERSION,
+)
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
@@ -80,7 +83,7 @@ class MongoPluginSkillLoader:
         self,
         *,
         database: AsyncIOMotorDatabase[dict[str, object]],
-        schema_version: int = 1,
+        schema_version: int = SKILL_CACHE_SCHEMA_VERSION,
         skills_collection_name: str = DEFAULT_SKILLS_COLLECTION,
         references_collection_name: str = DEFAULT_REFERENCES_COLLECTION,
         scripts_collection_name: str = DEFAULT_SCRIPTS_COLLECTION,

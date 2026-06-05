@@ -294,6 +294,9 @@ This project uses an IoC (Inversion of Control) container (`SimpleContainer` fro
 ### Environment Variables
 Configuration is accessed through a dedicated `EnvironmentVariables` class (implementing `SkillLoaderEnvironmentVariables`), not through direct `os.environ` reads. All environment-specific values (feature flags, timeouts, collection names, connection strings) are fields on this class. When adding new configuration, add a field to the environment variables class rather than reading `os.environ` directly.
 
+### Skill Cache Schema Version
+The MongoDB skill cache uses a schema version constant defined in `langchain_ai_skills_framework/models/schema_version.py`. When you change the structure of `MongoPluginSkillDocument` (adding, removing, or renaming fields that are stored in MongoDB), increment `SKILL_CACHE_SCHEMA_VERSION`. This causes existing cached documents to be ignored on read (filtered by version) and forces a re-sync from the marketplace. Do not use an environment variable for this — it is a code-level constant tied to the document schema.
+
 ### Keyword-Only Parameters
 All functions and methods in this codebase use keyword-only parameters (using the `*` separator). Do not use positional parameters. This applies to public APIs, internal helpers, protocol methods, and test stubs alike. When calling any function, always pass arguments by name.
 

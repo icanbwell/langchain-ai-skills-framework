@@ -96,12 +96,22 @@ class TestPublishSkillTool:
             await tool._arun(plugin_name="test-plugin", skill_name="  ", published=True, runtime=make_runtime())
 
     @pytest.mark.asyncio
-    async def test_rejects_publish_when_publisher_not_configured(self) -> None:
+    async def test_publishes_locally_when_publisher_not_configured(self) -> None:
         loader = _make_loader_mock(state="published")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
-        with pytest.raises(ToolException, match="GitHub marketplace publisher is not configured"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime())
+        result, artifact = await tool._arun(
+            plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime()
+        )
+
+        assert "published" in result
+        loader.set_skill_state.assert_awaited_once_with(
+            author="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            state="published",
+            published_branch=None,
+        )
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:

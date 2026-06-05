@@ -38,12 +38,12 @@ class ListSkillsService:
         user_id: str,
         plugin_name: str | None = None,
         folder: str | None = None,
-        include_testing: bool = False,
+        include_staging: bool = False,
     ) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``."""
         if user_id:
             summaries = await self._loader.list_all_summaries(
-                user_id=user_id, allowed_skills=set(), include_testing=include_testing
+                user_id=user_id, allowed_skills=set(), include_staging=include_staging
             )
         else:
             summaries = self._loader.list_skill_summaries(allowed_skills=set())

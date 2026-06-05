@@ -50,7 +50,7 @@ class _StubSharedLoader(SkillLoaderProtocol):
         return [d.summary for d in self._details.values()]
 
     async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False
     ) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills=allowed_skills)
 

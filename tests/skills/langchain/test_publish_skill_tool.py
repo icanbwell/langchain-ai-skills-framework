@@ -72,7 +72,7 @@ class TestPublishSkillTool:
 
     @pytest.mark.asyncio
     async def test_unpublishes_skill(self) -> None:
-        loader = _make_loader_mock(state="personal")
+        loader = _make_loader_mock(state="draft")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         result, _ = await tool._arun(

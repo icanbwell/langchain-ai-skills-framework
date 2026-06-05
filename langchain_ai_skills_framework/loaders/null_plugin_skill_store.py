@@ -69,7 +69,7 @@ class NullPluginSkillStore:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
     async def load_snapshot(
-        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+        self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 

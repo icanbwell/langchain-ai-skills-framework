@@ -11,7 +11,7 @@ or "all resources for a skill".
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any, ClassVar, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,6 +67,8 @@ class MongoPluginSkillDocument(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    SCHEMA_VERSION: ClassVar[int] = 2
+
     plugin_name: str = Field(description="Plugin that owns this skill")
     skill_name: str = Field(description="Normalized name of the skill")
     folder: str | None = Field(default=None, description="Optional subfolder path within the plugin")
@@ -82,7 +84,7 @@ class MongoPluginSkillDocument(BaseModel):
         description="Arbitrary metadata from the skill frontmatter",
     )
     author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
-    state: str = Field(default="personal", description="Skill lifecycle state: personal, testing, or published")
+    state: str = Field(default="draft", description="Skill lifecycle state: draft, staging, in_review, or published")
     published_date: datetime | None = Field(
         default=None,
         description="When the skill was last published (or unpublished)",
@@ -115,7 +117,7 @@ class MongoPluginSkillDocument(BaseModel):
             if normalized.get("published") or normalized.get("shared"):
                 normalized["state"] = "published"
             else:
-                normalized["state"] = "personal"
+                normalized["state"] = "draft"
         return cls.model_validate(normalized)
 
 

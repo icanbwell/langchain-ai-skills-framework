@@ -102,7 +102,7 @@ class PublishSkillService:
                 author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
-                state="published" if published else "personal",
+                state="published" if published else "draft",
                 published_branch=branch,
             )
             state = "published" if doc.state == "published" else "unpublished"

@@ -3,7 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
+    SkillNotFoundError,
+)
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
@@ -21,12 +27,17 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 
 class PublishSkillService:
-    """Toggle a skill between published and unpublished in the marketplace.
+    """Submit a skill for review (published=True) or revert to draft (published=False).
 
-    When a ``marketplace_publisher`` is configured, publishing a skill also
-    fires off a background task that publishes (or unpublishes) the skill
-    to the GitHub marketplace repo.  The background task never blocks the
-    local operation.
+    When ``published=True``, the service enforces a review gate:
+    1. Ensures the skill exists in MongoDB (auto-saves from skill_loader if missing)
+    2. Validates that the skill is in "staging" state
+    3. Sets state to "in_review"
+    4. Fires a background PR task (if marketplace_publisher is configured)
+
+    When ``published=False``, the service:
+    1. Sets state to "draft" (no state validation)
+    2. Fires a background unpublish task
 
     A class-level task registry ensures that rapid toggles for the same
     skill are serialized: a new publish/unpublish request cancels any
@@ -47,9 +58,11 @@ class PublishSkillService:
         *,
         mongo_skill_loader: PluginSkillStore | None,
         marketplace_publisher: GitHubMarketplacePublisher | None = None,
+        skill_loader: SkillLoaderProtocol | None = None,
     ) -> None:
         self._store = mongo_skill_loader
         self._publisher = marketplace_publisher
+        self._skill_loader = skill_loader
 
     async def execute(
         self,
@@ -61,7 +74,7 @@ class PublishSkillService:
         published: bool,
         branch_name: str | None = None,
     ) -> str:
-        """Toggle publish state for a skill.
+        """Submit skill for review (published=True) or revert to draft (published=False).
 
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the ``content`` frontmatter.
@@ -87,6 +100,21 @@ class PublishSkillService:
             )
 
         try:
+            # When publishing, enforce the review gate
+            if published:
+                await self._ensure_exists_in_staging(
+                    store=store,
+                    user_id=user_id,
+                    plugin_name=plugin_name,
+                    skill_name=skill_name,
+                )
+                await self._validate_staging_state(
+                    store=store,
+                    user_id=user_id,
+                    plugin_name=plugin_name,
+                    skill_name=skill_name,
+                )
+
             branch: str | None = None
             if self._publisher is not None and self._publisher.use_branch:
                 if branch_name:
@@ -98,15 +126,21 @@ class PublishSkillService:
                         else f"skill-unpublish/{plugin_name}/{skill_name}"
                     )
 
+            # Set state: "in_review" for publish, "draft" for unpublish
+            target_state = "in_review" if published else "draft"
             doc = await store.set_skill_state(
                 author=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
-                state="published" if published else "draft",
+                state=target_state,
                 published_branch=branch,
             )
-            state = "published" if doc.state == "published" else "unpublished"
-            message = f"Skill '{doc.skill_name}' is now {state}."
+
+            message = (
+                f"Skill '{doc.skill_name}' submitted for review."
+                if published
+                else f"Skill '{doc.skill_name}' is now unpublished."
+            )
             logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
             if self._publisher is not None:
@@ -134,6 +168,8 @@ class PublishSkillService:
                 task.add_done_callback(_cleanup)
 
             return message
+        except SkillOperationError:
+            raise
         except Exception as exc:
             logger.exception(
                 "PublishSkillService failed for skill_name=%s user=%s",
@@ -143,6 +179,78 @@ class PublishSkillService:
             raise SkillOperationError(
                 f"Unable to update publishing for skill '{skill_name}' due to an internal error."
             ) from exc
+
+    # ------------------------------------------------------------------
+    # Review gate helpers
+    # ------------------------------------------------------------------
+
+    async def _ensure_exists_in_staging(
+        self,
+        *,
+        store: PluginSkillStore,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+    ) -> None:
+        """Ensure skill exists in MongoDB. Auto-save from skill_loader if missing."""
+        exists = await store.skill_exists(
+            author=user_id,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+        )
+        if exists:
+            return
+
+        # Skill not in MongoDB yet
+        if self._skill_loader is None:
+            raise SkillOperationError(
+                f"Skill '{skill_name}' does not exist and no skill_loader is configured to load it."
+            )
+
+        try:
+            details = await self._skill_loader.get_skill_details_for_user(
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
+            )
+        except SkillNotFoundError as exc:
+            raise SkillOperationError(f"Skill '{skill_name}' not found in skill_loader.") from exc
+
+        # Save with state="staging"
+        await store.save_skill(
+            author=user_id,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+            content=details.content,
+            state="staging",
+            modified_by=user_id,
+        )
+        logger.info(
+            "Auto-saved skill '%s/%s' with state='staging' (user=%s)",
+            plugin_name,
+            skill_name,
+            user_id,
+        )
+
+    async def _validate_staging_state(
+        self,
+        *,
+        store: PluginSkillStore,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+    ) -> None:
+        """Validate that the skill is in 'staging' state before publishing."""
+        details = await store.get_skill_details(
+            author=user_id,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+        )
+        if details.summary.state != "staging":
+            raise SkillOperationError(
+                f"Skill '{skill_name}' must be in 'staging' state to be submitted for review. "
+                f"Current state: '{details.summary.state}'."
+            )
 
     # ------------------------------------------------------------------
     # Background publish logic

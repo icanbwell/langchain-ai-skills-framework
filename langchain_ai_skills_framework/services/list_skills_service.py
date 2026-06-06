@@ -39,6 +39,7 @@ class ListSkillsService:
         plugin_name: str | None = None,
         folder: str | None = None,
         include_staging: bool = False,
+        exclude_states: set[str] | None = None,
     ) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``."""
         if user_id:
@@ -53,6 +54,9 @@ class ListSkillsService:
 
         if folder is not None:
             summaries = [s for s in summaries if s.folder == folder]
+
+        if exclude_states:
+            summaries = [s for s in summaries if s.state not in exclude_states]
 
         results = sorted(
             (

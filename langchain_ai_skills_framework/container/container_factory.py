@@ -29,6 +29,11 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory_impl impor
 from langchain_ai_skills_framework.persistence.mongo_url_helpers import (
     MongoUrlHelpers,
 )
+from langchain_ai_skills_framework.github.token_provider import (
+    GitHubAppTokenProvider,
+    GitHubTokenProvider,
+    StaticTokenProvider,
+)
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
@@ -87,30 +92,63 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
         environment_variables=env_vars,
         github_directory_downloader=c.resolve(GithubDirectoryDownloader),
         snapshot_cache_store=snapshot_cache_store,
+        token_provider=c.resolve(GitHubTokenProvider),
     )
+
+
+def _build_token_provider(*, c: IContainer) -> GitHubTokenProvider | None:
+    """Build the GitHub token provider based on available environment variables.
+
+    Auto-detection priority:
+    1. GitHub App (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID)
+    2. Static token (SKILLS_GITHUB_TOKEN or GITHUB_TOKEN)
+    3. None (GitHub features disabled)
+    """
+    env = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
+
+    app_id = env.github_app_id
+    private_key = env.github_app_private_key
+    installation_id = env.github_app_installation_id
+
+    if app_id and private_key and installation_id:
+        logger.info("GitHub authentication: using GitHub App (app_id=%s)", app_id)
+        return GitHubAppTokenProvider(
+            app_id=app_id,
+            private_key=private_key,
+            installation_id=installation_id,
+        )
+
+    token = env.skills_github_token
+    if token:
+        logger.info("GitHub authentication: using static token (PAT)")
+        return StaticTokenProvider(token=token)
+
+    logger.info("GitHub authentication: not configured (marketplace features disabled)")
+    return None
 
 
 def _build_marketplace_publisher(*, c: IContainer) -> GitHubMarketplacePublisher | None:
     """Build the marketplace publisher from the PLUGINS_MARKETPLACE URI.
 
     Publishing is enabled when PLUGINS_MARKETPLACE is a github:// URI
-    and a GitHub token is available.  The target repo is extracted from
-    the URI; PLUGINS_MARKETPLACE_PUBLISH_BRANCH and
-    PLUGINS_MARKETPLACE_PUBLISH_USE_BRANCH control commit behaviour.
+    and a GitHub token provider is available.
     """
     env = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
     if not env.plugins_marketplace_publish_enabled:
         return None
     marketplace_uri = env.plugins_marketplace
-    token = env.skills_github_token
-    if not marketplace_uri or not token or not marketplace_uri.startswith("github://"):
+    if not marketplace_uri or not marketplace_uri.startswith("github://"):
+        return None
+
+    token_provider = c.resolve(GitHubTokenProvider)
+    if token_provider is None:
         return None
 
     git_location = GithubDirectoryDownloader.parse_github_uri(marketplace_uri)
     repo = f"{git_location.owner}/{git_location.repository}"
 
     return GitHubMarketplacePublisher(
-        access_token=token,
+        token_provider=token_provider,
         repo=repo,
         base_branch=env.plugins_marketplace_publish_branch,
         use_branch=env.plugins_marketplace_publish_use_branch,
@@ -123,6 +161,11 @@ class LangchainAISkillsFrameworkContainerFactory:
         *,
         container: SimpleContainer,
     ) -> SimpleContainer:
+
+        container.singleton(
+            GitHubTokenProvider,
+            lambda c: _build_token_provider(c=c),
+        )
 
         container.singleton(GithubDirectoryDownloader, lambda c: GithubDirectoryDownloader())
 

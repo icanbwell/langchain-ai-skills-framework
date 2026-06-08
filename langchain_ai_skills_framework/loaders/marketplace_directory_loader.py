@@ -14,6 +14,9 @@ from skillkit import SkillManager, SkillMetadata, Skill
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.github.token_provider import (
+    GitHubTokenProvider,
+)
 from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -81,6 +84,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         github_directory_downloader: GithubDirectoryDownloader,
         plugin_manager: MarketplacePluginManager | None = None,
         snapshot_cache_store: BaseStore | None = None,
+        token_provider: GitHubTokenProvider | None = None,
     ) -> None:
         self._identifier: UUID = uuid4()
         if environment_variables is None:
@@ -104,6 +108,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             raise SkillValidationError("github_directory_downloader is not configured")
         self._github_directory_downloader = github_directory_downloader
 
+        self._token_provider = token_provider
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
         self._plugins_collection = environment_variables.plugins_collection
@@ -552,10 +557,16 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         cache_path = Path(cache_folder) if cache_folder else Path(".marketplace-git-cache")
         cache_ttl = 0 if force else int(self._reload_ttl_seconds or 0)
 
+        github_token = (
+            self._token_provider.get_token_sync()
+            if self._token_provider is not None
+            else self._environment_variables.skills_github_token
+        )
+
         try:
             return self._github_directory_downloader.download(
                 source_uri=self._marketplace_uri,
-                github_token=self._environment_variables.skills_github_token,
+                github_token=github_token,
                 cache_path=cache_path,
                 cache_ttl_seconds=cache_ttl,
                 include_directories=include_directories,

@@ -56,37 +56,21 @@ class _FailingExecutor:
 
 
 @pytest.mark.asyncio
-async def test_arun_returns_summary_and_structured_output() -> None:
+@pytest.mark.parametrize("script_name", ["inline_script.py", "custom_script.py"])
+async def test_arun_passes_script_name_and_returns_output(*, script_name: str) -> None:
     stub = _StubExecutor()
     tool = RunPythonScriptTool(script_executor=stub)
 
     message, output = await tool._arun(
         script="print('ok')",
-        script_name="inline_script.py",
+        script_name=script_name,
         arguments={"MixedCase": 0.5},
         runtime=make_runtime(),
     )
 
     assert message == "script output"
     assert output == "script output"
-    assert stub.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
-
-
-@pytest.mark.asyncio
-async def test_arun_uses_custom_script_name() -> None:
-    stub = _StubExecutor()
-    tool = RunPythonScriptTool(script_executor=stub)
-
-    message, output = await tool._arun(
-        script="print('ok')",
-        script_name="custom_script.py",
-        arguments={"MixedCase": 0.5},
-        runtime=make_runtime(),
-    )
-
-    assert message == "script output"
-    assert output == "script output"
-    assert stub.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
+    assert stub.calls == [(script_name, "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio
@@ -104,7 +88,7 @@ async def test_arun_raises_tool_exception_for_blank_script_name() -> None:
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_when_inline_script_fails() -> None:
+async def test_arun_returns_error_output_when_script_fails() -> None:
     tool = RunPythonScriptTool(script_executor=_FailingExecutor())
 
     result = await tool._arun(

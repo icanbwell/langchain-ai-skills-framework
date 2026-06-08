@@ -41,7 +41,6 @@ class FakeEnvVars:
     plugin_skills_collection: str | None = "plugin_skills"
     plugin_references_collection: str | None = "plugin_references"
     plugin_scripts_collection: str | None = "plugin_scripts"
-    skill_cache_schema_version: int = 1
 
 
 def _write_marketplace_skill(

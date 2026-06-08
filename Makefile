@@ -35,6 +35,13 @@ setup-pre-commit:
 run-pre-commit: setup-pre-commit
 	./.git/hooks/pre-commit
 
+.PHONY:update-fast
+update-fast: ## Re-locks uv.lock quickly using an existing container (skips full rebuild)
+	@docker rm -f skills_framework_uv_lock 2>/dev/null || true
+	docker compose run --no-deps --name skills_framework_uv_lock dev sh -c "uv lock --upgrade && cp uv.lock /tmp/uv.lock.out" && \
+	docker cp skills_framework_uv_lock:/tmp/uv.lock.out uv.lock; \
+	docker rm -f skills_framework_uv_lock 2>/dev/null || true
+
 .PHONY:update
 update: down uv.lock setup-pre-commit  ## Updates all the packages using pyproject.toml
 	make devdocker

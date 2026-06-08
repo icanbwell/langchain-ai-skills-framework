@@ -37,6 +37,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.loaders.snapshot_cache_mixin import (
     SnapshotCacheMixin,
 )
+from langchain_ai_skills_framework.models.mongo_plugin_skill_document import MongoPluginSkillDocument
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
@@ -106,7 +107,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
         self._plugins_collection = environment_variables.plugins_collection
-        self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{environment_variables.skill_cache_schema_version}"
+        self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{MongoPluginSkillDocument.SCHEMA_VERSION}"
 
         self._lock = RLock()
         self._snapshot: SkillSnapshot | None = None
@@ -130,7 +131,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         return snapshot.ordered_summaries
 
     async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False
     ) -> Sequence[SkillSummary]:
         snapshot = await self._get_snapshot_async()
         return snapshot.ordered_summaries

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Sequence
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
@@ -22,6 +23,7 @@ class SkillInfo:
     plugin_name: str | None = None
     folder: str | None = None
     state: str = "published"
+    date_modified: datetime | None = None
 
 
 class ListSkillsService:
@@ -36,12 +38,13 @@ class ListSkillsService:
         user_id: str,
         plugin_name: str | None = None,
         folder: str | None = None,
-        include_testing: bool = False,
+        include_staging: bool = False,
+        exclude_states: set[str] | None = None,
     ) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``."""
         if user_id:
             summaries = await self._loader.list_all_summaries(
-                user_id=user_id, allowed_skills=set(), include_testing=include_testing
+                user_id=user_id, allowed_skills=set(), include_staging=include_staging
             )
         else:
             summaries = self._loader.list_skill_summaries(allowed_skills=set())
@@ -52,10 +55,18 @@ class ListSkillsService:
         if folder is not None:
             summaries = [s for s in summaries if s.folder == folder]
 
+        if exclude_states:
+            summaries = [s for s in summaries if s.state not in exclude_states]
+
         results = sorted(
             (
                 SkillInfo(
-                    name=s.name, description=s.description, plugin_name=s.plugin_name, folder=s.folder, state=s.state
+                    name=s.name,
+                    description=s.description,
+                    plugin_name=s.plugin_name,
+                    folder=s.folder,
+                    state=s.state,
+                    date_modified=s.date_modified,
                 )
                 for s in summaries
             ),
@@ -73,8 +84,9 @@ class ListSkillsService:
         for s in skills:
             plugin_tag = f"<plugin_name>{s.plugin_name}</plugin_name>\n" if s.plugin_name else ""
             folder_tag = f"<folder>{s.folder}</folder>\n" if s.folder else ""
+            date_tag = f"<last_updated>{s.date_modified.isoformat()}</last_updated>\n" if s.date_modified else ""
             skill_elements.append(
                 f"<skill>\n{plugin_tag}{folder_tag}<name>{s.name}</name>\n"
-                f"<description>{s.description}</description>\n</skill>"
+                f"<description>{s.description}</description>\n{date_tag}</skill>"
             )
         return "<available_skills>\n" + "\n".join(skill_elements) + "\n</available_skills>"

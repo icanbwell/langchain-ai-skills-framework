@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Mapping
 
@@ -21,6 +22,7 @@ class SkillSummary:
     compatibility: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
     allowed_tools: tuple[str, ...] = ()
+    date_modified: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

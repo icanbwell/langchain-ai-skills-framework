@@ -479,9 +479,9 @@ class HistoryTrackingPluginSkillStore:
     # ------------------------------------------------------------------
 
     async def load_snapshot(
-        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+        self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
-        return await self._inner.load_snapshot(author=author, plugin_name=plugin_name, include_testing=include_testing)
+        return await self._inner.load_snapshot(author=author, plugin_name=plugin_name, include_staging=include_staging)
 
     async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
         return await self._inner.load_shared_snapshot(plugin_name=plugin_name)

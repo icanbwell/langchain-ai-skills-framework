@@ -21,7 +21,7 @@ from langchain_ai_skills_framework.publishing.github_marketplace_publisher impor
 from tests.skills.langchain.conftest import make_runtime
 
 
-def _make_doc(skill_name: str = "test-skill", state: str = "published") -> MongoPluginSkillDocument:
+def _make_doc(skill_name: str = "test-skill", state: str = "in_review") -> MongoPluginSkillDocument:
     return MongoPluginSkillDocument(
         plugin_name="test-plugin",
         author="user-1",
@@ -36,9 +36,27 @@ def _make_doc(skill_name: str = "test-skill", state: str = "published") -> Mongo
     )
 
 
-def _make_loader_mock(state: str = "published") -> AsyncMock:
+def _make_loader_mock(state: str = "in_review") -> AsyncMock:
+    from langchain_ai_skills_framework.models.skills_model import (
+        SkillDetails,
+        SkillSummary,
+    )
+
     loader = AsyncMock(spec=PluginSkillStore)
+    loader.skill_exists.return_value = True
     loader.set_skill_state.return_value = _make_doc(state=state)
+
+    # Mock get_skill_details to return staging state for validation
+    summary = SkillSummary(
+        name="test-skill",
+        description="A test",
+        plugin_name="test-plugin",
+        state="staging",
+    )
+    loader.get_skill_details.return_value = SkillDetails(
+        summary=summary,
+        content="# Test\nContent",
+    )
     return loader
 
 
@@ -53,7 +71,7 @@ def _make_publisher_mock() -> MagicMock:
 class TestPublishSkillTool:
     @pytest.mark.asyncio
     async def test_publishes_skill_successfully(self) -> None:
-        loader = _make_loader_mock(state="published")
+        loader = _make_loader_mock(state="in_review")
         publisher = _make_publisher_mock()
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=publisher)
 
@@ -61,18 +79,18 @@ class TestPublishSkillTool:
             plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime("user-1")
         )
 
-        assert "published" in result
+        assert "submitted for review" in result
         loader.set_skill_state.assert_awaited_once_with(
             author="user-1",
             plugin_name="test-plugin",
             skill_name="test-skill",
-            state="published",
+            state="in_review",
             published_branch="skill-publish/test-plugin/test-skill",
         )
 
     @pytest.mark.asyncio
     async def test_unpublishes_skill(self) -> None:
-        loader = _make_loader_mock(state="personal")
+        loader = _make_loader_mock(state="draft")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
         result, _ = await tool._arun(
@@ -96,12 +114,22 @@ class TestPublishSkillTool:
             await tool._arun(plugin_name="test-plugin", skill_name="  ", published=True, runtime=make_runtime())
 
     @pytest.mark.asyncio
-    async def test_rejects_publish_when_publisher_not_configured(self) -> None:
-        loader = _make_loader_mock(state="published")
+    async def test_publishes_locally_when_publisher_not_configured(self) -> None:
+        loader = _make_loader_mock(state="in_review")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
-        with pytest.raises(ToolException, match="GitHub marketplace publisher is not configured"):
-            await tool._arun(plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime())
+        result, artifact = await tool._arun(
+            plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime()
+        )
+
+        assert "submitted for review" in result
+        loader.set_skill_state.assert_awaited_once_with(
+            author="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            state="in_review",
+            published_branch=None,
+        )
 
     @pytest.mark.asyncio
     async def test_rejects_when_loader_not_configured(self) -> None:
@@ -112,7 +140,26 @@ class TestPublishSkillTool:
 
     @pytest.mark.asyncio
     async def test_wraps_unexpected_exception(self) -> None:
+        from langchain_ai_skills_framework.models.skills_model import (
+            SkillDetails,
+            SkillSummary,
+        )
+
         loader = AsyncMock(spec=PluginSkillStore)
+        loader.skill_exists.return_value = True
+
+        # Mock get_skill_details to return staging state
+        summary = SkillSummary(
+            name="test",
+            description="A test",
+            plugin_name="test-plugin",
+            state="staging",
+        )
+        loader.get_skill_details.return_value = SkillDetails(
+            summary=summary,
+            content="# Test\nContent",
+        )
+
         loader.set_skill_state.side_effect = RuntimeError("db down")
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=_make_publisher_mock())
 

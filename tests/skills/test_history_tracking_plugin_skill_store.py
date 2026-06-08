@@ -227,7 +227,7 @@ async def test_set_skill_state_personal_records_state_changed(
         author="user-1",
         plugin_name="my-plugin",
         skill_name="my-skill",
-        state="personal",
+        state="draft",
     )
 
     record = history_writer.write_skill_history.call_args.kwargs["record"]
@@ -468,7 +468,7 @@ async def test_load_snapshot_passes_through(
 ) -> None:
     await store.load_snapshot(author="user-1", plugin_name="my-plugin")
 
-    inner_store.load_snapshot.assert_awaited_once_with(author="user-1", plugin_name="my-plugin", include_testing=False)
+    inner_store.load_snapshot.assert_awaited_once_with(author="user-1", plugin_name="my-plugin", include_staging=False)
     history_writer.write_skill_history.assert_not_awaited()
 
 

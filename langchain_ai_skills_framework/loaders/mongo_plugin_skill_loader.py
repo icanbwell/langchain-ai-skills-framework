@@ -80,7 +80,7 @@ class MongoPluginSkillLoader:
         self,
         *,
         database: AsyncIOMotorDatabase[dict[str, object]],
-        schema_version: int = 1,
+        schema_version: int = MongoPluginSkillDocument.SCHEMA_VERSION,
         skills_collection_name: str = DEFAULT_SKILLS_COLLECTION,
         references_collection_name: str = DEFAULT_REFERENCES_COLLECTION,
         scripts_collection_name: str = DEFAULT_SCRIPTS_COLLECTION,
@@ -222,7 +222,7 @@ class MongoPluginSkillLoader:
             "date_created": now,
         }
         if state is None:
-            set_on_insert["state"] = "personal"
+            set_on_insert["state"] = "draft"
 
         raw = await self._skills_collection.find_one_and_update(
             self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}),
@@ -583,14 +583,14 @@ class MongoPluginSkillLoader:
     # --- Skill read operations -----------------------------------------------
 
     async def load_snapshot(
-        self, *, author: str, plugin_name: str | None = None, include_testing: bool = False
+        self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
         self._validate_author(author)
         query: dict[str, object] = {"author": author}
         if plugin_name:
             query["plugin_name"] = plugin_name
-        if not include_testing:
-            query["state"] = {"$ne": "testing"}
+        if not include_staging:
+            query["state"] = {"$ne": "staging"}
         return await self._build_snapshot(query=self._version_filter(query), owner_label=author)
 
     async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
@@ -626,6 +626,7 @@ class MongoPluginSkillLoader:
             compatibility=None,
             metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
             allowed_tools=doc.allowed_tools,
+            date_modified=doc.date_modified,
         )
         return SkillDetails(
             summary=summary,
@@ -686,6 +687,7 @@ class MongoPluginSkillLoader:
                 compatibility=None,
                 metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
                 allowed_tools=doc.allowed_tools,
+                date_modified=doc.date_modified,
             )
             detail = SkillDetails(
                 summary=summary,

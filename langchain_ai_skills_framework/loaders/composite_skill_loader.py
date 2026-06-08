@@ -82,10 +82,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return self._shared_loader.list_skill_summaries(allowed_skills=allowed_skills)
 
     async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str], include_testing: bool = False
+        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False
     ) -> Sequence[SkillSummary]:
         """Return merged summaries from shared + user skills."""
-        snapshot = await self._merged_snapshot(user_id=user_id, include_testing=include_testing)
+        snapshot = await self._merged_snapshot(user_id=user_id, include_staging=include_staging)
         return snapshot.ordered_summaries
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
@@ -129,7 +129,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     async def get_instructions_for_user(self, *, user_id: str) -> str:
         """Return merged skill instructions including user skills."""
-        summaries = await self.list_all_summaries(user_id=user_id, allowed_skills=set(), include_testing=False)
+        summaries = await self.list_all_summaries(user_id=user_id, allowed_skills=set(), include_staging=False)
         if not summaries:
             return await self._shared_loader.get_instructions()
 
@@ -424,7 +424,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Merging -------------------------------------------------------------
 
-    async def _merged_snapshot(self, *, user_id: str, include_testing: bool = False) -> SkillSnapshot:
+    async def _merged_snapshot(self, *, user_id: str, include_staging: bool = False) -> SkillSnapshot:
         """Build a merged snapshot with precedence: GitHub -> shared DB -> user DB.
 
         GitHub/filesystem skills form the base.  Shared database skills
@@ -441,7 +441,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         # 2+3. Load shared and user snapshots concurrently
         shared_snapshot, user_snapshot = await asyncio.gather(
             self._user_loader.load_shared_snapshot(),
-            self._user_loader.load_snapshot(author=user_id, include_testing=include_testing),
+            self._user_loader.load_snapshot(author=user_id, include_staging=include_staging),
         )
 
         # Shared database skills (override GitHub on collision)

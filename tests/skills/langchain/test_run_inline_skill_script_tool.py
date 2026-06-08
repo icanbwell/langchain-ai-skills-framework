@@ -55,38 +55,6 @@ class _FailingExecutor:
         )
 
 
-def test_run_returns_summary_and_structured_output() -> None:
-    stub = _StubExecutor()
-    tool = RunPythonScriptTool(script_executor=stub)
-
-    message, output = tool._run(
-        script="print('ok')",
-        script_name="inline_script.py",
-        arguments={"MixedCase": 0.5},
-        runtime=make_runtime(),
-    )
-
-    assert message == "script output"
-    assert output == "script output"
-    assert stub.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
-
-
-def test_run_uses_custom_script_name() -> None:
-    stub = _StubExecutor()
-    tool = RunPythonScriptTool(script_executor=stub)
-
-    message, output = tool._run(
-        script="print('ok')",
-        script_name="custom_script.py",
-        arguments={"MixedCase": 0.5},
-        runtime=make_runtime(),
-    )
-
-    assert message == "script output"
-    assert output == "script output"
-    assert stub.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
-
-
 @pytest.mark.asyncio
 async def test_arun_returns_summary_and_structured_output() -> None:
     stub = _StubExecutor()

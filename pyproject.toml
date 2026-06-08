@@ -38,9 +38,6 @@ langchain = [
     "langchain>=1.0.0",
     "langgraph>=0.2.0",
 ]
-agentcore = [
-    "boto3>=1.34.59",
-]
 
 [project.urls]
 Homepage = "https://github.com/icanbwell/ai-skills"
@@ -87,7 +84,7 @@ warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = ["fsspec", "fsspec.*", "skills_ref.*", "setuptools.*", "boto3", "boto3.*", "botocore", "botocore.*"]
+module = ["fsspec", "fsspec.*", "skills_ref.*", "setuptools.*"]
 ignore_missing_imports = true
 
 [tool.ruff]

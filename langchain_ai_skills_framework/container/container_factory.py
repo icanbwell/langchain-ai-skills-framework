@@ -74,12 +74,7 @@ def _build_key_value_store(*, c: IContainer) -> BaseStore:
 
 
 def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
-    """Build the shared skill loader from the plugin marketplace.
-
-    Skills are loaded from the marketplace structure (plugins/*/skills/).
-    The SkillkitDirectoryLoader (SKILLS_DIRECTORY) has been removed —
-    all skills come from plugins.
-    """
+    """Build the shared skill loader from the plugin marketplace."""
     env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
 
     snapshot_cache_store: BaseStore | None = None
@@ -97,13 +92,7 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
 
 
 def _build_token_provider(*, c: IContainer) -> GitHubTokenProvider | None:
-    """Build the GitHub token provider based on available environment variables.
-
-    Auto-detection priority:
-    1. GitHub App (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID)
-    2. Static token (SKILLS_GITHUB_TOKEN or GITHUB_TOKEN)
-    3. None (GitHub features disabled)
-    """
+    """Build GitHub token provider: App credentials > static PAT > None."""
     env = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
 
     app_id = env.github_app_id
@@ -128,11 +117,6 @@ def _build_token_provider(*, c: IContainer) -> GitHubTokenProvider | None:
 
 
 def _build_marketplace_publisher(*, c: IContainer) -> GitHubMarketplacePublisher | None:
-    """Build the marketplace publisher from the PLUGINS_MARKETPLACE URI.
-
-    Publishing is enabled when PLUGINS_MARKETPLACE is a github:// URI
-    and a GitHub token provider is available.
-    """
     env = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
     if not env.plugins_marketplace_publish_enabled:
         return None

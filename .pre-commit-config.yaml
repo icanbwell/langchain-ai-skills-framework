@@ -95,4 +95,4 @@ repos:
     hooks:
       - id: detect-secrets
         args: [ 'scan' ]
-        exclude: .*/tests/.*
+        exclude: (^|/)tests/

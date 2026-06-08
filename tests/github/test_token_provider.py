@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from langchain_ai_skills_framework.github import (
@@ -9,7 +8,7 @@ from langchain_ai_skills_framework.github import (
     StaticTokenProvider,
 )
 
-TEST_RSA_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----  # pragma: allowlist secret
+TEST_RSA_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
 MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCiXezK95eGIz2E
 ABM/WkTMjOqDwgckThvmvG6SiiH0+zaCzdEIVJXlHuqRgpMB/v9tdJXdfYSZSl1Q
 +GDen/bDZUxbQGbaqlWzRS4cfhF5FVjQvL/Big3mGBpobxGikuzE/aDRT4Uc1itA
@@ -120,20 +119,17 @@ class TestGitHubAppTokenProvider:
             installation_id="67890",
         )
 
-        expired_time = datetime.now(timezone.utc) + timedelta(seconds=100)
-        fresh_time = datetime.now(timezone.utc) + timedelta(hours=1)
-
         mock_response_expired = Mock()
         mock_response_expired.json.return_value = {
             "token": "ghs_expired",
-            "expires_at": expired_time.isoformat().replace("+00:00", "Z"),
+            "expires_at": "2020-01-01T00:00:00Z",
         }
         mock_response_expired.raise_for_status = Mock()
 
         mock_response_fresh = Mock()
         mock_response_fresh.json.return_value = {
             "token": "ghs_fresh",
-            "expires_at": fresh_time.isoformat().replace("+00:00", "Z"),
+            "expires_at": "2099-01-01T00:00:00Z",
         }
         mock_response_fresh.raise_for_status = Mock()
 
@@ -146,8 +142,6 @@ class TestGitHubAppTokenProvider:
 
             token1 = await provider.get_token()
             assert token1 == "ghs_expired"
-
-            await asyncio_sleep(0.1)
 
             token2 = await provider.get_token()
             assert token2 == "ghs_fresh"
@@ -189,9 +183,3 @@ class TestGitHubAppTokenProvider:
             installation_id="67890",
         )
         assert isinstance(provider, GitHubTokenProvider)
-
-
-async def asyncio_sleep(seconds: float) -> None:
-    import asyncio
-
-    await asyncio.sleep(seconds)

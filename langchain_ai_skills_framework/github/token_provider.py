@@ -77,34 +77,29 @@ class GitHubAppTokenProvider:
         }
         return jwt.encode(payload, self._private_key, algorithm="RS256")
 
-    async def _mint_token(self) -> str:
-        app_jwt = self._build_jwt()
-        url = f"{_GITHUB_API_BASE}/app/installations/{self._installation_id}/access_tokens"
-        headers = {
-            "Authorization": f"Bearer {app_jwt}",
+    def _request_url(self) -> str:
+        return f"{_GITHUB_API_BASE}/app/installations/{self._installation_id}/access_tokens"
+
+    def _request_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._build_jwt()}",
             "Accept": "application/vnd.github+json",
         }
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+
+    def _cache_response(self, data: dict[str, str]) -> str:
         self._cached_token = data["token"]
         self._cached_expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00")).timestamp()
         logger.debug("Minted new GitHub App installation token (expires %s)", data["expires_at"])
         return self._cached_token
 
-    def _mint_token_sync(self) -> str:
-        app_jwt = self._build_jwt()
-        url = f"{_GITHUB_API_BASE}/app/installations/{self._installation_id}/access_tokens"
-        headers = {
-            "Authorization": f"Bearer {app_jwt}",
-            "Accept": "application/vnd.github+json",
-        }
-        with httpx.Client() as client:
-            response = client.post(url, headers=headers)
+    async def _mint_token(self) -> str:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(self._request_url(), headers=self._request_headers())
         response.raise_for_status()
-        data = response.json()
-        self._cached_token = data["token"]
-        self._cached_expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00")).timestamp()
-        logger.debug("Minted new GitHub App installation token (expires %s)", data["expires_at"])
-        return self._cached_token
+        return self._cache_response(response.json())
+
+    def _mint_token_sync(self) -> str:
+        with httpx.Client() as client:
+            response = client.post(self._request_url(), headers=self._request_headers())
+        response.raise_for_status()
+        return self._cache_response(response.json())

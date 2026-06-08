@@ -10,7 +10,6 @@ import httpx
 
 from langchain_ai_skills_framework.github.token_provider import (
     GitHubTokenProvider,
-    StaticTokenProvider,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -36,19 +35,13 @@ class GitHubMarketplacePublisher:
     def __init__(
         self,
         *,
-        access_token: str | None = None,
-        token_provider: GitHubTokenProvider | None = None,
+        token_provider: GitHubTokenProvider,
         repo: str,
         base_branch: str = "main",
         use_branch: bool = True,
     ) -> None:
-        if token_provider is None and access_token is None:
-            raise ValueError("Either token_provider or access_token must be provided")
-        if token_provider is not None:
-            self._token_provider = token_provider
-        else:
-            self._token_provider = StaticTokenProvider(token=access_token)  # type: ignore[arg-type]
-        self._repo = repo  # "owner/repo"
+        self._token_provider = token_provider
+        self._repo = repo
         self._base_branch = base_branch
         self._use_branch = use_branch
         self._base_url = "https://api.github.com"

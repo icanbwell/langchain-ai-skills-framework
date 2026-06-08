@@ -15,7 +15,8 @@ from tests.skills.langchain.conftest import make_runtime
 
 
 class _StubExecutor:
-    calls: list[tuple[str, str, dict[str, Any], int]] = []
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any], int]] = []
 
     async def execute_inline_script(
         self,
@@ -24,10 +25,8 @@ class _StubExecutor:
         script: str,
         arguments: dict[str, Any],
         timeout: int = 30,
-        use_uv: bool = True,
     ) -> MyScriptExecutionResult:
-        del use_uv
-        _StubExecutor.calls.append((script_name, script, arguments, timeout))
+        self.calls.append((script_name, script, arguments, timeout))
         return MyScriptExecutionResult(
             stdout="script output",
             stderr=None,
@@ -45,9 +44,8 @@ class _FailingExecutor:
         script: str,
         arguments: dict[str, Any],
         timeout: int = 30,
-        use_uv: bool = True,
     ) -> MyScriptExecutionResult:
-        del script_name, script, arguments, timeout, use_uv
+        del script_name, script, arguments, timeout
         return MyScriptExecutionResult(
             stdout=None,
             stderr="inline boom",
@@ -57,15 +55,9 @@ class _FailingExecutor:
         )
 
 
-def test_run_returns_summary_and_structured_output(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _StubExecutor.calls = []
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.services.run_python_script_service.MyScriptExecutor",
-        _StubExecutor,
-    )
-    tool = RunPythonScriptTool()
+def test_run_returns_summary_and_structured_output() -> None:
+    stub = _StubExecutor()
+    tool = RunPythonScriptTool(script_executor=stub)
 
     message, output = tool._run(
         script="print('ok')",
@@ -76,16 +68,12 @@ def test_run_returns_summary_and_structured_output(
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
+    assert stub.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
-def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    _StubExecutor.calls = []
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.services.run_python_script_service.MyScriptExecutor",
-        _StubExecutor,
-    )
-    tool = RunPythonScriptTool()
+def test_run_uses_custom_script_name() -> None:
+    stub = _StubExecutor()
+    tool = RunPythonScriptTool(script_executor=stub)
 
     message, output = tool._run(
         script="print('ok')",
@@ -96,19 +84,13 @@ def test_run_uses_custom_script_name(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
+    assert stub.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio
-async def test_arun_returns_summary_and_structured_output(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _StubExecutor.calls = []
-    tool = RunPythonScriptTool()
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.services.run_python_script_service.MyScriptExecutor",
-        _StubExecutor,
-    )
+async def test_arun_returns_summary_and_structured_output() -> None:
+    stub = _StubExecutor()
+    tool = RunPythonScriptTool(script_executor=stub)
 
     message, output = await tool._arun(
         script="print('ok')",
@@ -119,19 +101,13 @@ async def test_arun_returns_summary_and_structured_output(
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
+    assert stub.calls == [("inline_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio
-async def test_arun_uses_custom_script_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _StubExecutor.calls = []
-    tool = RunPythonScriptTool()
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.services.run_python_script_service.MyScriptExecutor",
-        _StubExecutor,
-    )
+async def test_arun_uses_custom_script_name() -> None:
+    stub = _StubExecutor()
+    tool = RunPythonScriptTool(script_executor=stub)
 
     message, output = await tool._arun(
         script="print('ok')",
@@ -142,18 +118,13 @@ async def test_arun_uses_custom_script_name(
 
     assert message == "script output"
     assert output == "script output"
-    assert _StubExecutor.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
+    assert stub.calls == [("custom_script.py", "print('ok')", {"mixedcase": 0.5}, 30)]
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_for_blank_script_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tool = RunPythonScriptTool()
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.services.run_python_script_service.MyScriptExecutor",
-        _StubExecutor,
-    )
+async def test_arun_raises_tool_exception_for_blank_script_name() -> None:
+    stub = _StubExecutor()
+    tool = RunPythonScriptTool(script_executor=stub)
 
     with pytest.raises(ToolException, match="script_name must be a non-empty string"):
         await tool._arun(
@@ -165,14 +136,8 @@ async def test_arun_raises_tool_exception_for_blank_script_name(
 
 
 @pytest.mark.asyncio
-async def test_arun_raises_tool_exception_when_inline_script_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tool = RunPythonScriptTool()
-    monkeypatch.setattr(
-        "langchain_ai_skills_framework.services.run_python_script_service.MyScriptExecutor",
-        _FailingExecutor,
-    )
+async def test_arun_raises_tool_exception_when_inline_script_fails() -> None:
+    tool = RunPythonScriptTool(script_executor=_FailingExecutor())
 
     result = await tool._arun(
         script="print('fail')",

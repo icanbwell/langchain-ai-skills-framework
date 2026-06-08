@@ -11,6 +11,9 @@ from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.services.run_python_script_service import RunPythonScriptService
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
@@ -62,6 +65,9 @@ class RunPythonScriptTool(BaseTool):
         """
     args_schema: Type[BaseModel] = RunPythonScriptInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
+    script_executor: ScriptExecutorProtocol
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def _run(
         self,
@@ -93,7 +99,7 @@ class RunPythonScriptTool(BaseTool):
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
     ) -> tuple[str, str]:
-        service = RunPythonScriptService()
+        service = RunPythonScriptService(script_executor=self.script_executor)
         try:
             return await service.execute(
                 script=script,

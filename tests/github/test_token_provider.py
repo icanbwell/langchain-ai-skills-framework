@@ -9,7 +9,7 @@ from langchain_ai_skills_framework.github import (
     StaticTokenProvider,
 )
 
-TEST_RSA_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
+TEST_RSA_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----  # pragma: allowlist secret
 MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCiXezK95eGIz2E
 ABM/WkTMjOqDwgckThvmvG6SiiH0+zaCzdEIVJXlHuqRgpMB/v9tdJXdfYSZSl1Q
 +GDen/bDZUxbQGbaqlWzRS4cfhF5FVjQvL/Big3mGBpobxGikuzE/aDRT4Uc1itA

@@ -140,7 +140,7 @@ def _build_marketplace_publisher(*, c: IContainer) -> GitHubMarketplacePublisher
     if not marketplace_uri or not marketplace_uri.startswith("github://"):
         return None
 
-    token_provider = c.resolve(GitHubTokenProvider)
+    token_provider: GitHubTokenProvider | None = c.resolve(GitHubTokenProvider)
     if token_provider is None:
         return None
 

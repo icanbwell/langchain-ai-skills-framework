@@ -23,6 +23,7 @@ repos:
         args: [ '--allow-missing-credentials' ]
       - id: detect-private-key
         types: [ python ]
+        exclude: ^tests/github/test_token_provider\.py$
 
       # Dependency and import checks
       - id: check-ast
@@ -94,4 +95,4 @@ repos:
     hooks:
       - id: detect-secrets
         args: [ 'scan' ]
-        exclude: .*/tests/.*
+        exclude: (^|/)tests/

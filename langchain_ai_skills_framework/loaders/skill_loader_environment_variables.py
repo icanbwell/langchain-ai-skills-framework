@@ -127,6 +127,35 @@ class SkillLoaderEnvironmentVariables(Protocol):
         ...
 
     @property
+    def github_app_id(self) -> str | None:
+        """GitHub App ID for installation token authentication.
+
+        When set alongside github_app_private_key and github_app_installation_id,
+        the system uses GitHub App authentication instead of a static PAT.
+
+        Expected environment variable: GITHUB_APP_ID
+        """
+        ...
+
+    @property
+    def github_app_private_key(self) -> str | None:
+        """PEM-encoded RSA private key for the GitHub App.
+
+        Used to sign JWTs for minting installation tokens.
+
+        Expected environment variable: GITHUB_APP_PRIVATE_KEY
+        """
+        ...
+
+    @property
+    def github_app_installation_id(self) -> str | None:
+        """Installation ID for the GitHub App on the target org/repo.
+
+        Expected environment variable: GITHUB_APP_INSTALLATION_ID
+        """
+        ...
+
+    @property
     def plugins_marketplace_publish_enabled(self) -> bool:
         """Whether marketplace publishing is enabled.
 

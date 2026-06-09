@@ -30,6 +30,7 @@ dependencies = [
     "motor>=3.7.1",
     "skills-ref>=0.1.1",
     "py-key-value-aio>=0.4.4",
+    "PyJWT[crypto]>=2.8.0",
 ]
 
 [project.optional-dependencies]

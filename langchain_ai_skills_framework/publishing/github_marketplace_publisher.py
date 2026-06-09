@@ -8,6 +8,9 @@ from typing import Any
 
 import httpx
 
+from langchain_ai_skills_framework.github.token_provider import (
+    GitHubTokenProvider,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -32,13 +35,13 @@ class GitHubMarketplacePublisher:
     def __init__(
         self,
         *,
-        access_token: str,
+        token_provider: GitHubTokenProvider,
         repo: str,
         base_branch: str = "main",
         use_branch: bool = True,
     ) -> None:
-        self._access_token = access_token
-        self._repo = repo  # "owner/repo"
+        self._token_provider = token_provider
+        self._repo = repo
         self._base_branch = base_branch
         self._use_branch = use_branch
         self._base_url = "https://api.github.com"
@@ -48,10 +51,10 @@ class GitHubMarketplacePublisher:
         """Whether publish operations create a branch + PR rather than committing directly."""
         return self._use_branch
 
-    @property
-    def _headers(self) -> dict[str, str]:
+    async def _get_headers(self) -> dict[str, str]:
+        token = await self._token_provider.get_token()
         return {
-            "Authorization": f"token {self._access_token}",
+            "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
             "User-Agent": "LangchainAISkills-MarketplacePublisher",
         }
@@ -228,13 +231,15 @@ class GitHubMarketplacePublisher:
 
     async def _get_ref_sha(self, client: httpx.AsyncClient, branch: str) -> str:
         url = f"{self._base_url}/repos/{self._repo}/git/ref/heads/{branch}"
-        resp = await client.get(url, headers=self._headers)
+        headers = await self._get_headers()
+        resp = await client.get(url, headers=headers)
         resp.raise_for_status()
         return str(resp.json()["object"]["sha"])
 
     async def _get_commit_tree_sha(self, client: httpx.AsyncClient, commit_sha: str) -> str:
         url = f"{self._base_url}/repos/{self._repo}/git/commits/{commit_sha}"
-        resp = await client.get(url, headers=self._headers)
+        headers = await self._get_headers()
+        resp = await client.get(url, headers=headers)
         resp.raise_for_status()
         return str(resp.json()["tree"]["sha"])
 
@@ -244,7 +249,8 @@ class GitHubMarketplacePublisher:
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
             "encoding": "base64",
         }
-        resp = await client.post(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return str(resp.json()["sha"])
 
@@ -256,7 +262,8 @@ class GitHubMarketplacePublisher:
     ) -> str:
         url = f"{self._base_url}/repos/{self._repo}/git/trees"
         payload = {"base_tree": base_tree_sha, "tree": tree_entries}
-        resp = await client.post(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return str(resp.json()["sha"])
 
@@ -273,14 +280,16 @@ class GitHubMarketplacePublisher:
             "tree": tree_sha,
             "parents": [parent_sha],
         }
-        resp = await client.post(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return str(resp.json()["sha"])
 
     async def _create_branch(self, client: httpx.AsyncClient, branch: str, sha: str) -> None:
         url = f"{self._base_url}/repos/{self._repo}/git/refs"
         payload = {"ref": f"refs/heads/{branch}", "sha": sha}
-        resp = await client.post(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.post(url, headers=headers, json=payload)
         if resp.status_code == 422:
             await self._update_branch(client, branch, sha, force=True)
         else:
@@ -295,7 +304,8 @@ class GitHubMarketplacePublisher:
     ) -> None:
         url = f"{self._base_url}/repos/{self._repo}/git/refs/heads/{branch}"
         payload = {"sha": sha, "force": force}
-        resp = await client.patch(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.patch(url, headers=headers, json=payload)
         if not force and resp.status_code in {409, 422}:
             raise RuntimeError(
                 f"Failed to update branch '{branch}' with a fast-forward-only update "
@@ -316,7 +326,8 @@ class GitHubMarketplacePublisher:
             "base": self._base_branch,
             "state": "open",
         }
-        resp = await client.get(url, headers=self._headers, params=params)
+        headers = await self._get_headers()
+        resp = await client.get(url, headers=headers, params=params)
         resp.raise_for_status()
         prs = resp.json()
         return prs[0] if prs else None
@@ -335,7 +346,8 @@ class GitHubMarketplacePublisher:
             "head": head,
             "base": self._base_branch,
         }
-        resp = await client.post(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return str(resp.json()["html_url"])
 
@@ -348,7 +360,8 @@ class GitHubMarketplacePublisher:
     ) -> str:
         url = f"{self._base_url}/repos/{self._repo}/pulls/{pr_number}"
         payload = {"title": title, "body": body}
-        resp = await client.patch(url, headers=self._headers, json=payload)
+        headers = await self._get_headers()
+        resp = await client.patch(url, headers=headers, json=payload)
         resp.raise_for_status()
         return str(resp.json()["html_url"])
 
@@ -358,7 +371,8 @@ class GitHubMarketplacePublisher:
 
     async def _get_tree_recursive(self, client: httpx.AsyncClient, tree_sha: str) -> list[dict[str, Any]]:
         url = f"{self._base_url}/repos/{self._repo}/git/trees/{tree_sha}"
-        resp = await client.get(url, headers=self._headers, params={"recursive": "1"})
+        headers = await self._get_headers()
+        resp = await client.get(url, headers=headers, params={"recursive": "1"})
         resp.raise_for_status()
         tree: list[dict[str, Any]] = resp.json()["tree"]
         return tree

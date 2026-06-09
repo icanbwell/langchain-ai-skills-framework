@@ -71,6 +71,27 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
             return None
         return token.strip()
 
+    @property
+    def github_app_id(self) -> str | None:
+        value = os.environ.get("GITHUB_APP_ID")
+        if value is None or not value.strip():
+            return None
+        return value.strip()
+
+    @property
+    def github_app_private_key(self) -> str | None:
+        value = os.environ.get("GITHUB_APP_PRIVATE_KEY")
+        if value is None or not value.strip():
+            return None
+        return value.strip()
+
+    @property
+    def github_app_installation_id(self) -> str | None:
+        value = os.environ.get("GITHUB_APP_INSTALLATION_ID")
+        if value is None or not value.strip():
+            return None
+        return value.strip()
+
     @staticmethod
     def _resolve_path(value: str | None) -> str | None:
         """Replace ``{pid}`` with the current process ID.

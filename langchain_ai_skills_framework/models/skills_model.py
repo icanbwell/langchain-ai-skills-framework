@@ -16,6 +16,7 @@ class SkillSummary:
     description: str
     plugin_name: str | None = None
     folder: str | None = None
+    path: str = ""
     state: str = "published"
     source_path: Path | None = None
     license: str | None = None

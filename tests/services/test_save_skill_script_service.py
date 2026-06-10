@@ -58,6 +58,8 @@ class TestSaveSkillScriptService:
             script_name="test.sh",
             content="#!/bin/bash\necho test",
             modified_by="user-1",
+            folder=None,
+            path=None,
         )
 
     @pytest.mark.asyncio

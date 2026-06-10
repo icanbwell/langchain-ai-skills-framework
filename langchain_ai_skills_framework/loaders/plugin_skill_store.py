@@ -44,6 +44,7 @@ class PluginSkillStore(Protocol):
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
         state: str | None = None,
     ) -> MongoPluginSkillDocument: ...
 
@@ -87,6 +88,7 @@ class PluginSkillStore(Protocol):
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginResourceDocument: ...
 
     async def delete_resource(
@@ -115,6 +117,14 @@ class PluginSkillStore(Protocol):
         skill_name: str,
     ) -> Sequence[str]: ...
 
+    async def list_resource_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginResourceDocument]: ...
+
     async def resource_exists(
         self,
         *,
@@ -136,6 +146,7 @@ class PluginSkillStore(Protocol):
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginScriptDocument: ...
 
     async def delete_script(
@@ -163,6 +174,14 @@ class PluginSkillStore(Protocol):
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]: ...
+
+    async def list_script_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginScriptDocument]: ...
 
     async def script_exists(
         self,

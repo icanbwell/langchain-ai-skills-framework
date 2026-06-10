@@ -29,6 +29,8 @@ class SaveSkillResourceService:
         skill_name: str,
         resource_name: str,
         content: str,
+        folder: str | None = None,
+        path: str | None = None,
     ) -> str:
         require_user_id(user_id=user_id, operation="save_skill_resource")
         require_non_empty(value=skill_name, label="skill_name")
@@ -44,6 +46,8 @@ class SaveSkillResourceService:
                 resource_name=resource_name,
                 content=content,
                 modified_by=user_id,
+                folder=folder,
+                path=path,
             )
             message = f"Resource '{doc.resource_name}' saved for skill '{doc.skill_name}'."
             logger.info("SaveSkillResourceService: %s (user=%s)", message, user_id)

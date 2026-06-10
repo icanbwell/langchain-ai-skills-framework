@@ -73,8 +73,16 @@ class GitHubMarketplacePublisher:
         scripts: dict[str, str],
         user_id: str,
         branch_name: str | None = None,
+        skill_path: str | None = None,
+        resource_paths: dict[str, str] | None = None,
+        script_paths: dict[str, str] | None = None,
     ) -> str:
         """Create or update a commit that adds/updates a skill in the marketplace.
+
+        When ``skill_path``/``resource_paths``/``script_paths`` are provided,
+        those marketplace-relative paths are used verbatim instead of the
+        default ``plugins/{plugin}/skills/{skill}/...`` layout. Path overrides
+        let callers honor stored materialized paths (custom folders).
 
         Returns the PR HTML URL (branch mode) or commit SHA (direct mode).
 
@@ -92,6 +100,9 @@ class GitHubMarketplacePublisher:
             skill_content=skill_content,
             resources=resources,
             scripts=scripts,
+            skill_path=skill_path,
+            resource_paths=resource_paths,
+            script_paths=script_paths,
         )
         commit_message = f"Publish skill: {plugin_name}/{skill_name}"
         pr_title = f"Publish skill: {plugin_name}/{skill_name}"
@@ -131,8 +142,13 @@ class GitHubMarketplacePublisher:
         plugin_name: str,
         skill_name: str,
         user_id: str,
+        skill_dir: str | None = None,
     ) -> str | None:
         """Create a commit that removes a skill directory from the marketplace.
+
+        ``skill_dir`` overrides the default ``plugins/{plugin}/skills/{skill}``
+        directory prefix. Use it when the skill was published under a custom
+        folder.
 
         Returns the PR HTML URL (branch mode), commit SHA (direct mode),
         or ``None`` when no files exist under the skill directory.
@@ -145,7 +161,8 @@ class GitHubMarketplacePublisher:
         self._validate_path_segment(value=skill_name, label="skill_name")
 
         branch = f"skill-unpublish/{plugin_name}/{skill_name}"
-        skill_dir = f"plugins/{plugin_name}/skills/{skill_name}"
+        resolved_dir = self._sanitize_override_path(value=skill_dir, label="skill_dir")
+        skill_dir = resolved_dir or f"plugins/{plugin_name}/skills/{skill_name}"
         commit_message = f"Remove skill: {plugin_name}/{skill_name}"
         pr_title = f"Remove skill: {plugin_name}/{skill_name}"
         pr_body = (
@@ -208,22 +225,70 @@ class GitHubMarketplacePublisher:
         skill_content: str,
         resources: dict[str, str],
         scripts: dict[str, str],
+        skill_path: str | None = None,
+        resource_paths: dict[str, str] | None = None,
+        script_paths: dict[str, str] | None = None,
     ) -> dict[str, str]:
-        """Build path -> content mapping matching the marketplace directory layout."""
+        """Build path -> content mapping matching the marketplace directory layout.
+
+        Path overrides (``skill_path``, ``resource_paths[name]``, ``script_paths[name]``)
+        replace the default convention when set. Override values are used verbatim
+        as marketplace-relative paths, except for ``..`` rejection.
+        """
         GitHubMarketplacePublisher._validate_path_segment(value=plugin_name, label="plugin_name")
         GitHubMarketplacePublisher._validate_path_segment(value=skill_name, label="skill_name")
-        for name in resources:
-            GitHubMarketplacePublisher._validate_path_segment(value=name, label="resource name")
-        for name in scripts:
-            GitHubMarketplacePublisher._validate_path_segment(value=name, label="script name")
 
         base = f"plugins/{plugin_name}/skills/{skill_name}"
-        files: dict[str, str] = {f"{base}/SKILL.md": skill_content}
+        files: dict[str, str] = {}
+
+        resolved_skill_path = (
+            GitHubMarketplacePublisher._sanitize_override_path(value=skill_path, label="skill_path")
+            or f"{base}/SKILL.md"
+        )
+        files[resolved_skill_path] = skill_content
+
+        resource_paths = resource_paths or {}
         for name, content in resources.items():
-            files[f"{base}/references/{name}"] = content
+            override = GitHubMarketplacePublisher._sanitize_override_path(
+                value=resource_paths.get(name), label=f"resource_path[{name!r}]"
+            )
+            if override is not None:
+                files[override] = content
+            else:
+                GitHubMarketplacePublisher._validate_path_segment(value=name, label="resource name")
+                files[f"{base}/references/{name}"] = content
+
+        script_paths = script_paths or {}
         for name, content in scripts.items():
-            files[f"{base}/scripts/{name}"] = content
+            override = GitHubMarketplacePublisher._sanitize_override_path(
+                value=script_paths.get(name), label=f"script_path[{name!r}]"
+            )
+            if override is not None:
+                files[override] = content
+            else:
+                GitHubMarketplacePublisher._validate_path_segment(value=name, label="script name")
+                files[f"{base}/scripts/{name}"] = content
+
         return files
+
+    @staticmethod
+    def _sanitize_override_path(*, value: str | None, label: str) -> str | None:
+        """Validate a caller-supplied marketplace path. Returns None when unset.
+
+        Rejects empty/whitespace, absolute paths, and ``..`` segments. The value
+        is returned with leading/trailing whitespace stripped.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        p = PurePosixPath(stripped)
+        if p.is_absolute():
+            raise ValueError(f"{label} must not be an absolute path: {stripped!r}")
+        if ".." in p.parts:
+            raise ValueError(f"{label} must not contain '..': {stripped!r}")
+        return stripped
 
     # ------------------------------------------------------------------
     # Git Data API operations

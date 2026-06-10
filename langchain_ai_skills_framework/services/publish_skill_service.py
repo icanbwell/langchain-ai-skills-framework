@@ -277,10 +277,14 @@ class PublishSkillService:
                     branch_name=branch_name,
                 )
             else:
+                skill_dir = await self._resolve_skill_dir(
+                    user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+                )
                 result = await self._publisher.unpublish_skill(
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     user_id=user_id,
+                    skill_dir=skill_dir,
                 )
                 logger.info(
                     "Skill '%s/%s' removal result: %s",
@@ -319,33 +323,27 @@ class PublishSkillService:
             skill_name=skill_name,
         )
 
-        resource_names = await self._store.list_resource_names(
+        resource_docs = await self._store.list_resource_documents(
             author=user_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
-        resources: dict[str, str] = {}
-        for name in resource_names:
-            resources[name] = await self._store.read_resource(
-                author=user_id,
-                plugin_name=plugin_name,
-                skill_name=skill_name,
-                resource_name=name,
-            )
+        resources: dict[str, str] = {doc.resource_name: doc.content for doc in resource_docs}
+        resource_paths: dict[str, str] = {
+            doc.resource_name: self._marketplace_path(stored=doc.path) for doc in resource_docs if doc.path
+        }
 
-        script_names = await self._store.list_script_names(
+        script_docs = await self._store.list_script_documents(
             author=user_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
-        scripts: dict[str, str] = {}
-        for name in script_names:
-            scripts[name] = await self._store.read_script(
-                author=user_id,
-                plugin_name=plugin_name,
-                skill_name=skill_name,
-                script_name=name,
-            )
+        scripts: dict[str, str] = {doc.script_name: doc.content for doc in script_docs}
+        script_paths: dict[str, str] = {
+            doc.script_name: self._marketplace_path(stored=doc.path) for doc in script_docs if doc.path
+        }
+
+        skill_path = self._marketplace_path(stored=details.summary.path) if details.summary.path else None
 
         logger.info(
             "Publishing '%s/%s' to marketplace: %d resource(s), %d script(s)",
@@ -363,6 +361,9 @@ class PublishSkillService:
             scripts=scripts,
             user_id=user_id,
             branch_name=effective_branch,
+            skill_path=skill_path,
+            resource_paths=resource_paths or None,
+            script_paths=script_paths or None,
         )
         logger.info(
             "Skill '%s/%s' publish result: %s",
@@ -370,3 +371,42 @@ class PublishSkillService:
             skill_name,
             result,
         )
+
+    async def _resolve_skill_dir(
+        self,
+        *,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+    ) -> str | None:
+        """Return the marketplace directory for a skill based on its stored path.
+
+        Returns None when the skill is unknown or has no stored path; callers
+        then fall back to the publisher's default ``plugins/{plugin}/skills/{skill}``
+        layout.
+        """
+        if self._store is None:
+            return None
+        try:
+            details = await self._store.get_skill_details(
+                author=user_id, plugin_name=plugin_name, skill_name=skill_name
+            )
+        except SkillNotFoundError:
+            return None
+        stored = details.summary.path
+        if not stored:
+            return None
+        marketplace = self._marketplace_path(stored=stored)
+        return marketplace.rsplit("/", 1)[0] if "/" in marketplace else marketplace
+
+    @staticmethod
+    def _marketplace_path(*, stored: str) -> str:
+        """Prefix a stored materialized path with the marketplace ``plugins/`` root.
+
+        Stored paths use ``{plugin}/skills/[folder/]{name}/...``; the marketplace
+        layout nests everything under ``plugins/``. Already-prefixed paths pass through.
+        """
+        cleaned = stored.strip().lstrip("/")
+        if cleaned.startswith("plugins/"):
+            return cleaned
+        return f"plugins/{cleaned}"

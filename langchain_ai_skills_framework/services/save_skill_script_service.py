@@ -36,6 +36,8 @@ class SaveSkillScriptService:
         skill_name: str,
         script_name: str,
         content: str,
+        folder: str | None = None,
+        path: str | None = None,
     ) -> str:
         require_user_id(user_id=user_id, operation="save_skill_script")
         require_non_empty(value=skill_name, label="skill_name")
@@ -51,6 +53,8 @@ class SaveSkillScriptService:
                 script_name=script_name,
                 content=content,
                 modified_by=user_id,
+                folder=folder,
+                path=path,
             )
             message = f"Script '{doc.script_name}' saved for skill '{doc.skill_name}'."
             logger.info("SaveSkillScriptService: %s (user=%s)", message, user_id)

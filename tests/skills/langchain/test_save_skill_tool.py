@@ -55,6 +55,7 @@ class TestSaveSkillTool:
             content=VALID_SKILL_CONTENT,
             modified_by="user-1",
             folder=None,
+            path=None,
             state=None,
         )
 
@@ -79,6 +80,7 @@ class TestSaveSkillTool:
             content=VALID_SKILL_CONTENT,
             modified_by="user-1",
             folder="sub/dir",
+            path=None,
             state=None,
         )
 

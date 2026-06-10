@@ -314,9 +314,8 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(resource_name.strip(), "resource_name")
 
-        if isinstance(path, str) and path.strip():
-            path = path.strip()
-        else:
+        path = path.strip() if isinstance(path, str) and path.strip() else ""
+        if not path:
             folder = normalize_folder(folder)
             if folder is None:
                 folder = await self._resolve_skill_folder(
@@ -482,9 +481,8 @@ class MongoPluginSkillLoader:
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(script_name.strip(), "script_name")
 
-        if isinstance(path, str) and path.strip():
-            path = path.strip()
-        else:
+        path = path.strip() if isinstance(path, str) and path.strip() else ""
+        if not path:
             folder = normalize_folder(folder)
             if folder is None:
                 folder = await self._resolve_skill_folder(

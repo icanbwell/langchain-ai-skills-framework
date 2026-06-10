@@ -254,9 +254,9 @@ class GitHubMarketplacePublisher:
             )
             if override is not None:
                 files[override] = content
-            else:
-                GitHubMarketplacePublisher._validate_path_segment(value=name, label="resource name")
-                files[f"{base}/references/{name}"] = content
+                continue
+            GitHubMarketplacePublisher._validate_path_segment(value=name, label="resource name")
+            files[f"{base}/references/{name}"] = content
 
         script_paths = script_paths or {}
         for name, content in scripts.items():
@@ -265,9 +265,9 @@ class GitHubMarketplacePublisher:
             )
             if override is not None:
                 files[override] = content
-            else:
-                GitHubMarketplacePublisher._validate_path_segment(value=name, label="script name")
-                files[f"{base}/scripts/{name}"] = content
+                continue
+            GitHubMarketplacePublisher._validate_path_segment(value=name, label="script name")
+            files[f"{base}/scripts/{name}"] = content
 
         return files
 

@@ -70,12 +70,15 @@ class GetSkillDetailService:
             resources: list[str] = []
             scripts: list[str] = []
         else:
-            # Get resources and scripts from store
-            resources = list(
-                await self._store.list_resource_names(author=user_id, plugin_name=plugin_name, skill_name=skill_name)
+            # Marketplace-synced resources/scripts live under author="system";
+            # user overrides live under the user's own id. Return the union so
+            # users see the full set after the shared loader is null-ified
+            # post-init (reads must come from Mongo only).
+            resources = await self._list_with_system_fallback(
+                kind="resource", user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
             )
-            scripts = list(
-                await self._store.list_script_names(author=user_id, plugin_name=plugin_name, skill_name=skill_name)
+            scripts = await self._list_with_system_fallback(
+                kind="script", user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
             )
 
             # Resolve metadata with user→system fallback
@@ -101,6 +104,15 @@ class GetSkillDetailService:
             folder=folder,
             state=state,
         )
+
+    async def _list_with_system_fallback(
+        self, *, kind: str, user_id: str, plugin_name: str, skill_name: str
+    ) -> list[str]:
+        assert self._store is not None
+        list_fn = self._store.list_resource_names if kind == "resource" else self._store.list_script_names
+        user_names = await list_fn(author=user_id, plugin_name=plugin_name, skill_name=skill_name)
+        system_names = await list_fn(author="system", plugin_name=plugin_name, skill_name=skill_name)
+        return sorted(set(user_names) | set(system_names))
 
     async def _resolve_metadata(self, *, user_id: str, plugin_name: str, skill_name: str) -> tuple[str | None, str]:
         """Resolve folder and state with user→system→default fallback."""

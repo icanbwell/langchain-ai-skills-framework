@@ -642,8 +642,11 @@ class MongoPluginSkillLoader:
             query["state"] = {"$ne": "staging"}
         return await self._build_snapshot(query=self._version_filter(query), owner_label=author)
 
-    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
-        query: dict[str, object] = {"state": "published"}
+    async def load_shared_snapshot(
+        self, *, plugin_name: str | None = None, include_staging: bool = False
+    ) -> SkillSnapshot:
+        states = ["published", "staging"] if include_staging else ["published"]
+        query: dict[str, object] = {"state": {"$in": states}}
         if plugin_name:
             query["plugin_name"] = plugin_name
         return await self._build_snapshot(query=self._version_filter(query), owner_label="shared")

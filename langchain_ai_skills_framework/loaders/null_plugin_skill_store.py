@@ -74,7 +74,9 @@ class NullPluginSkillStore:
     ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
-    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
+    async def load_shared_snapshot(
+        self, *, plugin_name: str | None = None, include_staging: bool = False
+    ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
     async def get_skill_details(

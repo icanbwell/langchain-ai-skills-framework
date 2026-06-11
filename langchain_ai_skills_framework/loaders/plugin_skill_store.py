@@ -64,7 +64,9 @@ class PluginSkillStore(Protocol):
         self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot: ...
 
-    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot: ...
+    async def load_shared_snapshot(
+        self, *, plugin_name: str | None = None, include_staging: bool = False
+    ) -> SkillSnapshot: ...
 
     async def get_skill_details(
         self,

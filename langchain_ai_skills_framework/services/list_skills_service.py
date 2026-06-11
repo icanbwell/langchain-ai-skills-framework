@@ -40,8 +40,14 @@ class ListSkillsService:
         folder: str | None = None,
         include_staging: bool = False,
         exclude_states: set[str] | None = None,
+        allow_states: set[str] | None = None,
     ) -> Sequence[SkillInfo]:
-        """Return available skills as a sequence of ``SkillInfo``."""
+        """Return available skills as a sequence of ``SkillInfo``.
+
+        ``allow_states`` is a positive whitelist applied after merging.
+        Use it when callers need strict state enforcement (e.g. list_skills
+        showing only published skills). Takes precedence over ``exclude_states``.
+        """
         if user_id:
             summaries = await self._loader.list_all_summaries(
                 user_id=user_id, allowed_skills=set(), include_staging=include_staging
@@ -55,7 +61,9 @@ class ListSkillsService:
         if folder is not None:
             summaries = [s for s in summaries if s.folder == folder]
 
-        if exclude_states:
+        if allow_states is not None:
+            summaries = [s for s in summaries if s.state in allow_states]
+        elif exclude_states:
             summaries = [s for s in summaries if s.state not in exclude_states]
 
         results = sorted(

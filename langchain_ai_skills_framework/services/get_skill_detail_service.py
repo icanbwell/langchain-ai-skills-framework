@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -74,11 +75,17 @@ class GetSkillDetailService:
             # user overrides live under the user's own id. Return the union so
             # users see the full set after the shared loader is null-ified
             # post-init (reads must come from Mongo only).
-            resources = await self._list_with_system_fallback(
-                kind="resource", user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+            resources = await self._union_with_system(
+                list_fn=self._store.list_resource_names,
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
             )
-            scripts = await self._list_with_system_fallback(
-                kind="script", user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+            scripts = await self._union_with_system(
+                list_fn=self._store.list_script_names,
+                user_id=user_id,
+                plugin_name=plugin_name,
+                skill_name=skill_name,
             )
 
             # Resolve metadata with user→system fallback
@@ -105,11 +112,14 @@ class GetSkillDetailService:
             state=state,
         )
 
-    async def _list_with_system_fallback(
-        self, *, kind: str, user_id: str, plugin_name: str, skill_name: str
+    @staticmethod
+    async def _union_with_system(
+        *,
+        list_fn: Callable[..., Awaitable[Sequence[str]]],
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
     ) -> list[str]:
-        assert self._store is not None
-        list_fn = self._store.list_resource_names if kind == "resource" else self._store.list_script_names
         user_names = await list_fn(author=user_id, plugin_name=plugin_name, skill_name=skill_name)
         system_names = await list_fn(author="system", plugin_name=plugin_name, skill_name=skill_name)
         return sorted(set(user_names) | set(system_names))

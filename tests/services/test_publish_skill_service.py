@@ -15,7 +15,12 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginResourceDocument,
+    MongoPluginScriptDocument,
     MongoPluginSkillDocument,
+)
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
 )
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
@@ -54,12 +59,14 @@ def _make_skill_details(
     skill_name: str = "test-skill",
     state: str = "staging",
     plugin_name: str = "test-plugin",
+    path: str = "",
 ) -> SkillDetails:
     summary = SkillSummary(
         name=skill_name,
         description="A test skill",
         plugin_name=plugin_name,
         state=state,
+        path=path,
     )
     return SkillDetails(
         summary=summary,
@@ -294,3 +301,154 @@ class TestPublishSkillService:
                 skill_name="test-skill",
                 published=True,
             )
+
+
+def _make_resource_doc(*, name: str, path: str, content: str = "ref") -> MongoPluginResourceDocument:
+    return MongoPluginResourceDocument(
+        plugin_name="test-plugin",
+        skill_name="test-skill",
+        resource_name=name,
+        path=path,
+        content=content,
+        author="user-1",
+    )
+
+
+def _make_script_doc(*, name: str, path: str, content: str = "code") -> MongoPluginScriptDocument:
+    return MongoPluginScriptDocument(
+        plugin_name="test-plugin",
+        skill_name="test-skill",
+        script_name=name,
+        path=path,
+        content=content,
+        author="user-1",
+    )
+
+
+class TestPublishSkillServicePathPropagation:
+    """Verify that stored materialized paths flow through to the publisher."""
+
+    @pytest.mark.asyncio
+    async def test_publish_forwards_stored_paths_for_custom_folder(self) -> None:
+        store = AsyncMock(spec=PluginSkillStore)
+        store.skill_exists.return_value = True
+        store.get_skill_details.return_value = _make_skill_details(
+            state="staging", path="test-plugin/skills/folder/test-skill/SKILL.md"
+        )
+        store.set_skill_state.return_value = _make_doc(state="in_review")
+        store.list_resource_documents.return_value = [
+            _make_resource_doc(name="REF.md", path="test-plugin/skills/folder/test-skill/references/REF.md"),
+        ]
+        store.list_script_documents.return_value = [
+            _make_script_doc(name="run.py", path="test-plugin/skills/folder/test-skill/scripts/run.py"),
+        ]
+
+        publisher = AsyncMock(spec=GitHubMarketplacePublisher)
+        publisher.use_branch = False
+        publisher.publish_skill.return_value = "abc123"
+
+        service = PublishSkillService(mongo_skill_loader=store, marketplace_publisher=publisher)
+
+        await service.execute(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            published=True,
+        )
+
+        # Wait for the background task to complete
+        pending = list(PublishSkillService._pending_tasks.values())
+        for task in pending:
+            await task
+
+        publisher.publish_skill.assert_awaited_once()
+        kwargs = publisher.publish_skill.await_args.kwargs
+        assert kwargs["skill_path"] == "plugins/test-plugin/skills/folder/test-skill/SKILL.md"
+        assert kwargs["resource_paths"] == {"REF.md": "plugins/test-plugin/skills/folder/test-skill/references/REF.md"}
+        assert kwargs["script_paths"] == {"run.py": "plugins/test-plugin/skills/folder/test-skill/scripts/run.py"}
+
+    @pytest.mark.asyncio
+    async def test_publish_omits_path_overrides_when_no_stored_path(self) -> None:
+        # When stored paths are empty, the publisher must fall back to its default layout.
+        store = AsyncMock(spec=PluginSkillStore)
+        store.skill_exists.return_value = True
+        store.get_skill_details.return_value = _make_skill_details(state="staging", path="")
+        store.set_skill_state.return_value = _make_doc(state="in_review")
+        store.list_resource_documents.return_value = [_make_resource_doc(name="REF.md", path="")]
+        store.list_script_documents.return_value = [_make_script_doc(name="run.py", path="")]
+
+        publisher = AsyncMock(spec=GitHubMarketplacePublisher)
+        publisher.use_branch = False
+        publisher.publish_skill.return_value = "abc123"
+
+        service = PublishSkillService(mongo_skill_loader=store, marketplace_publisher=publisher)
+        await service.execute(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            published=True,
+        )
+        for task in list(PublishSkillService._pending_tasks.values()):
+            await task
+
+        kwargs = publisher.publish_skill.await_args.kwargs
+        assert kwargs["skill_path"] is None
+        assert kwargs["resource_paths"] is None
+        assert kwargs["script_paths"] is None
+
+    @pytest.mark.asyncio
+    async def test_unpublish_forwards_resolved_skill_dir(self) -> None:
+        store = AsyncMock(spec=PluginSkillStore)
+        store.set_skill_state.return_value = _make_doc(state="draft")
+        store.get_skill_details.return_value = _make_skill_details(
+            state="draft", path="test-plugin/skills/folder/test-skill/SKILL.md"
+        )
+
+        publisher = AsyncMock(spec=GitHubMarketplacePublisher)
+        publisher.use_branch = False
+        publisher.unpublish_skill.return_value = "abc"
+
+        service = PublishSkillService(mongo_skill_loader=store, marketplace_publisher=publisher)
+        await service.execute(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            published=False,
+        )
+        for task in list(PublishSkillService._pending_tasks.values()):
+            await task
+
+        publisher.unpublish_skill.assert_awaited_once_with(
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            user_id="user-1",
+            skill_dir="plugins/test-plugin/skills/folder/test-skill",
+        )
+
+    @pytest.mark.asyncio
+    async def test_unpublish_resolves_skill_dir_to_none_when_skill_missing(self) -> None:
+        # If the skill is not in the store, fall back to the publisher's default layout.
+        store = AsyncMock(spec=PluginSkillStore)
+        store.set_skill_state.return_value = _make_doc(state="draft")
+        store.get_skill_details.side_effect = SkillNotFoundError("not found")
+
+        publisher = AsyncMock(spec=GitHubMarketplacePublisher)
+        publisher.use_branch = False
+        publisher.unpublish_skill.return_value = "abc"
+
+        service = PublishSkillService(mongo_skill_loader=store, marketplace_publisher=publisher)
+        await service.execute(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            published=False,
+        )
+        for task in list(PublishSkillService._pending_tasks.values()):
+            await task
+
+        publisher.unpublish_skill.assert_awaited_once_with(
+            plugin_name="test-plugin",
+            skill_name="test-skill",
+            user_id="user-1",
+            skill_dir=None,
+        )

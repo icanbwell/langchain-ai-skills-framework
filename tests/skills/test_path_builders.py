@@ -46,8 +46,8 @@ class TestBuildResourcePath:
     @pytest.mark.parametrize(
         ("plugin_name", "skill_name", "resource_name", "folder", "expected"),
         [
-            ("p", "s", "data.json", None, "p/skills/s/data.json"),
-            ("p", "s", "data.json", "sub", "p/skills/sub/s/data.json"),
+            ("p", "s", "data.json", None, "p/skills/s/references/data.json"),
+            ("p", "s", "data.json", "sub", "p/skills/sub/s/references/data.json"),
         ],
     )
     def test_build_resource_path(

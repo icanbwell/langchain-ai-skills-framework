@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.post_save_script_hook import PostSaveScriptHook
@@ -14,6 +15,14 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+
+
+@dataclass(frozen=True, slots=True)
+class SaveSkillScriptResult:
+    """Outcome of a save_skill_script operation. Mirrors :class:`SaveSkillResult`."""
+
+    ok: bool
+    message: str
 
 
 class SaveSkillScriptService:
@@ -38,7 +47,7 @@ class SaveSkillScriptService:
         content: str,
         folder: str | None = None,
         path: str | None = None,
-    ) -> str:
+    ) -> SaveSkillScriptResult:
         require_user_id(user_id=user_id, operation="save_skill_script")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=script_name, label="script_name")
@@ -74,7 +83,7 @@ class SaveSkillScriptService:
                         exc_info=True,
                     )
 
-            return message
+            return SaveSkillScriptResult(ok=True, message=message)
         except Exception as exc:
             logger.exception(
                 "SaveSkillScriptService failed for skill_name=%s script_name=%s user=%s",

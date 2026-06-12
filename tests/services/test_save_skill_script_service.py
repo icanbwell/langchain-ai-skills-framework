@@ -15,6 +15,7 @@ from langchain_ai_skills_framework.services.post_save_script_hook import (
     PostSaveScriptHook,
 )
 from langchain_ai_skills_framework.services.save_skill_script_service import (
+    SaveSkillScriptResult,
     SaveSkillScriptService,
 )
 from langchain_ai_skills_framework.services.skill_operation_error import (
@@ -50,7 +51,9 @@ class TestSaveSkillScriptService:
             content="#!/bin/bash\necho test",
         )
 
-        assert "Script 'test.sh' saved for skill 'test-skill'" in result
+        assert isinstance(result, SaveSkillScriptResult)
+        assert result.ok is True
+        assert "Script 'test.sh' saved for skill 'test-skill'" in result.message
         store.save_script.assert_awaited_once_with(
             author="user-1",
             plugin_name="test-plugin",
@@ -77,7 +80,7 @@ class TestSaveSkillScriptService:
             content="#!/bin/bash\necho test",
         )
 
-        assert "Script 'test.sh' saved" in result
+        assert "Script 'test.sh' saved" in result.message
         hook.on_script_saved.assert_awaited_once_with(
             user_id="user-1",
             plugin_name="test-plugin",
@@ -99,7 +102,7 @@ class TestSaveSkillScriptService:
             content="#!/bin/bash\necho test",
         )
 
-        assert "Script 'test.sh' saved" in result
+        assert "Script 'test.sh' saved" in result.message
 
     @pytest.mark.asyncio
     async def test_hook_failure_does_not_break_save(self) -> None:
@@ -118,7 +121,7 @@ class TestSaveSkillScriptService:
             content="#!/bin/bash\necho test",
         )
 
-        assert "Script 'test.sh' saved" in result
+        assert "Script 'test.sh' saved" in result.message
         hook.on_script_saved.assert_awaited_once()
 
     @pytest.mark.asyncio

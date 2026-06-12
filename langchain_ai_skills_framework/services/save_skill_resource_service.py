@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.skill_operation_error import (
@@ -13,6 +14,21 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+
+
+@dataclass(frozen=True, slots=True)
+class SaveSkillResourceResult:
+    """Outcome of a save_skill_resource operation.
+
+    Mirrors :class:`SaveSkillResult` so all skill-mutation services
+    expose a uniform ``(ok, message)`` shape. This service has no soft
+    failure today — every non-raising path is ``ok=True`` — but the
+    structured shape keeps callers symmetric with the other save/delete
+    services and leaves room for future validation paths.
+    """
+
+    ok: bool
+    message: str
 
 
 class SaveSkillResourceService:
@@ -31,7 +47,7 @@ class SaveSkillResourceService:
         content: str,
         folder: str | None = None,
         path: str | None = None,
-    ) -> str:
+    ) -> SaveSkillResourceResult:
         require_user_id(user_id=user_id, operation="save_skill_resource")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=resource_name, label="resource_name")
@@ -51,7 +67,7 @@ class SaveSkillResourceService:
             )
             message = f"Resource '{doc.resource_name}' saved for skill '{doc.skill_name}'."
             logger.info("SaveSkillResourceService: %s (user=%s)", message, user_id)
-            return message
+            return SaveSkillResourceResult(ok=True, message=message)
         except Exception as exc:
             logger.exception(
                 "SaveSkillResourceService failed for skill_name=%s resource_name=%s user=%s",

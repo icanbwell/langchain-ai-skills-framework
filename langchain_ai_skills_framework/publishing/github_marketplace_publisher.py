@@ -199,19 +199,23 @@ class GitHubMarketplacePublisher:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _validate_path_segment(*, value: str, label: str) -> None:
-        """Reject path segments that could escape the intended directory.
-
-        Raises ``ValueError`` for empty strings, absolute paths, ``..``
-        segments, or embedded path separators.
-        """
-        if not value or not value.strip():
-            raise ValueError(f"{label} must not be empty")
+    def _reject_unsafe_path(*, value: str, label: str) -> None:
+        """Raise ``ValueError`` if ``value`` is absolute or contains ``..``."""
         p = PurePosixPath(value)
         if p.is_absolute():
             raise ValueError(f"{label} must not be an absolute path: {value!r}")
         if ".." in p.parts:
             raise ValueError(f"{label} must not contain '..': {value!r}")
+
+    @staticmethod
+    def _validate_path_segment(*, value: str, label: str) -> None:
+        """Reject path segments that could escape the intended directory.
+
+        Raises ``ValueError`` for empty strings, absolute paths, or ``..`` segments.
+        """
+        if not value or not value.strip():
+            raise ValueError(f"{label} must not be empty")
+        GitHubMarketplacePublisher._reject_unsafe_path(value=value, label=label)
 
     # ------------------------------------------------------------------
     # File map builder
@@ -283,11 +287,7 @@ class GitHubMarketplacePublisher:
         stripped = value.strip()
         if not stripped:
             return None
-        p = PurePosixPath(stripped)
-        if p.is_absolute():
-            raise ValueError(f"{label} must not be an absolute path: {stripped!r}")
-        if ".." in p.parts:
-            raise ValueError(f"{label} must not contain '..': {stripped!r}")
+        GitHubMarketplacePublisher._reject_unsafe_path(value=stripped, label=label)
         return stripped
 
     # ------------------------------------------------------------------

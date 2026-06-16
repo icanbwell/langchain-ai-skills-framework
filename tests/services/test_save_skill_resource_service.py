@@ -1,8 +1,4 @@
-"""Tests for :class:`SaveSkillResourceService`.
-
-Pins down the structured-result contract introduced alongside
-``SaveSkillResult`` to keep all skill-mutation services symmetric.
-"""
+"""Tests for :class:`SaveSkillResourceService`."""
 
 from __future__ import annotations
 
@@ -17,8 +13,8 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginResourceDocument,
 )
+from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.save_skill_resource_service import (
-    SaveSkillResourceResult,
     SaveSkillResourceService,
 )
 from langchain_ai_skills_framework.services.skill_operation_error import (
@@ -53,7 +49,7 @@ async def test_save_resource_returns_ok_result() -> None:
         content="# forms",
     )
 
-    assert isinstance(result, SaveSkillResourceResult)
+    assert isinstance(result, MutationResult)
     assert result.ok is True
     assert "forms.md" in result.message
     store.save_resource.assert_awaited_once()

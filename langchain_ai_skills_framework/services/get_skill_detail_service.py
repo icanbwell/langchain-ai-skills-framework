@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -20,6 +21,10 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+
+
+class _ListByAuthor(Protocol):
+    async def __call__(self, *, author: str, plugin_name: str | None, skill_name: str) -> Sequence[str]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +127,7 @@ class GetSkillDetailService:
     @staticmethod
     async def _union_with_system(
         *,
-        list_fn: Callable[..., Awaitable[Sequence[str]]],
+        list_fn: _ListByAuthor,
         user_id: str,
         plugin_name: str | None,
         skill_name: str,

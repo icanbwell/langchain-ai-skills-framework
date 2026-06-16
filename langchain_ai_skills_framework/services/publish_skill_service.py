@@ -396,8 +396,9 @@ class PublishSkillService:
         stored = details.summary.path
         if not stored:
             return None
-        marketplace = self._marketplace_path(stored=stored)
-        return marketplace.rsplit("/", 1)[0] if "/" in marketplace else marketplace
+        # _marketplace_path always returns a path under "plugins/...", so it
+        # contains at least one slash — rsplit safely yields the parent dir.
+        return self._marketplace_path(stored=stored).rsplit("/", 1)[0]
 
     @staticmethod
     def _marketplace_path(*, stored: str) -> str:

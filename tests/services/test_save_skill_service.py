@@ -18,10 +18,8 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillDocument,
 )
-from langchain_ai_skills_framework.services.save_skill_service import (
-    SaveSkillResult,
-    SaveSkillService,
-)
+from langchain_ai_skills_framework.services.mutation_result import MutationResult
+from langchain_ai_skills_framework.services.save_skill_service import SaveSkillService
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
 )
@@ -58,7 +56,7 @@ async def test_successful_save_returns_ok_result() -> None:
         content=VALID_CONTENT,
     )
 
-    assert isinstance(result, SaveSkillResult)
+    assert isinstance(result, MutationResult)
     assert result.ok is True
     assert "saved successfully" in result.message
     store.save_skill.assert_awaited_once()

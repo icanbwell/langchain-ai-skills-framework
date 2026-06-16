@@ -14,8 +14,8 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
 from langchain_ai_skills_framework.services.post_save_script_hook import (
     PostSaveScriptHook,
 )
+from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.save_skill_script_service import (
-    SaveSkillScriptResult,
     SaveSkillScriptService,
 )
 from langchain_ai_skills_framework.services.skill_operation_error import (
@@ -51,7 +51,7 @@ class TestSaveSkillScriptService:
             content="#!/bin/bash\necho test",
         )
 
-        assert isinstance(result, SaveSkillScriptResult)
+        assert isinstance(result, MutationResult)
         assert result.ok is True
         assert "Script 'test.sh' saved for skill 'test-skill'" in result.message
         store.save_script.assert_awaited_once_with(

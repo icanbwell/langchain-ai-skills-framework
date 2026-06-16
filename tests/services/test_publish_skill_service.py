@@ -232,26 +232,6 @@ class TestPublishSkillService:
         store.get_skill_details.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_unpublish_skips_state_validation(self) -> None:
-        # Even if the skill is in "published" or any other state,
-        # unpublish should succeed without validation
-        store = AsyncMock(spec=PluginSkillStore)
-        store.set_skill_state.return_value = _make_doc(state="draft")
-        service = PublishSkillService(mongo_skill_loader=store)
-
-        result = await service.execute(
-            user_id="user-1",
-            plugin_name="test-plugin",
-            skill_name="test-skill",
-            published=False,
-        )
-
-        assert "unpublished" in result
-        # Should NOT call skill_exists or get_skill_details
-        store.skill_exists.assert_not_awaited()
-        store.get_skill_details.assert_not_awaited()
-
-    @pytest.mark.asyncio
     async def test_rejects_empty_user_id(self) -> None:
         service = PublishSkillService(mongo_skill_loader=AsyncMock())
 

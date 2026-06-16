@@ -33,12 +33,7 @@ class ReadSkillResourceService:
         skill_name: str,
         resource_name: str,
     ) -> tuple[str, str]:
-        """Return ``(content, artifact)``.
-
-        ``plugin_name`` is optional. When omitted the loader resolves the skill
-        by ``(user_id, skill_name)`` alone — the right behavior for LLM-driven
-        callers that don't reliably know the owning plugin.
-        """
+        """Return ``(content, artifact)``. Optional ``plugin_name``; falls back to (user_id, skill_name) resolution when omitted."""
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise SkillOperationError(

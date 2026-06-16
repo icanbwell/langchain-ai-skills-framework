@@ -41,11 +41,7 @@ class RunSkillScriptService:
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
     ) -> tuple[str, str]:
-        """Run the script and return ``(content, artifact)``.
-
-        ``plugin_name`` is optional. When omitted the loader resolves the skill
-        by ``(user_id, skill_name)`` alone — the right behavior for LLM-driven
-        callers that don't reliably know the owning plugin.
+        """Run the script and return ``(content, artifact)``. Optional ``plugin_name``; falls back to (user_id, skill_name) resolution when omitted.
 
         Returns availability messages on not-found (soft errors).
         Raises ``SkillOperationError`` on unexpected failures.

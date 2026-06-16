@@ -43,10 +43,8 @@ class GetSkillDetailService:
     async def execute(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> SkillDetailResult:
         """Load skill details with user→system fallback for metadata.
 
-        ``plugin_name`` is optional. When omitted the loader resolves the skill
-        by ``(user_id, skill_name)`` alone, and the store lookups for metadata
-        and resource/script lists fall back to the resolved plugin from the
-        loaded details.
+        Optional ``plugin_name``; falls back to (user_id, skill_name) resolution
+        when omitted, and downstream store lookups use the loader-resolved plugin.
 
         Raises:
             SkillOperationError: If skill content not found or validation fails

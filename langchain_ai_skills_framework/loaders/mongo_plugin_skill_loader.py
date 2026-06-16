@@ -316,11 +316,9 @@ class MongoPluginSkillLoader:
 
         path = path.strip() if isinstance(path, str) and path.strip() else ""
         if not path:
-            folder = normalize_folder(folder)
-            if folder is None:
-                folder = await self._resolve_skill_folder(
-                    author=author, plugin_name=plugin_name, skill_name=normalized_skill
-                )
+            folder = await self._ensure_skill_folder(
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill, folder=folder
+            )
             path = build_resource_path(
                 plugin_name=plugin_name,
                 skill_name=normalized_skill,
@@ -483,11 +481,9 @@ class MongoPluginSkillLoader:
 
         path = path.strip() if isinstance(path, str) and path.strip() else ""
         if not path:
-            folder = normalize_folder(folder)
-            if folder is None:
-                folder = await self._resolve_skill_folder(
-                    author=author, plugin_name=plugin_name, skill_name=normalized_skill
-                )
+            folder = await self._ensure_skill_folder(
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill, folder=folder
+            )
             path = build_script_path(
                 plugin_name=plugin_name,
                 skill_name=normalized_skill,
@@ -775,6 +771,20 @@ class MongoPluginSkillLoader:
             raw_folder = doc.get("folder")
             return normalize_folder(raw_folder if isinstance(raw_folder, str) else None)
         return None
+
+    async def _ensure_skill_folder(
+        self,
+        *,
+        author: str,
+        plugin_name: str,
+        skill_name: str,
+        folder: str | None,
+    ) -> str | None:
+        """Normalize ``folder``; fall back to the parent skill's stored folder when empty."""
+        resolved = normalize_folder(folder)
+        if resolved is not None:
+            return resolved
+        return await self._resolve_skill_folder(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
     @staticmethod
     def _normalize(value: str) -> str:

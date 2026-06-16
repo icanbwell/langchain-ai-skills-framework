@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -31,8 +32,12 @@ class LoadSkillService:
         self._loader = skill_loader
         self._user_skill_store = user_skill_store
 
-    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> str:
+    async def execute(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> str:
         """Return the skill content string.
+
+        ``plugin_name`` is optional. When omitted the loader resolves the skill
+        by ``(user_id, skill_name)`` alone, which is the right behavior for
+        LLM-driven callers that don't reliably know the owning plugin.
 
         On not-found, returns an availability message (soft error).
         Raises ``SkillOperationError`` on unexpected failures.
@@ -43,13 +48,15 @@ class LoadSkillService:
                 await format_skill_availability(loader=self._loader, normalized_name=normalized_name, user_id=user_id)
             )
 
-        content = await self._load_skill(normalized_name, plugin_name=plugin_name, user_id=user_id)
+        loaded = await self._load_skill(normalized_name, plugin_name=plugin_name, user_id=user_id)
         logger.debug("LoadSkillService: loaded skill_name=%s", normalized_name)
 
-        if self._user_skill_store and user_id:
+        if self._user_skill_store and user_id and loaded.plugin_name:
             try:
                 await self._user_skill_store.record_skill_usage(
-                    plugin_name=plugin_name, skill_name=normalized_name, user_id=user_id
+                    plugin_name=loaded.plugin_name,
+                    skill_name=normalized_name,
+                    user_id=user_id,
                 )
             except Exception:
                 logger.debug(
@@ -58,9 +65,9 @@ class LoadSkillService:
                     exc_info=True,
                 )
 
-        return content
+        return loaded.content
 
-    async def _load_skill(self, skill_name: str, *, plugin_name: str, user_id: str) -> str:
+    async def _load_skill(self, skill_name: str, *, plugin_name: str | None, user_id: str) -> _LoadedSkill:
         try:
             if user_id:
                 skill = await self._loader.get_skill_details_for_user(
@@ -69,11 +76,21 @@ class LoadSkillService:
             else:
                 skill = self._loader.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
             author = skill.summary.metadata.get("user_id") if skill.summary.metadata else None
-            if author:
-                return f"Author: {author}\n\n{skill.content}"
-            return skill.content
+            content = f"Author: {author}\n\n{skill.content}" if author else skill.content
+            return _LoadedSkill(content=content, plugin_name=skill.summary.plugin_name)
         except SkillNotFoundError:
-            return await format_skill_availability(loader=self._loader, normalized_name=skill_name, user_id=user_id)
+            availability = await format_skill_availability(
+                loader=self._loader, normalized_name=skill_name, user_id=user_id
+            )
+            return _LoadedSkill(content=availability, plugin_name=None)
         except Exception as exc:
             logger.exception("LoadSkillService failed for skill_name=%s", skill_name)
             raise SkillOperationError(f"Unable to load skill '{skill_name}' due to an internal error.") from exc
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedSkill:
+    """Internal carrier so ``execute`` can record usage with the resolved plugin."""
+
+    content: str
+    plugin_name: str | None

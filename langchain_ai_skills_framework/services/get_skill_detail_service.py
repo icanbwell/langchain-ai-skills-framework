@@ -40,14 +40,18 @@ class GetSkillDetailService:
         self._loader = skill_loader
         self._store = mongo_skill_loader
 
-    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> SkillDetailResult:
+    async def execute(self, *, user_id: str, plugin_name: str | None = None, skill_name: str) -> SkillDetailResult:
         """Load skill details with user→system fallback for metadata.
+
+        ``plugin_name`` is optional. When omitted the loader resolves the skill
+        by ``(user_id, skill_name)`` alone, and the store lookups for metadata
+        and resource/script lists fall back to the resolved plugin from the
+        loaded details.
 
         Raises:
             SkillOperationError: If skill content not found or validation fails
         """
         require_user_id(user_id=user_id, operation="get_skill_detail")
-        require_non_empty(value=plugin_name, label="plugin_name")
         require_non_empty(value=skill_name, label="skill_name")
 
         # Load content from loader
@@ -62,7 +66,12 @@ class GetSkillDetailService:
                 plugin_name,
                 skill_name,
             )
-            raise SkillOperationError(f"Skill not found: {plugin_name}/{skill_name}") from exc
+            raise SkillOperationError(f"Skill not found: {plugin_name or '?'}/{skill_name}") from exc
+
+        # Use the loader-resolved plugin for downstream store lookups so the
+        # store reads scope to the actual owning plugin even when the caller
+        # omitted plugin_name.
+        resolved_plugin_name = details.summary.plugin_name or plugin_name
 
         # If no store, return basic info from loader
         if self._store is None:
@@ -78,24 +87,24 @@ class GetSkillDetailService:
             resources = await self._union_with_system(
                 list_fn=self._store.list_resource_names,
                 user_id=user_id,
-                plugin_name=plugin_name,
+                plugin_name=resolved_plugin_name,
                 skill_name=skill_name,
             )
             scripts = await self._union_with_system(
                 list_fn=self._store.list_script_names,
                 user_id=user_id,
-                plugin_name=plugin_name,
+                plugin_name=resolved_plugin_name,
                 skill_name=skill_name,
             )
 
             # Resolve metadata with user→system fallback
             folder, state = await self._resolve_metadata(
-                user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+                user_id=user_id, plugin_name=resolved_plugin_name, skill_name=skill_name
             )
 
         logger.debug(
             "GetSkillDetailService: loaded %s/%s for user=%s (folder=%s, state=%s, %d resources, %d scripts)",
-            plugin_name,
+            resolved_plugin_name,
             skill_name,
             user_id,
             folder,
@@ -117,14 +126,16 @@ class GetSkillDetailService:
         *,
         list_fn: Callable[..., Awaitable[Sequence[str]]],
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None,
         skill_name: str,
     ) -> list[str]:
         user_names = await list_fn(author=user_id, plugin_name=plugin_name, skill_name=skill_name)
         system_names = await list_fn(author="system", plugin_name=plugin_name, skill_name=skill_name)
         return sorted(set(user_names) | set(system_names))
 
-    async def _resolve_metadata(self, *, user_id: str, plugin_name: str, skill_name: str) -> tuple[str | None, str]:
+    async def _resolve_metadata(
+        self, *, user_id: str, plugin_name: str | None, skill_name: str
+    ) -> tuple[str | None, str]:
         """Resolve folder and state with user→system→default fallback."""
         if self._store is None:
             return None, "draft"

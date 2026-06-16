@@ -35,13 +35,17 @@ class RunSkillScriptService:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None = None,
         timeout: int = 30,
     ) -> tuple[str, str]:
         """Run the script and return ``(content, artifact)``.
+
+        ``plugin_name`` is optional. When omitted the loader resolves the skill
+        by ``(user_id, skill_name)`` alone — the right behavior for LLM-driven
+        callers that don't reliably know the owning plugin.
 
         Returns availability messages on not-found (soft errors).
         Raises ``SkillOperationError`` on unexpected failures.
@@ -120,7 +124,7 @@ class RunSkillScriptService:
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
-        plugin_name: str,
+        plugin_name: str | None,
         user_id: str,
     ) -> MyScriptExecutionResult:
         try:

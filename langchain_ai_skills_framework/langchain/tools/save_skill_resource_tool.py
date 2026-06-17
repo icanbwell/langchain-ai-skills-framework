@@ -80,14 +80,14 @@ class SaveSkillResourceTool(BaseTool):
 
         service = SaveSkillResourceService(mongo_skill_loader=self.mongo_skill_loader)
         try:
-            message = await service.execute(
+            result = await service.execute(
                 user_id=user_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
                 content=content,
             )
-            return message, message
+            return result.message, result.message
         except SkillOperationError as exc:
             raise ToolException(str(exc)) from exc
 

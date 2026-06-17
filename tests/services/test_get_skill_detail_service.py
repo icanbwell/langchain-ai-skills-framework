@@ -65,15 +65,79 @@ async def test_get_skill_detail_success() -> None:
     mock_loader.get_skill_details_for_user.assert_called_once_with(
         user_id="user123", plugin_name="test-plugin", skill_name="test-skill"
     )
-    mock_store.list_resource_names.assert_called_once_with(
-        author="user123", plugin_name="test-plugin", skill_name="test-skill"
-    )
-    mock_store.list_script_names.assert_called_once_with(
-        author="user123", plugin_name="test-plugin", skill_name="test-skill"
-    )
+    # Resources and scripts are queried for both the user and the system author
+    # so marketplace-synced items appear alongside user overrides.
+    assert mock_store.list_resource_names.call_count == 2
+    assert mock_store.list_script_names.call_count == 2
+    mock_store.list_resource_names.assert_any_call(author="user123", plugin_name="test-plugin", skill_name="test-skill")
+    mock_store.list_resource_names.assert_any_call(author="system", plugin_name="test-plugin", skill_name="test-skill")
+    mock_store.list_script_names.assert_any_call(author="user123", plugin_name="test-plugin", skill_name="test-skill")
+    mock_store.list_script_names.assert_any_call(author="system", plugin_name="test-plugin", skill_name="test-skill")
     mock_store.get_skill_details.assert_called_once_with(
         author="user123", plugin_name="test-plugin", skill_name="test-skill"
     )
+
+
+@pytest.mark.asyncio
+async def test_get_skill_detail_lists_system_resources_and_scripts_when_user_has_none() -> None:
+    """A user opening a marketplace skill should see system-authored resources and scripts.
+
+    Regression: GetSkillDetailService used to query the store with author=user_id only,
+    so users saw empty Resources/Scripts tabs for any skill they hadn't personally
+    authored. The fix queries both authors and returns the union.
+    """
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    mock_store = AsyncMock(spec=PluginSkillStore)
+
+    summary = SkillSummary(
+        name="test-skill",
+        description="Test skill",
+        plugin_name="test-plugin",
+    )
+    mock_loader.get_skill_details_for_user.return_value = SkillDetails(summary=summary, content="# Test Content")
+
+    async def list_resources_side_effect(*, author: str, **_: object) -> list[str]:
+        return ["REFERENCE.md", "checklist.md"] if author == "system" else []
+
+    async def list_scripts_side_effect(*, author: str, **_: object) -> list[str]:
+        return ["lint.py"] if author == "system" else []
+
+    mock_store.list_resource_names.side_effect = list_resources_side_effect
+    mock_store.list_script_names.side_effect = list_scripts_side_effect
+    mock_store.get_skill_details.side_effect = SkillNotFoundError("Not found")
+
+    service = GetSkillDetailService(skill_loader=mock_loader, mongo_skill_loader=mock_store)
+    result = await service.execute(user_id="user123", plugin_name="test-plugin", skill_name="test-skill")
+
+    assert result.resources == ["REFERENCE.md", "checklist.md"]
+    assert result.scripts == ["lint.py"]
+
+
+@pytest.mark.asyncio
+async def test_get_skill_detail_unions_user_and_system_resources_and_scripts() -> None:
+    """User overrides and system-authored items should both appear in the listing."""
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    mock_store = AsyncMock(spec=PluginSkillStore)
+
+    summary = SkillSummary(name="test-skill", description="Test skill", plugin_name="test-plugin")
+    mock_loader.get_skill_details_for_user.return_value = SkillDetails(summary=summary, content="# x")
+
+    async def list_resources_side_effect(*, author: str, **_: object) -> list[str]:
+        # Overlapping name 'checklist.md' must dedupe.
+        return ["my-notes.md", "checklist.md"] if author == "user123" else ["REFERENCE.md", "checklist.md"]
+
+    async def list_scripts_side_effect(*, author: str, **_: object) -> list[str]:
+        return ["custom.py"] if author == "user123" else ["lint.py"]
+
+    mock_store.list_resource_names.side_effect = list_resources_side_effect
+    mock_store.list_script_names.side_effect = list_scripts_side_effect
+    mock_store.get_skill_details.side_effect = SkillNotFoundError("Not found")
+
+    service = GetSkillDetailService(skill_loader=mock_loader, mongo_skill_loader=mock_store)
+    result = await service.execute(user_id="user123", plugin_name="test-plugin", skill_name="test-skill")
+
+    assert result.resources == ["REFERENCE.md", "checklist.md", "my-notes.md"]
+    assert result.scripts == ["custom.py", "lint.py"]
 
 
 @pytest.mark.asyncio
@@ -181,18 +245,6 @@ async def test_get_skill_detail_empty_user_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_skill_detail_empty_plugin_name() -> None:
-    """Test that empty plugin_name raises SkillOperationError."""
-    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
-    mock_store = AsyncMock(spec=PluginSkillStore)
-
-    service = GetSkillDetailService(skill_loader=mock_loader, mongo_skill_loader=mock_store)
-
-    with pytest.raises(SkillOperationError, match="plugin_name must be"):
-        await service.execute(user_id="user123", plugin_name="", skill_name="test-skill")
-
-
-@pytest.mark.asyncio
 async def test_get_skill_detail_empty_skill_name() -> None:
     """Test that empty skill_name raises SkillOperationError."""
     mock_loader = AsyncMock(spec=SkillLoaderProtocol)
@@ -228,3 +280,31 @@ async def test_get_skill_detail_no_store() -> None:
     assert result.scripts == []
     assert result.folder == "loader-folder"
     assert result.state == "published"
+
+
+@pytest.mark.asyncio
+async def test_get_skill_detail_resolves_plugin_name_from_loader_when_omitted() -> None:
+    """When plugin_name is omitted, the loader-returned summary supplies it for store lookups.
+
+    The store lookups for resources/scripts/metadata key by concrete plugin_name,
+    so the service must thread the resolved plugin through even when the caller
+    passed nothing.
+    """
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    mock_store = AsyncMock(spec=PluginSkillStore)
+
+    summary = SkillSummary(name="test-skill", description="Test", plugin_name="bailey")
+    mock_loader.get_skill_details_for_user.return_value = SkillDetails(summary=summary, content="# body")
+    mock_store.list_resource_names.return_value = []
+    mock_store.list_script_names.return_value = []
+    mock_store.get_skill_details.side_effect = SkillNotFoundError("not found")
+
+    service = GetSkillDetailService(skill_loader=mock_loader, mongo_skill_loader=mock_store)
+    await service.execute(user_id="user123", skill_name="test-skill")
+
+    mock_loader.get_skill_details_for_user.assert_awaited_once_with(
+        user_id="user123", plugin_name=None, skill_name="test-skill"
+    )
+    mock_store.list_resource_names.assert_any_call(author="user123", plugin_name="bailey", skill_name="test-skill")
+    mock_store.list_resource_names.assert_any_call(author="system", plugin_name="bailey", skill_name="test-skill")
+    mock_store.get_skill_details.assert_any_call(author="user123", plugin_name="bailey", skill_name="test-skill")

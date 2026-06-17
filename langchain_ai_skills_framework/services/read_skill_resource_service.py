@@ -29,11 +29,11 @@ class ReadSkillResourceService:
         self,
         *,
         user_id: str,
-        plugin_name: str,
+        plugin_name: str | None = None,
         skill_name: str,
         resource_name: str,
     ) -> tuple[str, str]:
-        """Return ``(content, artifact)``."""
+        """Return ``(content, artifact)``. Optional ``plugin_name``; falls back to (user_id, skill_name) resolution when omitted."""
         normalized_name = skill_name.strip()
         if not normalized_name:
             raise SkillOperationError(
@@ -62,7 +62,7 @@ class ReadSkillResourceService:
         *,
         skill_name: str,
         resource_name: str,
-        plugin_name: str,
+        plugin_name: str | None,
         user_id: str,
     ) -> str:
         try:

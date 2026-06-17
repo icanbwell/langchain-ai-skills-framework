@@ -48,8 +48,15 @@ def build_skill_path(*, plugin_name: str, skill_name: str, folder: str | None = 
 
 
 def build_resource_path(*, plugin_name: str, skill_name: str, resource_name: str, folder: str | None = None) -> str:
-    """Return the canonical path for a skill resource file."""
-    return f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/{resource_name}"
+    """Return the canonical path for a skill resource file.
+
+    Resources live under a ``references/`` subdirectory of the skill, mirroring
+    the on-disk marketplace layout so this stored path can be used verbatim
+    (after prefixing ``plugins/``) when publishing.
+    """
+    return (
+        f"{_skill_base_path(plugin_name=plugin_name, skill_name=skill_name, folder=folder)}/references/{resource_name}"
+    )
 
 
 def build_script_path(*, plugin_name: str, skill_name: str, script_name: str, folder: str | None = None) -> str:
@@ -134,7 +141,7 @@ class MongoPluginResourceDocument(BaseModel):
     plugin_name: str = Field(description="Plugin that owns this resource")
     skill_name: str = Field(description="Normalized name of the parent skill")
     resource_name: str = Field(description="Name of the resource file")
-    path: str = Field(default="", description="Materialized path: plugin/skills/name/resource")
+    path: str = Field(default="", description="Materialized path: plugin/skills/[folder/]name/references/resource")
     content: str = Field(default="", description="Content of the resource file")
     author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this resource")

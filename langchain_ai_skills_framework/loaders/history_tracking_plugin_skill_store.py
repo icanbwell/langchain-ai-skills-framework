@@ -67,6 +67,7 @@ class HistoryTrackingPluginSkillStore:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
         state: str | None = None,
     ) -> MongoPluginSkillDocument:
         exists = await self._inner.skill_exists(author=author, plugin_name=plugin_name, skill_name=skill_name)
@@ -80,6 +81,7 @@ class HistoryTrackingPluginSkillStore:
                 content=content,
                 modified_by=modified_by,
                 folder=folder,
+                path=path,
                 state=state,
             )
         except Exception as exc:
@@ -234,6 +236,7 @@ class HistoryTrackingPluginSkillStore:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginResourceDocument:
         exists = await self._inner.resource_exists(
             author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
@@ -249,6 +252,7 @@ class HistoryTrackingPluginSkillStore:
                 content=content,
                 modified_by=modified_by,
                 folder=folder,
+                path=path,
             )
         except Exception as exc:
             await self._record_error(
@@ -340,6 +344,7 @@ class HistoryTrackingPluginSkillStore:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginScriptDocument:
         exists = await self._inner.script_exists(
             author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
@@ -355,6 +360,7 @@ class HistoryTrackingPluginSkillStore:
                 content=content,
                 modified_by=modified_by,
                 folder=folder,
+                path=path,
             )
         except Exception as exc:
             await self._record_error(
@@ -483,8 +489,10 @@ class HistoryTrackingPluginSkillStore:
     ) -> SkillSnapshot:
         return await self._inner.load_snapshot(author=author, plugin_name=plugin_name, include_staging=include_staging)
 
-    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
-        return await self._inner.load_shared_snapshot(plugin_name=plugin_name)
+    async def load_shared_snapshot(
+        self, *, plugin_name: str | None = None, include_staging: bool = False
+    ) -> SkillSnapshot:
+        return await self._inner.load_shared_snapshot(plugin_name=plugin_name, include_staging=include_staging)
 
     async def get_skill_details(
         self,
@@ -519,6 +527,15 @@ class HistoryTrackingPluginSkillStore:
     ) -> Sequence[str]:
         return await self._inner.list_resource_names(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
+    async def list_resource_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginResourceDocument]:
+        return await self._inner.list_resource_documents(author=author, plugin_name=plugin_name, skill_name=skill_name)
+
     async def resource_exists(
         self,
         *,
@@ -551,6 +568,15 @@ class HistoryTrackingPluginSkillStore:
         skill_name: str,
     ) -> Sequence[str]:
         return await self._inner.list_script_names(author=author, plugin_name=plugin_name, skill_name=skill_name)
+
+    async def list_script_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginScriptDocument]:
+        return await self._inner.list_script_documents(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
     async def script_exists(
         self,

@@ -179,6 +179,7 @@ class MongoPluginSkillLoader:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
         state: str | None = None,
     ) -> MongoPluginSkillDocument:
         self._validate_author(author)
@@ -197,7 +198,11 @@ class MongoPluginSkillLoader:
                 folder = normalize_folder(raw_folder if isinstance(raw_folder, str) else None)
 
         description = self._extract_description(content)
-        path = build_skill_path(plugin_name=plugin_name, skill_name=normalized_name, folder=folder)
+        path = (
+            path.strip()
+            if isinstance(path, str) and path.strip()
+            else build_skill_path(plugin_name=plugin_name, skill_name=normalized_name, folder=folder)
+        )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
@@ -302,21 +307,24 @@ class MongoPluginSkillLoader:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginResourceDocument:
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(resource_name.strip(), "resource_name")
 
-        folder = normalize_folder(folder)
-        if folder is None:
-            folder = await self._resolve_skill_folder(
-                author=author, plugin_name=plugin_name, skill_name=normalized_skill
+        path = path.strip() if isinstance(path, str) and path.strip() else ""
+        if not path:
+            folder = await self._ensure_skill_folder(
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill, folder=folder
             )
-
-        path = build_resource_path(
-            plugin_name=plugin_name, skill_name=normalized_skill, resource_name=resource_name.strip(), folder=folder
-        )
+            path = build_resource_path(
+                plugin_name=plugin_name,
+                skill_name=normalized_skill,
+                resource_name=resource_name.strip(),
+                folder=folder,
+            )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
@@ -415,6 +423,23 @@ class MongoPluginSkillLoader:
             names.append(raw["resource_name"])
         return sorted(names)
 
+    async def list_resource_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginResourceDocument]:
+        self._validate_author(author)
+        normalized_skill = self._normalize(skill_name)
+        query: dict[str, object] = {"author": author, "skill_name": normalized_skill}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        docs: list[MongoPluginResourceDocument] = []
+        async for raw in self._resources_collection.find(self._version_filter(query)):
+            docs.append(MongoPluginResourceDocument.from_mongo_dict(raw))
+        return sorted(docs, key=lambda d: d.resource_name)
+
     async def resource_exists(
         self,
         *,
@@ -447,21 +472,24 @@ class MongoPluginSkillLoader:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginScriptDocument:
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
         self._validate_not_empty(script_name.strip(), "script_name")
 
-        folder = normalize_folder(folder)
-        if folder is None:
-            folder = await self._resolve_skill_folder(
-                author=author, plugin_name=plugin_name, skill_name=normalized_skill
+        path = path.strip() if isinstance(path, str) and path.strip() else ""
+        if not path:
+            folder = await self._ensure_skill_folder(
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill, folder=folder
             )
-
-        path = build_script_path(
-            plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip(), folder=folder
-        )
+            path = build_script_path(
+                plugin_name=plugin_name,
+                skill_name=normalized_skill,
+                script_name=script_name.strip(),
+                folder=folder,
+            )
         now = datetime.now(timezone.utc)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
@@ -560,6 +588,23 @@ class MongoPluginSkillLoader:
             names.append(raw["script_name"])
         return sorted(names)
 
+    async def list_script_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginScriptDocument]:
+        self._validate_author(author)
+        normalized_skill = self._normalize(skill_name)
+        query: dict[str, object] = {"author": author, "skill_name": normalized_skill}
+        if plugin_name:
+            query["plugin_name"] = plugin_name
+        docs: list[MongoPluginScriptDocument] = []
+        async for raw in self._scripts_collection.find(self._version_filter(query)):
+            docs.append(MongoPluginScriptDocument.from_mongo_dict(raw))
+        return sorted(docs, key=lambda d: d.script_name)
+
     async def script_exists(
         self,
         *,
@@ -593,8 +638,11 @@ class MongoPluginSkillLoader:
             query["state"] = {"$ne": "staging"}
         return await self._build_snapshot(query=self._version_filter(query), owner_label=author)
 
-    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
-        query: dict[str, object] = {"state": "published"}
+    async def load_shared_snapshot(
+        self, *, plugin_name: str | None = None, include_staging: bool = False
+    ) -> SkillSnapshot:
+        states = ["published", "staging"] if include_staging else ["published"]
+        query: dict[str, object] = {"state": {"$in": states}}
         if plugin_name:
             query["plugin_name"] = plugin_name
         return await self._build_snapshot(query=self._version_filter(query), owner_label="shared")
@@ -620,6 +668,7 @@ class MongoPluginSkillLoader:
             description=doc.description,
             plugin_name=doc.plugin_name,
             folder=doc.folder,
+            path=doc.path,
             state=doc.state,
             source_path=Path(f"mongodb://{author}/{doc.plugin_name}/{doc.skill_name}"),
             license=None,
@@ -681,6 +730,7 @@ class MongoPluginSkillLoader:
                 description=doc.description,
                 plugin_name=doc.plugin_name,
                 folder=doc.folder,
+                path=doc.path,
                 state=doc.state,
                 source_path=Path(f"mongodb://{owner_label}/{doc.plugin_name}/{doc.skill_name}"),
                 license=None,
@@ -721,6 +771,20 @@ class MongoPluginSkillLoader:
             raw_folder = doc.get("folder")
             return normalize_folder(raw_folder if isinstance(raw_folder, str) else None)
         return None
+
+    async def _ensure_skill_folder(
+        self,
+        *,
+        author: str,
+        plugin_name: str,
+        skill_name: str,
+        folder: str | None,
+    ) -> str | None:
+        """Normalize ``folder``; fall back to the parent skill's stored folder when empty."""
+        resolved = normalize_folder(folder)
+        if resolved is not None:
+            return resolved
+        return await self._resolve_skill_folder(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
     @staticmethod
     def _normalize(value: str) -> str:

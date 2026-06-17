@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
     require_non_empty,
@@ -29,7 +30,9 @@ class SaveSkillResourceService:
         skill_name: str,
         resource_name: str,
         content: str,
-    ) -> str:
+        folder: str | None = None,
+        path: str | None = None,
+    ) -> MutationResult:
         require_user_id(user_id=user_id, operation="save_skill_resource")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=resource_name, label="resource_name")
@@ -44,10 +47,12 @@ class SaveSkillResourceService:
                 resource_name=resource_name,
                 content=content,
                 modified_by=user_id,
+                folder=folder,
+                path=path,
             )
             message = f"Resource '{doc.resource_name}' saved for skill '{doc.skill_name}'."
             logger.info("SaveSkillResourceService: %s (user=%s)", message, user_id)
-            return message
+            return MutationResult(ok=True, message=message)
         except Exception as exc:
             logger.exception(
                 "SaveSkillResourceService failed for skill_name=%s resource_name=%s user=%s",

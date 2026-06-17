@@ -50,6 +50,7 @@ class NullPluginSkillStore:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
         state: str | None = None,
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
@@ -73,7 +74,9 @@ class NullPluginSkillStore:
     ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
-    async def load_shared_snapshot(self, *, plugin_name: str | None = None) -> SkillSnapshot:
+    async def load_shared_snapshot(
+        self, *, plugin_name: str | None = None, include_staging: bool = False
+    ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
 
     async def get_skill_details(
@@ -102,6 +105,7 @@ class NullPluginSkillStore:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginResourceDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -134,6 +138,15 @@ class NullPluginSkillStore:
     ) -> Sequence[str]:
         return ()
 
+    async def list_resource_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginResourceDocument]:
+        return ()
+
     async def resource_exists(
         self,
         *,
@@ -156,6 +169,7 @@ class NullPluginSkillStore:
         content: str,
         modified_by: str = "",
         folder: str | None = None,
+        path: str | None = None,
     ) -> MongoPluginScriptDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -186,6 +200,15 @@ class NullPluginSkillStore:
         plugin_name: str | None = None,
         skill_name: str,
     ) -> Sequence[str]:
+        return ()
+
+    async def list_script_documents(
+        self,
+        *,
+        author: str,
+        plugin_name: str | None = None,
+        skill_name: str,
+    ) -> Sequence[MongoPluginScriptDocument]:
         return ()
 
     async def script_exists(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
     require_non_empty,
@@ -21,7 +22,7 @@ class DeleteSkillService:
     def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
         self._store = mongo_skill_loader
 
-    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> str:
+    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> MutationResult:
         require_user_id(user_id=user_id, operation="delete_skill")
         require_non_empty(value=skill_name, label="skill_name")
         store = require_store(store=self._store)
@@ -37,7 +38,7 @@ class DeleteSkillService:
             else:
                 message = f"Skill '{skill_name}' not found — nothing to delete."
             logger.info("DeleteSkillService: %s (user=%s)", message, user_id)
-            return message
+            return MutationResult(ok=deleted, message=message)
         except Exception as exc:
             logger.exception(
                 "DeleteSkillService failed for skill_name=%s user=%s",

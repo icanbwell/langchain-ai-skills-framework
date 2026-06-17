@@ -109,8 +109,8 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 user_id,
             )
 
-        # 2. Shared DB skills from other users
-        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name)
+        # 2. Shared DB skills from other users (published + staging for direct loads)
+        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name, include_staging=True)
         if normalized in shared_snapshot.details_by_name:
             return shared_snapshot.details_by_name[normalized]
 

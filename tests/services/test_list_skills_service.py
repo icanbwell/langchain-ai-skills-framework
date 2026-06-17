@@ -177,6 +177,43 @@ async def test_list_skills_exclude_empty_set() -> None:
 
 
 @pytest.mark.asyncio
+async def test_allow_states_keeps_only_listed_states() -> None:
+    """Test that allow_states is a whitelist filter — only listed states pass through."""
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    summaries = [
+        SkillSummary(name="pub1", description="", plugin_name="p1", state="published"),
+        SkillSummary(name="draft1", description="", plugin_name="p1", state="draft"),
+        SkillSummary(name="stage1", description="", plugin_name="p1", state="staging"),
+    ]
+    mock_loader.list_all_summaries.return_value = summaries
+
+    service = ListSkillsService(skill_loader=mock_loader)
+    result = await service.execute(user_id="u", allow_states={"published"})
+
+    assert {s.name for s in result} == {"pub1"}
+
+
+@pytest.mark.asyncio
+async def test_allow_states_takes_precedence_over_exclude_states() -> None:
+    """When both are set, allow_states wins (positive whitelist beats deny-list)."""
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    summaries = [
+        SkillSummary(name="pub1", description="", plugin_name="p1", state="published"),
+        SkillSummary(name="draft1", description="", plugin_name="p1", state="draft"),
+    ]
+    mock_loader.list_all_summaries.return_value = summaries
+
+    service = ListSkillsService(skill_loader=mock_loader)
+    result = await service.execute(
+        user_id="u",
+        allow_states={"draft"},
+        exclude_states={"draft"},
+    )
+
+    assert {s.name for s in result} == {"draft1"}
+
+
+@pytest.mark.asyncio
 async def test_list_skills_basic_functionality() -> None:
     """Test basic list_skills without filters (regression test)."""
     mock_loader = AsyncMock(spec=SkillLoaderProtocol)

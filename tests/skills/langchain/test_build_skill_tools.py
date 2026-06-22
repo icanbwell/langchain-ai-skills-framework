@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.langchain.tools.tool_factory import build_skill_tools
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
@@ -122,7 +123,9 @@ class TestBuildSkillTools:
     def test_includes_expected_tools(self) -> None:
         shared = _StubSharedLoader()
         user_loader = _make_user_loader_mock()
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         tools = build_skill_tools(skill_loader=composite, user_skill_store=user_loader)
         tool_names = [t.name for t in tools]

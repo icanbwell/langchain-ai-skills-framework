@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -94,6 +95,7 @@ class TestMarketplaceDirectoryLoaderInit:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
         assert loader.list_skill_summaries(allowed_skills=set()) == ()
 
@@ -102,6 +104,7 @@ class TestMarketplaceDirectoryLoaderInit:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
         assert loader.list_skill_summaries(allowed_skills=set()) == ()
 
@@ -115,6 +118,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -134,6 +138,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -153,6 +158,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -168,6 +174,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         details = loader.get_skill_details(skill_name="my-skill")
@@ -180,6 +187,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         with pytest.raises(SkillNotFoundError):
@@ -190,6 +198,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         with pytest.raises(SkillValidationError, match="does not exist"):
@@ -206,6 +215,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -225,6 +235,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -246,6 +257,7 @@ class TestLocalMarketplaceDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -264,6 +276,7 @@ class TestCacheRefreshSemantics:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         # Initial load
@@ -293,6 +306,7 @@ class TestCacheRefreshSemantics:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         # Initial load
@@ -342,6 +356,7 @@ class TestGithubCacheTTL:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=downloader,
+            script_executor=MyScriptExecutor(),
         )
         loader.list_skill_summaries(allowed_skills=set())
 
@@ -379,6 +394,7 @@ class TestGithubCacheTTL:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=downloader,
+            script_executor=MyScriptExecutor(),
         )
         # Initial load uses TTL
         loader.list_skill_summaries(allowed_skills=set())
@@ -516,6 +532,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -548,6 +565,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
         summaries = loader.list_skill_summaries(allowed_skills=set())
         assert len(summaries) == 1
@@ -561,6 +579,7 @@ class TestMarketplaceJsonDiscovery:
         loader_wrong = MarketplaceDirectoryLoader(
             environment_variables=env_wrong,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
         summaries_wrong = loader_wrong.list_skill_summaries(allowed_skills=set())
         assert len(summaries_wrong) == 1  # NOT excluded because name doesn't match
@@ -573,6 +592,7 @@ class TestMarketplaceJsonDiscovery:
         loader_correct = MarketplaceDirectoryLoader(
             environment_variables=env_correct,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
         summaries_correct = loader_correct.list_skill_summaries(allowed_skills=set())
         assert len(summaries_correct) == 0
@@ -599,6 +619,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -626,6 +647,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -644,6 +666,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -665,6 +688,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -684,6 +708,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -698,6 +723,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -712,6 +738,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -732,6 +759,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())
@@ -753,6 +781,7 @@ class TestMarketplaceJsonDiscovery:
         loader = MarketplaceDirectoryLoader(
             environment_variables=env,
             github_directory_downloader=MagicMock(),
+            script_executor=MyScriptExecutor(),
         )
 
         summaries = loader.list_skill_summaries(allowed_skills=set())

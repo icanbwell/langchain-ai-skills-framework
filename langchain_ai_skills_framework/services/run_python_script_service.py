@@ -6,7 +6,9 @@ from typing import Any
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
-from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -16,6 +18,9 @@ logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 class RunPythonScriptService:
     """Execute inline Python script content."""
+
+    def __init__(self, *, script_executor: ScriptExecutorProtocol) -> None:
+        self._script_executor = script_executor
 
     async def execute(
         self,
@@ -82,8 +87,7 @@ class RunPythonScriptService:
 
         normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
 
-        executor = MyScriptExecutor()
-        result: MyScriptExecutionResult = await executor.execute_inline_script(
+        result: MyScriptExecutionResult = await self._script_executor.execute_inline_script(
             script_name=resolved_script_name,
             script=script,
             arguments=normalized_arguments,

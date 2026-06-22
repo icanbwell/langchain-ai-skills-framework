@@ -17,8 +17,10 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
 from langchain_ai_skills_framework.github.token_provider import (
     GitHubTokenProvider,
 )
-from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -82,6 +84,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         *,
         environment_variables: SkillLoaderEnvironmentVariables,
         github_directory_downloader: GithubDirectoryDownloader,
+        script_executor: ScriptExecutorProtocol,
         plugin_manager: MarketplacePluginManager | None = None,
         snapshot_cache_store: BaseStore | None = None,
         token_provider: GitHubTokenProvider | None = None,
@@ -90,6 +93,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         if environment_variables is None:
             raise ValueError("environment_variables must not be None")
         self._environment_variables = environment_variables
+        self._script_executor = script_executor
 
         marketplace_uri = environment_variables.plugins_marketplace
         self._marketplace_uri = marketplace_uri.strip() if marketplace_uri else ""
@@ -275,10 +279,9 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
             raise SkillNotFoundError(f"Script '{script_name}' not found for skill '{skill_name}'")
 
         if script_path.suffix == ".py":
-            executor = MyScriptExecutor()
             normalized_arguments = {k.lower(): v for k, v in (arguments or {}).items()}
             script_content = script_path.read_text(encoding="utf-8")
-            return await executor.execute_inline_script(
+            return await self._script_executor.execute_inline_script(
                 script_name=script_name,
                 script=script_content,
                 arguments=normalized_arguments,

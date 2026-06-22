@@ -10,6 +10,7 @@ import pytest
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
 )
@@ -153,12 +154,12 @@ class TestCompositeSkillLoaderInit:
     def test_rejects_none_shared_loader(self) -> None:
         user_loader = _make_user_loader_mock()
         with pytest.raises(ValueError, match="shared_loader must not be None"):
-            CompositeSkillLoader(shared_loader=None, user_loader=user_loader)  # type: ignore[arg-type]
+            CompositeSkillLoader(shared_loader=None, user_loader=user_loader, script_executor=MyScriptExecutor())  # type: ignore[arg-type]
 
     def test_rejects_none_user_loader(self) -> None:
         shared = _StubSharedLoader({})
         with pytest.raises(ValueError, match="user_loader must not be None"):
-            CompositeSkillLoader(shared_loader=shared, user_loader=None)  # type: ignore[arg-type]
+            CompositeSkillLoader(shared_loader=shared, user_loader=None, script_executor=MyScriptExecutor())  # type: ignore[arg-type]
 
 
 class TestListAllSummaries:
@@ -169,7 +170,9 @@ class TestListAllSummaries:
 
         shared = _StubSharedLoader({"alpha": shared_skill})
         user_loader = _make_user_loader_mock({"beta": user_skill})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         summaries = await composite.list_all_summaries(user_id="user-1", allowed_skills=set())
 
@@ -184,7 +187,9 @@ class TestListAllSummaries:
 
         shared = _StubSharedLoader({"alpha": shared_skill})
         user_loader = _make_user_loader_mock({"alpha": user_skill})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         summaries = await composite.list_all_summaries(user_id="user-1", allowed_skills=set())
 
@@ -199,7 +204,9 @@ class TestGetSkillDetailsForUser:
         user_skill = _make_skill("my-skill", content="user version", source="mongodb")
         shared = _StubSharedLoader({})
         user_loader = _make_user_loader_mock({"my-skill": user_skill})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         detail = await composite.get_skill_details_for_user(
             user_id="user-1", plugin_name="test-plugin", skill_name="my-skill"
@@ -212,7 +219,9 @@ class TestGetSkillDetailsForUser:
         shared_skill = _make_skill("shared-skill", content="shared version")
         shared = _StubSharedLoader({"shared-skill": shared_skill})
         user_loader = _make_user_loader_mock({})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         detail = await composite.get_skill_details_for_user(
             user_id="user-1", plugin_name="test-plugin", skill_name="shared-skill"
@@ -225,7 +234,9 @@ class TestGetSkillDetailsForUser:
         shared_db_skill = _make_skill("health-news-monitor", content="shared db version", source="mongodb")
         shared = _StubSharedLoader({})
         user_loader = _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         detail = await composite.get_skill_details_for_user(
             user_id="different-user", plugin_name="test-plugin", skill_name="health-news-monitor"
@@ -242,7 +253,9 @@ class TestGetSkillDetailsForUser:
             user_skills={"my-skill": user_skill},
             shared_skills={"my-skill": shared_db_skill},
         )
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         detail = await composite.get_skill_details_for_user(
             user_id="user-1", plugin_name="test-plugin", skill_name="my-skill"
@@ -254,7 +267,9 @@ class TestGetSkillDetailsForUser:
     async def test_raises_not_found_when_neither_has_skill(self) -> None:
         shared = _StubSharedLoader({})
         user_loader = _make_user_loader_mock({})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         with pytest.raises(SkillNotFoundError):
             await composite.get_skill_details_for_user(
@@ -270,7 +285,9 @@ class TestGetInstructionsForUser:
 
         shared = _StubSharedLoader({"alpha": shared_skill})
         user_loader = _make_user_loader_mock({"beta": user_skill})
-        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+        composite = CompositeSkillLoader(
+            shared_loader=shared, user_loader=user_loader, script_executor=MyScriptExecutor()
+        )
 
         instructions = await composite.get_instructions_for_user(user_id="user-1")
 

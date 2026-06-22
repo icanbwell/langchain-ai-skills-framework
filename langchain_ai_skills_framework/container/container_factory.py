@@ -41,6 +41,9 @@ from simple_container.container.interfaces import IContainer
 from simple_container.container.simple_container import SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
 
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
@@ -86,6 +89,7 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
     return MarketplaceDirectoryLoader(
         environment_variables=env_vars,
         github_directory_downloader=c.resolve(GithubDirectoryDownloader),
+        script_executor=c.resolve(ScriptExecutorProtocol),
         snapshot_cache_store=snapshot_cache_store,
         token_provider=c.resolve(GitHubTokenProvider),
     )
@@ -192,6 +196,7 @@ class LangchainAISkillsFrameworkContainerFactory:
                 shared_loader=c.resolve(MarketplaceDirectoryLoader),
                 user_loader=c.resolve(PluginSkillStore),
                 marketplace_publisher=_build_marketplace_publisher(c=c),
+                script_executor=c.resolve(ScriptExecutorProtocol),
             ),
         )
 

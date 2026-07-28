@@ -1,7 +1,7 @@
 # icanbwell - AI Agent Instructions
 
 > **Scope:** Organization-wide baseline. Applies to all repositories in the icanbwell GitHub organization.
-> **Owner:** Enterprise Architecture (@bwell/enterprise-architecture)
+> **Owner:** Enterprise Architecture (@icanbwell/enterprise-architecture)
 > **Precedence:** This file sets the floor. Repo-level instruction files (copilot-instructions.md, CLAUDE.md) may add stricter requirements or repo-specific context but must not weaken or contradict these directives. If there is a conflict, this baseline wins. Repo-level overrides may only tighten rules, never loosen them. Any true exception to this baseline requires EA approval with documented rationale, scope, owner, JIRA ticket, and expiry date.
 
 ---
@@ -13,6 +13,22 @@ You are working in the icanbwell GitHub organization. b.well is a cloud-native, 
 This is a distributed system. Design accordingly. Services are independently deployable, communicate asynchronously by default, and own their private datastores. The shared platform system-of-record is the FHIR server, accessed only via approved APIs and contracts (FHIR APIs, federated graph, events). Workflows that span multiple services use sagas and event choreography, not distributed transactions or synchronous orchestration chains.
 
 Treat these as hard constraints, not suggestions. Code that violates tenant isolation, leaks PHI, bypasses the gateway, introduces unapproved technology, or creates tight coupling between services is incorrect regardless of whether it compiles and passes tests.
+
+---
+
+## Design-Time Quality Kit & Knowledge Substrate
+
+The worst failures happen at **design time**, before code review can catch them. b.well maintains a tool-neutral **knowledge substrate** — the single source of truth for rules, patterns, and gradeable review rubrics — and a design-time kit that uses it. Reach for these instead of re-deriving (or reinventing) an approach:
+
+- **Authoring a design?** Use the **`tech-design`** skill — it walks you through the rubric so the design passes EA review the first time.
+- **Reviewing a design?** Use **`/tech-design-review`** — it grades a TDD/FDR against the rubric and returns concrete, cited gaps.
+- **Rubrics** (`rubrics/`) — what "good" means, gradeably: `tech-design-rubric.md`, `fhir-feasibility-rubric.md` (conformance + IG conformance + resource-explosion feasibility), `api-design-rubric.md`.
+- **Patterns** (`patterns/`) — named, blessed shapes to appeal to by name, not reinvent: `orchestrated-long-running-work`, `temporal-coalescing`, `event-key-and-partition-design`.
+- **Decision guides** (`decision-guides/`) — e.g. `datastore-selection.md` (including *do not put run/FSM state on a FHIR `Task`*).
+- **Standards** (`standards/`) — canonical rules, e.g. `events.md` (Kafka/event conventions; supersedes the inline `patient.updated`-style examples elsewhere in this file).
+- **Reference architectures** (`reference-architectures/`) — annotated real exemplars (the DEQM orchestrator; a good API/SDK).
+
+Overview + the stable-anchor citation convention: `docs/knowledge-substrate.md`. Cite substrate content by anchor (e.g. `standards/events.md#std-events-partition-key`), never by line number.
 
 ---
 
@@ -257,6 +273,16 @@ If you are unsure whether your change requires a review, apply the "Is it NEW?" 
 ### Plan Before Acting
 Before making non-trivial changes, propose a short plan. Call out risks: does this touch tenant isolation, PHI, public contracts, event schemas, or introduce a new dependency? Identify which governing artifacts (Tech Design Doc, FDR, ADR, AsyncAPI) are relevant before writing code. Before coding, briefly restate the applicable constraints you are following for this change (tenancy, PHI, contracts, dependencies).
 
+### Diagnose Before Escalating
+When encountering failures or blocked operations, diagnose the actual root cause before proposing solutions that require elevated permissions, org admin intervention, or process escalation. Simple configuration issues (missing credential setup, incorrect paths, malformed syntax) are not permission problems. Read logs carefully. Check for obvious mistakes first: Are you using the right token variable? Is the remote URL configured? Did the command actually fail or just warn?
+
+Do not jump to "this needs org admin" or "this requires a PAT" without evidence that the current approach is architecturally insufficient. If a similar workflow works elsewhere in the codebase, investigate what that workflow does differently before concluding new infrastructure is needed.
+
+### Respect System Constraints
+Understand the constraints of the system you are working in. If branch protection requires reviews, you cannot merge - do not repeatedly offer to merge. If CI checks are failing, you cannot bypass them - do not offer workarounds. If a process requires approval, you cannot skip it - do not suggest shortcuts.
+
+When a user tells you an action is blocked or explains a constraint, internalize it. Do not re-propose the same blocked action with different wording. If you are unsure whether a constraint applies, ask once. If the answer is "no, that won't work", do not ask again or try to find a loophole.
+
 ### Don't Guess Commands
 Find and use the repo's canonical build, test, and lint commands. Check the Makefile, package.json scripts, build.gradle, or Pipfile. If the commands are unclear, say so and point to where you looked. Do not invent commands.
 
@@ -275,6 +301,112 @@ If you encounter code that violates these principles - tenant isolation missing 
 ### Code Ownership
 Do not add "Co-Authored-By", "Generated by", or any other AI attribution to commits, PRs, or code comments. Engineers own their code regardless of what tool assisted in writing it. The tool is irrelevant. The author on the commit is the owner.
 
+
+### Branch Naming
+Branch names must follow the pattern: `{initials}-{project}-{ticket-number}`
+
+**Format:** `XX-PROJ-123` where:
+- `XX` = your initials (e.g., WF for Bill Field)
+- `PROJ` = JIRA project key (EA, HP, PAY, etc.)
+- `123` = ticket number
+
+**Valid branch names:**
+```
+WF-EA-2136
+JD-HP-456
+SK-PAY-789
+```
+
+**Invalid branch names:**
+```
+feature/add-new-feature
+fix-bug-123
+EA-2136 (missing initials)
+feature/ai-dev-infrastructure-item-1
+```
+
+Do not use conventional branch prefixes like `feature/`, `fix/`, `bugfix/`, or `hotfix/`. The JIRA ticket key provides all necessary context.
+### Commit Messages
+Every commit message must begin with a JIRA issue key. Do not use conventional commit prefixes like `feat:`, `fix:`, `chore:`, or similar. The JIRA key is the only required prefix.
+
+**Valid commit message format:**
+```
+PROJ-123 implement user authentication API
+HP-456 resolve timeout in data sync service
+EA-789 add FHIR resource validation
+```
+
+**Invalid commit messages:**
+```
+feat: implement user authentication API
+fix(api): resolve timeout issue
+chore: update dependencies
+```
+
+**Exceptions:** The following patterns are allowed without JIRA keys:
+- Automated dependency updates: `Bump version`, `build(deps): bump library-name`
+- Git operations: `Merge`, `Revert`, `Reapply`
+
+All commits are validated automatically. If you do not have a JIRA ticket for your work, create one before committing.
+
+### Working with icanbwell Infrastructure
+
+**Atlassian (JIRA & Confluence):** https://icanbwell.atlassian.net/  
+**Slack Workspace:** icanbwell
+
+#### Creating JIRA Tickets
+
+Use the Atlassian MCP to create tickets programmatically. The MCP server connects via `plugin:atlassian:atlassian`.
+
+**Required steps:**
+1. Get cloudId: `mcp__plugin_atlassian_atlassian__getAccessibleAtlassianResources()`
+2. Create issue: `mcp__plugin_atlassian_atlassian__createJiraIssue(cloudId, projectKey, issueTypeName, summary, description, parent)`
+
+**Example:**
+```
+cloudId: "<from-step-1-above>"  # Use getAccessibleAtlassianResources() to get current value
+projectKey: "EA" (Enterprise Architecture) or team-specific project
+issueTypeName: "Task", "Story", "Bug"
+parent: "EA-XXXX" (for linking to epics)
+```
+
+**Common Projects:**
+- EA: Enterprise Architecture
+- HP: Health Plan projects  
+- PAY: Payment projects
+- RNGR: Clinical projects
+
+If Atlassian MCP tools are not available:
+1. Check MCP connection: `claude mcp list`
+2. Tool naming pattern: `mcp__plugin_atlassian_atlassian__[tool_name]`
+3. Search tools: Use ToolSearch to find `mcp__plugin_atlassian` tools
+4. Restart if needed: Session restart may be required to load MCP tools
+
+#### Reading Confluence Pages
+
+Use `mcp__plugin_atlassian_atlassian__getConfluencePage(cloudId, pageId, contentFormat)` to read documentation.
+
+**Finding pages:** `mcp__plugin_atlassian_atlassian__searchConfluenceUsingCql(cloudId, cql, limit)`
+
+Common spaces:
+- ENTARCH: Enterprise Architecture documentation
+- DEV: Developer documentation  
+- OPS: Operations & infrastructure
+
+#### Slack Integration
+
+Use Slack MCP for posting messages and searching conversations.
+
+**Post messages:** `mcp__plugin_slack_slack__slack_send_message(channel_id, text)`  
+**Search:** `mcp__plugin_slack_slack__slack_search_public(query, content_types, limit)`
+
+Common channels:
+- #tech-enterprise-architecture: EA team channel
+- #tech-dev: Engineering announcements
+- #possible-sdk-impact: SDK change notifications
+
+
+
 ### Schema and Client Resilience
 Assume clients may receive unknown enum values and new fields at any time. Design for forward compatibility. Do not write exhaustive enum switches without a default/unknown handler. Do not fail on unrecognized fields. GraphQL schema evolution and event schema evolution must be additive - new fields and enum values must not break existing consumers.
 
@@ -283,29 +415,3 @@ Assume clients may receive unknown enum values and new fields at any time. Desig
 ## Code Style
 
 Follow whatever linter, formatter, and static analysis configuration exists in the repo. Do not duplicate what automated tooling already enforces. These instructions are for architectural and design decisions that linters cannot catch.
-
----
-
-## Repo-Specific Conventions (langchain-ai-skills-framework)
-
-### IoC Container
-This project uses an IoC (Inversion of Control) container (`SimpleContainer` from the `ioc` package) for dependency registration and resolution. Register dependencies in `container/container_factory.py`. Services and loaders receive their dependencies via constructor injection resolved by the container. Do not instantiate infrastructure or service objects manually outside of the container factory.
-
-### Environment Variables
-Configuration is accessed through a dedicated `EnvironmentVariables` class (implementing `SkillLoaderEnvironmentVariables`), not through direct `os.environ` reads. All environment-specific values (feature flags, timeouts, collection names, connection strings) are fields on this class. When adding new configuration, add a field to the environment variables class rather than reading `os.environ` directly.
-
-### Skill Cache Schema Version
-The MongoDB skill cache uses a schema version constant defined in `langchain_ai_skills_framework/models/schema_version.py`. When you change the structure of `MongoPluginSkillDocument` (adding, removing, or renaming fields that are stored in MongoDB), increment `SKILL_CACHE_SCHEMA_VERSION`. This causes existing cached documents to be ignored on read (filtered by version) and forces a re-sync from the marketplace. Do not use an environment variable for this — it is a code-level constant tied to the document schema.
-
-### Keyword-Only Parameters
-All functions and methods in this codebase use keyword-only parameters (using the `*` separator). Do not use positional parameters. This applies to public APIs, internal helpers, protocol methods, and test stubs alike. When calling any function, always pass arguments by name.
-
-```python
-# Correct
-def build_skill_path(*, plugin_name: str, skill_name: str) -> str: ...
-result = build_skill_path(plugin_name="my-plugin", skill_name="my-skill")
-
-# Incorrect — do not use positional parameters
-def build_skill_path(plugin_name: str, skill_name: str) -> str: ...
-result = build_skill_path("my-plugin", "my-skill")
-```

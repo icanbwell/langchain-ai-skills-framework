@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Type, Literal, Tuple
+from typing import Any, Literal
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -71,7 +71,7 @@ class RunSkillScriptTool(BaseTool):
         - Scripts may modify external state (files, databases, APIs)
         - Execution errors are included in the output
         """
-    args_schema: Type[BaseModel] = RunSkillScriptInput
+    args_schema: type[BaseModel] = RunSkillScriptInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
 
@@ -85,7 +85,7 @@ class RunSkillScriptTool(BaseTool):
         timeout: int = 30,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     async def _arun(
@@ -98,7 +98,7 @@ class RunSkillScriptTool(BaseTool):
         timeout: int = 30,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 

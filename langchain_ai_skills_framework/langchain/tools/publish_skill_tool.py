@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Tuple, Type, override
+from typing import Any, Literal, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -16,8 +16,8 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
-from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.services.publish_skill_service import PublishSkillService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 
 class PublishSkillInput(BaseModel):
@@ -28,18 +28,18 @@ class PublishSkillInput(BaseModel):
     plugin_name: str = Field(
         description="Name of the plugin containing the skill.",
     )
-    skill_name: Optional[str] = Field(
+    skill_name: str | None = Field(
         default=None,
         description="Name of the skill to publish or unpublish. If omitted, extracted from content frontmatter.",
     )
-    content: Optional[str] = Field(
+    content: str | None = Field(
         default=None,
         description="Skill content (SKILL.md format). Used to extract skill_name from frontmatter when skill_name is not provided.",
     )
     published: bool = Field(
         description="True to publish the skill to the marketplace, False to unpublish it.",
     )
-    branch_name: Optional[str] = Field(
+    branch_name: str | None = Field(
         default=None,
         description="Optional branch name for the PR. Defaults to 'skill-publish/{plugin}/{skill}'.",
     )
@@ -51,23 +51,23 @@ class PublishSkillTool(BaseTool):
 
     name: str = "publish_skill"
     description: str = "Publish or unpublish a saved skill to the marketplace. The skill must already exist."
-    args_schema: Type[BaseModel] = PublishSkillInput
+    args_schema: type[BaseModel] = PublishSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
-    mongo_skill_loader: Optional[PluginSkillStore] = None
-    marketplace_publisher: Optional[GitHubMarketplacePublisher] = None
+    mongo_skill_loader: PluginSkillStore | None = None
+    marketplace_publisher: GitHubMarketplacePublisher | None = None
 
     @override
     def _run(
         self,
         *,
         plugin_name: str,
-        skill_name: Optional[str] = None,
-        content: Optional[str] = None,
+        skill_name: str | None = None,
+        content: str | None = None,
         published: bool,
-        branch_name: Optional[str] = None,
+        branch_name: str | None = None,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
@@ -75,13 +75,13 @@ class PublishSkillTool(BaseTool):
         self,
         *,
         plugin_name: str,
-        skill_name: Optional[str] = None,
-        content: Optional[str] = None,
+        skill_name: str | None = None,
+        content: str | None = None,
         published: bool,
-        branch_name: Optional[str] = None,
+        branch_name: str | None = None,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 

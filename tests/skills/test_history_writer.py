@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -69,7 +69,7 @@ async def test_write_methods_insert_document(
 
 
 async def test_get_skill_history_returns_records(history_writer: HistoryWriter, mock_mongo_database: MagicMock) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     mock_cursor = MagicMock()
     mock_cursor.sort.return_value = mock_cursor
     mock_cursor.skip.return_value = mock_cursor

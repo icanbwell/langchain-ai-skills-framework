@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from langchain_core.tools import ToolException
@@ -15,7 +15,7 @@ from tests.skills.langchain.conftest import make_runtime
 
 
 class _StubExecutor:
-    calls: list[tuple[str, str, dict[str, Any], int]] = []
+    calls: ClassVar[list[tuple[str, str, dict[str, Any], int]]] = []
 
     async def execute_inline_script(
         self,

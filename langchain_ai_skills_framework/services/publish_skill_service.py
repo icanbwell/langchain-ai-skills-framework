@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import ClassVar
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -51,7 +52,7 @@ class PublishSkillService:
     # previous task.  All access is single-threaded within one asyncio
     # event loop, so no mutex is needed.  The done-callback in execute()
     # removes completed entries to prevent unbounded growth.
-    _pending_tasks: dict[str, asyncio.Task[None]] = {}
+    _pending_tasks: ClassVar[dict[str, asyncio.Task[None]]] = {}
 
     def __init__(
         self,

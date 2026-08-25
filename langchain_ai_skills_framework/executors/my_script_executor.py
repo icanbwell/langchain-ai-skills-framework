@@ -12,6 +12,7 @@ from skillkit import SkillMetadata
 from langchain_ai_skills_framework.executors.base_script_executor import (
     BaseScriptExecutor,
     PathSecurityError,
+    ScriptExecutionError,
     ScriptPermissionError,
 )
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "MyScriptExecutor",
     "PathSecurityError",
+    "ScriptExecutionError",
     "ScriptPermissionError",
 ]
 
@@ -138,7 +140,7 @@ class MyScriptExecutor(BaseScriptExecutor):
 
             if scope.cancelled_caught or result is None:
                 logger.error(f"Script '{script_name}' timed out after {timeout} seconds")
-                raise Exception(f"Script '{script_name}' timed out after {timeout} seconds")
+                raise ScriptExecutionError(f"Script '{script_name}' timed out after {timeout} seconds")
 
             # Check output size before decoding
             self._check_output_size(output=result.stdout)
@@ -150,12 +152,14 @@ class MyScriptExecutor(BaseScriptExecutor):
             if result.stderr:
                 stderr = result.stderr.decode("utf-8", errors="replace")
 
-                # Log dependency installation info if present
-                if use_uv and stderr:
-                    # uv outputs dependency info to stderr
-                    if "Resolved" in stderr or "Installed" in stderr or "dependencies" in stderr.lower():
-                        logger.info(f"[UV] Dependency installation info for {script_name}:")
-                        logger.debug(stderr)
+                # Log dependency installation info if present (uv outputs it to stderr)
+                if (
+                    use_uv
+                    and stderr
+                    and ("Resolved" in stderr or "Installed" in stderr or "dependencies" in stderr.lower())
+                ):
+                    logger.info(f"[UV] Dependency installation info for {script_name}:")
+                    logger.debug(stderr)
 
             if result.returncode != 0:
                 output += f"\n\nScript exited with code {result.returncode}"
@@ -164,17 +168,17 @@ class MyScriptExecutor(BaseScriptExecutor):
 
         except PermissionError as e:
             logger.error(f"Permission denied executing script '{script_name}' at {validated_script_path}: {e}")
-            raise Exception(
+            raise ScriptExecutionError(
                 f"Permission denied executing script '{script_name}' at "
                 f"{validated_script_path}. Ensure the script and uv binary have "
                 f"execute permissions: {e}"
             ) from e
         except FileNotFoundError as e:
             logger.error(f"Command not found for script '{script_name}': {e}")
-            raise Exception(f"Command not found. Ensure 'uv' is installed and in PATH: {e}") from e
+            raise ScriptExecutionError(f"Command not found. Ensure 'uv' is installed and in PATH: {e}") from e
         except OSError as e:
             logger.error(f"Failed to execute script '{script_name}': {e}")
-            raise Exception(f"Failed to execute script '{script_name}': {e}") from e
+            raise ScriptExecutionError(f"Failed to execute script '{script_name}': {e}") from e
 
         # Calculate execution time
         execution_time_ms = (time.perf_counter() - start_time) * 1000
@@ -277,7 +281,6 @@ class MyScriptExecutor(BaseScriptExecutor):
                 temp_script_path.chmod(0o700)
             except OSError as e:
                 logger.warning(f"Failed to set permissions for temporary script file: {temp_script_path} {e}")
-                pass
 
             return await self._execute_validated_script(
                 script_name=script_name,

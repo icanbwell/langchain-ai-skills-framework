@@ -13,6 +13,15 @@ class ScriptPermissionError(Exception):
     """Raised when script has dangerous permissions."""
 
 
+class ScriptOutputTooLargeError(Exception):
+    """Raised when script output exceeds the configured size limit."""
+
+
+class ScriptExecutionError(Exception):
+    """Raised when the script process itself fails to run (timeout, missing
+    interpreter/binary, permission denied, or other OS-level failure)."""
+
+
 class BaseScriptExecutor:
     """Shared security controls for script executors.
 
@@ -96,4 +105,6 @@ class BaseScriptExecutor:
     def _check_output_size(self, *, output: bytes) -> None:
         """Prevent memory exhaustion from oversized script output."""
         if len(output) > self.max_output_size:
-            raise Exception(f"Script output too large: {len(output)} bytes (max {self.max_output_size})")
+            raise ScriptOutputTooLargeError(
+                f"Script output too large: {len(output)} bytes (max {self.max_output_size})"
+            )

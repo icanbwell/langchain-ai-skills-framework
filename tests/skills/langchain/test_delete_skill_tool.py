@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.tools import ToolException
 
+from langchain_ai_skills_framework.langchain.tools.delete_skill_tool import DeleteSkillTool
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     PluginSkillStore,
 )
-from langchain_ai_skills_framework.langchain.tools.delete_skill_tool import DeleteSkillTool
 from tests.skills.langchain.conftest import make_runtime
 
 
@@ -24,7 +24,7 @@ class TestDeleteSkillTool:
         loader = _make_loader_mock(deleted=True)
         tool = DeleteSkillTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(
+        result, _artifact = await tool._arun(
             plugin_name="test-plugin", skill_name="test-skill", runtime=make_runtime("user-1")
         )
 

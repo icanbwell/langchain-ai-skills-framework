@@ -115,7 +115,7 @@ class MyShellExecutor(BaseScriptExecutor):
                 cwd=str(skill_base_dir.resolve()),
             )
             stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(input=stdin_data), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             elapsed_ms = (time.monotonic() - start_time) * 1000
             logger.error(
                 "Shell script '%s' timed out after %d seconds",
@@ -129,7 +129,7 @@ class MyShellExecutor(BaseScriptExecutor):
                 execution_time_ms=elapsed_ms,
                 success=False,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any subprocess failure should degrade to a failed result, not crash
             elapsed_ms = (time.monotonic() - start_time) * 1000
             logger.error("Shell script '%s' failed: %s", script_path.name, exc)
             return MyScriptExecutionResult(

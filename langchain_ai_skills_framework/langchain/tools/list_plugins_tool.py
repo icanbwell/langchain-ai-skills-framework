@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Tuple, Type, override
+from typing import Any, Literal, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -30,7 +30,7 @@ class ListPluginsTool(BaseTool):
     description: str = (
         "List all registered plugins. Returns plugin names, descriptions, and the skills each plugin provides."
     )
-    args_schema: Type[BaseModel] = ListPluginsInput
+    args_schema: type[BaseModel] = ListPluginsInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     mongo_skill_loader: PluginSkillStore | None = None
 
@@ -40,7 +40,7 @@ class ListPluginsTool(BaseTool):
         *,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
@@ -49,7 +49,7 @@ class ListPluginsTool(BaseTool):
         *,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         service = ListPluginsService(mongo_skill_loader=self.mongo_skill_loader)
         try:
             plugins = await service.execute()

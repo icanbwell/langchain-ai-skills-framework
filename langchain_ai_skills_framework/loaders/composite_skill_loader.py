@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from html import escape
 from types import MappingProxyType
-from typing import Any, Sequence
+from typing import Any
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
@@ -12,13 +13,11 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
 from langchain_ai_skills_framework.executors.my_script_executor import (
     MyScriptExecutor,
 )
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
-)
-from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
-from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
-from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
-    normalize_skill_name,
 )
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     PluginSkillStore,
@@ -26,15 +25,20 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
-    GitHubMarketplacePublisher,
-)
+from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
+from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
 )
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
+    normalize_skill_name,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -57,6 +61,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         shared_loader: SkillLoaderProtocol,
         user_loader: PluginSkillStore,
         marketplace_publisher: GitHubMarketplacePublisher | None = None,
+        script_executor: ScriptExecutorProtocol | None = None,
     ) -> None:
         if shared_loader is None:
             raise ValueError("shared_loader must not be None")
@@ -66,6 +71,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self._shared_loader = shared_loader
         self._user_loader = user_loader
         self._marketplace_publisher = marketplace_publisher
+        self._script_executor: ScriptExecutorProtocol = script_executor or MyScriptExecutor()
 
     @property
     def shared_loader(self) -> SkillLoaderProtocol:
@@ -460,16 +466,15 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Script execution ----------------------------------------------------
 
-    @staticmethod
     async def _execute_script_content(
+        self,
         *,
         script_content: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         """Execute a script stored as content in MongoDB."""
-        executor = MyScriptExecutor()
-        return await executor.execute_inline_script(
+        return await self._script_executor.execute_inline_script(
             script_name=script_name,
             script=script_content,
             arguments=arguments or {},

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,10 +11,10 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import (
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginScriptDocument,
 )
+from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.post_save_script_hook import (
     PostSaveScriptHook,
 )
-from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.save_skill_script_service import (
     SaveSkillScriptService,
 )
@@ -31,8 +31,8 @@ def _make_script_doc(*, script_name: str = "test.sh") -> MongoPluginScriptDocume
         script_name=script_name,
         content="#!/bin/bash\necho test",
         modified_by="user-1",
-        date_created=datetime.now(timezone.utc),
-        date_modified=datetime.now(timezone.utc),
+        date_created=datetime.now(UTC),
+        date_modified=datetime.now(UTC),
     )
 
 

@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.tools import ToolException
 
+from langchain_ai_skills_framework.langchain.tools.publish_skill_tool import (
+    PublishSkillTool,
+)
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     PluginSkillStore,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillDocument,
-)
-from langchain_ai_skills_framework.langchain.tools.publish_skill_tool import (
-    PublishSkillTool,
 )
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
@@ -31,8 +31,8 @@ def _make_doc(skill_name: str = "test-skill", state: str = "in_review") -> Mongo
         content="# Test\nContent",
         state=state,
         modified_by="user-1",
-        date_created=datetime.now(timezone.utc),
-        date_modified=datetime.now(timezone.utc),
+        date_created=datetime.now(UTC),
+        date_modified=datetime.now(UTC),
     )
 
 
@@ -75,7 +75,7 @@ class TestPublishSkillTool:
         publisher = _make_publisher_mock()
         tool = PublishSkillTool(mongo_skill_loader=loader, marketplace_publisher=publisher)
 
-        result, artifact = await tool._arun(
+        result, _artifact = await tool._arun(
             plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime("user-1")
         )
 
@@ -118,7 +118,7 @@ class TestPublishSkillTool:
         loader = _make_loader_mock(state="in_review")
         tool = PublishSkillTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(
+        result, _artifact = await tool._arun(
             plugin_name="test-plugin", skill_name="test-skill", published=True, runtime=make_runtime()
         )
 

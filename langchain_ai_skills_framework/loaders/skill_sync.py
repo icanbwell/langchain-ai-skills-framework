@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.skills_model import SkillSummary
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
@@ -124,7 +124,7 @@ class SkillSync:
         # Sync resources
         try:
             resource_names = self._shared.list_skill_resource_names(skill_name=skill_name, plugin_name=plugin_name)
-        except Exception:
+        except Exception:  # noqa: BLE001 - failing to list resources must not block the rest of sync
             logger.debug("SkillSync: could not list resources for skill '%s'.", skill_name)
             resource_names = []
 
@@ -158,7 +158,7 @@ class SkillSync:
         # Sync scripts
         try:
             script_names = self._shared.list_skill_script_names(skill_name=skill_name, plugin_name=plugin_name)
-        except Exception:
+        except Exception:  # noqa: BLE001 - failing to list scripts must not block the rest of sync
             logger.debug("SkillSync: could not list scripts for skill '%s'.", skill_name)
             script_names = []
 

@@ -5,8 +5,8 @@ Reads return empty results.  Writes raise ``RuntimeError``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
-from typing import Mapping, Sequence
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,

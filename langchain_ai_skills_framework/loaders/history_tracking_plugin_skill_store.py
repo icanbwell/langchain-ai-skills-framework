@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import traceback as tb
-from datetime import datetime, timezone
-from typing import Literal, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from typing import Literal
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.models.error_record import ErrorRecord
 from langchain_ai_skills_framework.models.history_record import HistoryRecord
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
@@ -20,7 +22,6 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSnapshot,
 )
-from langchain_ai_skills_framework.models.error_record import ErrorRecord
 from langchain_ai_skills_framework.persistence.error_writer import ErrorWriter
 from langchain_ai_skills_framework.persistence.history_writer import HistoryWriter
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
@@ -98,7 +99,7 @@ class HistoryTrackingPluginSkillStore:
             action=action,
             document_snapshot=doc.to_mongo_dict(),
             changed_by=modified_by or author,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_collection="plugin_skills",
             user_id=author,
             plugin_name=doc.plugin_name,
@@ -138,7 +139,7 @@ class HistoryTrackingPluginSkillStore:
             action="state_changed",
             document_snapshot={**doc.to_mongo_dict(), "state": state},
             changed_by=author,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_collection="plugin_skills",
             user_id=author,
             plugin_name=doc.plugin_name,
@@ -160,7 +161,7 @@ class HistoryTrackingPluginSkillStore:
                 "plugin_name": plugin_name,
                 "user_id": author,
             }
-        except Exception:
+        except Exception:  # noqa: BLE001 - pre-delete snapshot is best-effort; store backends vary in what they raise for "not found"
             logger.debug("Could not capture pre-delete snapshot for skill %s/%s", plugin_name, skill_name)
 
         resource_names: Sequence[str] = []
@@ -169,19 +170,19 @@ class HistoryTrackingPluginSkillStore:
             resource_names = await self._inner.list_resource_names(
                 author=author, plugin_name=plugin_name, skill_name=skill_name
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - resource enumeration is best-effort before delete; must not block the delete itself
             logger.debug("Could not enumerate resources before skill delete %s/%s", plugin_name, skill_name)
         try:
             script_names = await self._inner.list_script_names(
                 author=author, plugin_name=plugin_name, skill_name=skill_name
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - script enumeration is best-effort before delete; must not block the delete itself
             logger.debug("Could not enumerate scripts before skill delete %s/%s", plugin_name, skill_name)
 
         deleted = await self._inner.delete_skill(author=author, plugin_name=plugin_name, skill_name=skill_name)
 
         if deleted:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for resource in resource_names:
                 child_record = HistoryRecord(
                     action="deleted",
@@ -269,7 +270,7 @@ class HistoryTrackingPluginSkillStore:
             action=action,
             document_snapshot=doc.to_mongo_dict(),
             changed_by=modified_by or author,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_collection="plugin_references",
             user_id=author,
             plugin_name=doc.plugin_name,
@@ -302,7 +303,7 @@ class HistoryTrackingPluginSkillStore:
                 "plugin_name": plugin_name,
                 "user_id": author,
             }
-        except Exception:
+        except Exception:  # noqa: BLE001 - pre-delete snapshot is best-effort; store backends vary in what they raise for "not found"
             logger.debug(
                 "Could not capture pre-delete snapshot for resource %s/%s/%s",
                 plugin_name,
@@ -319,7 +320,7 @@ class HistoryTrackingPluginSkillStore:
                 action="deleted",
                 document_snapshot=snapshot,
                 changed_by=author,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 source_collection="plugin_references",
                 user_id=author,
                 plugin_name=plugin_name,
@@ -377,7 +378,7 @@ class HistoryTrackingPluginSkillStore:
             action=action,
             document_snapshot=doc.to_mongo_dict(),
             changed_by=modified_by or author,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_collection="plugin_scripts",
             user_id=author,
             plugin_name=doc.plugin_name,
@@ -410,7 +411,7 @@ class HistoryTrackingPluginSkillStore:
                 "plugin_name": plugin_name,
                 "user_id": author,
             }
-        except Exception:
+        except Exception:  # noqa: BLE001 - pre-delete snapshot is best-effort; store backends vary in what they raise for "not found"
             logger.debug(
                 "Could not capture pre-delete snapshot for script %s/%s/%s",
                 plugin_name,
@@ -427,7 +428,7 @@ class HistoryTrackingPluginSkillStore:
                 action="deleted",
                 document_snapshot=snapshot,
                 changed_by=author,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 source_collection="plugin_scripts",
                 user_id=author,
                 plugin_name=plugin_name,
@@ -472,7 +473,7 @@ class HistoryTrackingPluginSkillStore:
             action=action,
             document_snapshot=doc.to_mongo_dict(),
             changed_by="system",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_collection="plugins",
             user_id="system",
             plugin_name=doc.plugin_name,

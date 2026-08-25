@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -30,8 +30,8 @@ def _make_resource_doc() -> MongoPluginResourceDocument:
         resource_name="forms.md",
         content="# forms",
         modified_by="user-1",
-        date_created=datetime.now(timezone.utc),
-        date_modified=datetime.now(timezone.utc),
+        date_created=datetime.now(UTC),
+        date_modified=datetime.now(UTC),
     )
 
 

@@ -152,7 +152,7 @@ class GithubDirectoryDownloader:
                     exclude_directories=exclude_directories,
                 )
                 return
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - retry loop must catch any failure to back off and retry
                 last_exc = exc
                 if attempt < self._MAX_RETRIES - 1:
                     delay = self._RETRY_BASE_DELAY * (2**attempt)
@@ -295,7 +295,7 @@ class GithubDirectoryDownloader:
             if raw_root and isinstance(raw_root, str):
                 result: str = raw_root.removeprefix("./").strip("/")
                 return result
-        except Exception:
+        except Exception:  # noqa: BLE001 - manifest read is best-effort; fsspec backends vary in what they raise for "not found"
             if has_filters:
                 logger.warning(
                     "Could not read %s from remote — include/exclude filters "

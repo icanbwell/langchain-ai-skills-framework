@@ -3,6 +3,18 @@ from typing import cast
 
 from key_value.aio.stores.base import BaseStore
 from key_value.aio.stores.mongodb import MongoDBStore
+from simple_container.container.interfaces import IContainer
+from simple_container.container.simple_container import ContainerError, SimpleContainer
+from simple_container.environment.environment_variables import EnvironmentVariables
+
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
+from langchain_ai_skills_framework.github.token_provider import (
+    GitHubAppTokenProvider,
+    GitHubTokenProvider,
+    StaticTokenProvider,
+)
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
 )
@@ -19,6 +31,9 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store_factory import (
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.loaders.skill_sync import SkillSync
 from langchain_ai_skills_framework.persistence.mongo_database_factory import (
     MongoDatabaseFactory,
@@ -29,20 +44,8 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory_impl impor
 from langchain_ai_skills_framework.persistence.mongo_url_helpers import (
     MongoUrlHelpers,
 )
-from langchain_ai_skills_framework.github.token_provider import (
-    GitHubAppTokenProvider,
-    GitHubTokenProvider,
-    StaticTokenProvider,
-)
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
-)
-from simple_container.container.interfaces import IContainer
-from simple_container.container.simple_container import SimpleContainer
-from simple_container.environment.environment_variables import EnvironmentVariables
-
-from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
-    SkillLoaderProtocol,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,7 +83,7 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
     snapshot_cache_store: BaseStore | None = None
     try:
         snapshot_cache_store = c.resolve(BaseStore)
-    except Exception:
+    except ContainerError:
         logger.debug("SnapshotCacheStore not available; proceeding without cache.")
 
     return MarketplaceDirectoryLoader(
@@ -89,6 +92,30 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
         snapshot_cache_store=snapshot_cache_store,
         token_provider=c.resolve(GitHubTokenProvider),
     )
+
+
+def _resolve_script_executor(*, c: IContainer) -> ScriptExecutorProtocol | None:
+    """Resolve a consumer-provided script executor, if one is registered.
+
+    Consuming services opt in by registering ``ScriptExecutorProtocol``
+    themselves (e.g. to swap in ``AgentCoreScriptExecutor``) before calling
+    ``register_services_in_container``. Absent that, ``CompositeSkillLoader``
+    falls back to its own default (``MyScriptExecutor``), so this stays
+    backward compatible for consumers that never opt in.
+    """
+    try:
+        executor: ScriptExecutorProtocol = c.resolve(ScriptExecutorProtocol)
+        logger.info(
+            "Using consumer-registered ScriptExecutorProtocol: %s",
+            type(executor).__name__,
+        )
+        return executor
+    except ContainerError:
+        logger.debug(
+            "No ScriptExecutorProtocol registered by consumer — "
+            "CompositeSkillLoader will use its default MyScriptExecutor."
+        )
+        return None
 
 
 def _build_token_provider(*, c: IContainer) -> GitHubTokenProvider | None:
@@ -192,6 +219,7 @@ class LangchainAISkillsFrameworkContainerFactory:
                 shared_loader=c.resolve(MarketplaceDirectoryLoader),
                 user_loader=c.resolve(PluginSkillStore),
                 marketplace_publisher=_build_marketplace_publisher(c=c),
+                script_executor=_resolve_script_executor(c=c),
             ),
         )
 

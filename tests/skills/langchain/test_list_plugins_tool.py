@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.tools import ToolException
 
+from langchain_ai_skills_framework.langchain.tools.list_plugins_tool import ListPluginsTool
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
 )
-from langchain_ai_skills_framework.langchain.tools.list_plugins_tool import ListPluginsTool
 from tests.skills.langchain.conftest import make_runtime
 
 
@@ -43,7 +43,7 @@ class TestListPluginsTool:
         loader = _make_loader_mock(plugins)
         tool = ListPluginsTool(mongo_skill_loader=loader)
 
-        result, artifact = await tool._arun(runtime=make_runtime())
+        result, _artifact = await tool._arun(runtime=make_runtime())
 
         assert "alpha-plugin" in result
         assert "beta-plugin" in result

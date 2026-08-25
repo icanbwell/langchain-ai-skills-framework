@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from types import MappingProxyType
-from typing import Any, Sequence
+from typing import Any
 from unittest.mock import AsyncMock
-
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,

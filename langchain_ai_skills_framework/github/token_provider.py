@@ -88,7 +88,7 @@ class GitHubAppTokenProvider:
 
     def _cache_response(self, data: dict[str, str]) -> str:
         self._cached_token = data["token"]
-        self._cached_expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00")).timestamp()
+        self._cached_expires_at = datetime.fromisoformat(data["expires_at"]).timestamp()
         logger.debug("Minted new GitHub App installation token (expires %s)", data["expires_at"])
         return self._cached_token
 

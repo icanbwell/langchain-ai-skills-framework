@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
@@ -203,7 +204,7 @@ class MongoPluginSkillLoader:
             if isinstance(path, str) and path.strip()
             else build_skill_path(plugin_name=plugin_name, skill_name=normalized_name, folder=folder)
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
@@ -254,7 +255,7 @@ class MongoPluginSkillLoader:
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         update_fields: dict[str, object] = {
             "state": state,
             "date_modified": now,
@@ -325,7 +326,7 @@ class MongoPluginSkillLoader:
                 resource_name=resource_name.strip(),
                 folder=folder,
             )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
@@ -490,7 +491,7 @@ class MongoPluginSkillLoader:
                 script_name=script_name.strip(),
                 folder=folder,
             )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
@@ -831,7 +832,7 @@ class MongoPluginSkillLoader:
         mcp_servers: Sequence[dict[str, object]],
     ) -> MongoPluginDefinitionDocument:
         """Upsert a plugin definition document."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         sv = self.SCHEMA_VERSION_FIELD
         logger.info(
             "save_plugin: upserting plugin '%s' to collection '%s'",

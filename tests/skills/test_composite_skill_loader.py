@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 
+from langchain_ai_skills_framework.container.container_factory import (
+    _resolve_script_executor,
+)
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
+)
+from langchain_ai_skills_framework.executors.my_script_executor import (
+    MyScriptExecutor,
 )
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
@@ -150,6 +157,42 @@ def _make_user_loader_mock(
     return loader
 
 
+class _FakeScriptExecutor:
+    """Test double for ScriptExecutorProtocol that records calls."""
+
+    def __init__(self, *, result: MyScriptExecutionResult) -> None:
+        self._result = result
+        self.calls: list[dict[str, Any]] = []
+
+    async def execute_inline_script(
+        self,
+        *,
+        script_name: str,
+        script: str,
+        arguments: dict[str, Any],
+        timeout: int = 30,
+    ) -> MyScriptExecutionResult:
+        self.calls.append(
+            {
+                "script_name": script_name,
+                "script": script,
+                "arguments": arguments,
+                "timeout": timeout,
+            }
+        )
+        return self._result
+
+
+def _make_execution_result(*, stdout: str = "ok") -> MyScriptExecutionResult:
+    return MyScriptExecutionResult(
+        stdout=stdout,
+        stderr=None,
+        exit_code=0,
+        execution_time_ms=1.23,
+        success=True,
+    )
+
+
 class TestCompositeSkillLoaderInit:
     def test_rejects_none_shared_loader(self) -> None:
         user_loader = _make_user_loader_mock()
@@ -160,6 +203,19 @@ class TestCompositeSkillLoaderInit:
         shared = _StubSharedLoader({})
         with pytest.raises(ValueError, match="user_loader must not be None"):
             CompositeSkillLoader(shared_loader=shared, user_loader=None)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("pass_explicit_none", [False, True])
+    def test_defaults_to_my_script_executor_when_not_injected(self, pass_explicit_none: bool) -> None:
+        """Old default behavior is preserved: no injected executor -> MyScriptExecutor."""
+        shared = _StubSharedLoader({})
+        user_loader = _make_user_loader_mock()
+
+        if pass_explicit_none:
+            composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader, script_executor=None)
+        else:
+            composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        assert isinstance(composite._script_executor, MyScriptExecutor)
 
 
 class TestListAllSummaries:
@@ -261,6 +317,144 @@ class TestGetSkillDetailsForUser:
             await composite.get_skill_details_for_user(
                 user_id="user-1", plugin_name="test-plugin", skill_name="nonexistent"
             )
+
+
+class TestScriptExecutorInjection:
+    """Verifies an injected script_executor is actually used by run_skill_script_for_user.
+
+    Both call sites inside run_skill_script_for_user route through
+    _execute_script_content, which is the only place self._script_executor is
+    invoked -- one for a user's own Mongo-stored script, one for a shared-DB
+    Mongo-stored script owned by another user. Neither path reaches the
+    shared filesystem loader (MarketplaceDirectoryLoader), which has its own
+    hardcoded executors and is intentionally out of scope here.
+    """
+
+    @pytest.mark.asyncio
+    async def test_injected_executor_used_for_users_own_mongo_script(self) -> None:
+        fake_result = _make_execution_result(stdout="own-script-output")
+        fake_executor = _FakeScriptExecutor(result=fake_result)
+
+        shared = _StubSharedLoader({})
+        user_loader = cast(AsyncMock, _make_user_loader_mock())
+        user_loader.read_script.return_value = "print('hello from user script')"
+
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader, script_executor=fake_executor)
+
+        result = await composite.run_skill_script_for_user(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="my-skill",
+            script_name="run.py",
+            arguments={"x": 1},
+        )
+
+        assert result is fake_result
+        assert len(fake_executor.calls) == 1
+        call = fake_executor.calls[0]
+        assert call["script_name"] == "run.py"
+        assert call["script"] == "print('hello from user script')"
+        assert call["arguments"] == {"x": 1}
+
+        user_loader.read_script.assert_awaited_once_with(
+            author="user-1", plugin_name="test-plugin", skill_name="my-skill", script_name="run.py"
+        )
+
+    @pytest.mark.asyncio
+    async def test_injected_executor_used_for_shared_db_mongo_script(self) -> None:
+        fake_result = _make_execution_result(stdout="shared-db-script-output")
+        fake_executor = _FakeScriptExecutor(result=fake_result)
+
+        owner_user_id = "owner-user"
+        shared_db_skill = SkillDetails(
+            summary=SkillSummary(
+                name="health-news-monitor",
+                description="Description for health-news-monitor",
+                source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+                metadata={"source": "mongodb", "user_id": owner_user_id},
+            ),
+            content="shared db version",
+            source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+        )
+
+        shared = _StubSharedLoader({})
+        user_loader = cast(
+            AsyncMock,
+            _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill}),
+        )
+        # The requesting user has no script of their own -> falls through to shared DB lookup.
+        user_loader.read_script.side_effect = [
+            SkillNotFoundError("'health-news-monitor' not found for requesting user"),
+            "print('hello from shared db script')",
+        ]
+
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader, script_executor=fake_executor)
+
+        result = await composite.run_skill_script_for_user(
+            user_id="different-user",
+            plugin_name="test-plugin",
+            skill_name="health-news-monitor",
+            script_name="notify.py",
+            arguments=None,
+        )
+
+        assert result is fake_result
+        assert len(fake_executor.calls) == 1
+        call = fake_executor.calls[0]
+        assert call["script_name"] == "notify.py"
+        assert call["script"] == "print('hello from shared db script')"
+        assert call["arguments"] == {}
+
+        assert user_loader.read_script.await_count == 2
+        second_call = user_loader.read_script.await_args_list[1]
+        assert second_call.kwargs == {
+            "author": owner_user_id,
+            "plugin_name": "test-plugin",
+            "skill_name": "health-news-monitor",
+            "script_name": "notify.py",
+        }
+
+
+class TestResolveScriptExecutor:
+    """Unit tests for container_factory._resolve_script_executor's logging.
+
+    A silently-swallowed ContainerError leaves no trace if a consumer's
+    ScriptExecutorProtocol registration is missing/mis-scoped/typo'd, so both
+    the "found a consumer-registered executor" and "falling back to default"
+    paths must log at some level to be observable.
+    """
+
+    def test_logs_and_returns_executor_when_registered(self, caplog: pytest.LogCaptureFixture) -> None:
+        fake_executor = _FakeScriptExecutor(result=_make_execution_result())
+
+        class _StubContainer:
+            def resolve(self, service_type: type[Any]) -> Any:
+                return fake_executor
+
+        with caplog.at_level(logging.INFO, logger="langchain_ai_skills_framework.container.container_factory"):
+            resolved = _resolve_script_executor(c=_StubContainer())  # type: ignore[arg-type]
+
+        assert resolved is fake_executor
+        assert any(
+            "Using consumer-registered ScriptExecutorProtocol" in record.getMessage()
+            and "_FakeScriptExecutor" in record.getMessage()
+            for record in caplog.records
+        )
+
+    def test_logs_and_returns_none_when_not_registered(self, caplog: pytest.LogCaptureFixture) -> None:
+        from simple_container.container.simple_container import ContainerError
+
+        class _StubContainer:
+            def resolve(self, service_type: type[Any]) -> Any:
+                raise ContainerError("ScriptExecutorProtocol not registered")
+
+        with caplog.at_level(logging.DEBUG, logger="langchain_ai_skills_framework.container.container_factory"):
+            resolved = _resolve_script_executor(c=_StubContainer())  # type: ignore[arg-type]
+
+        assert resolved is None
+        assert any(
+            "No ScriptExecutorProtocol registered by consumer" in record.getMessage() for record in caplog.records
+        )
 
 
 class TestGetInstructionsForUser:

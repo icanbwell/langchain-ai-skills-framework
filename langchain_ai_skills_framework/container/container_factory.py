@@ -104,8 +104,17 @@ def _resolve_script_executor(*, c: IContainer) -> ScriptExecutorProtocol | None:
     backward compatible for consumers that never opt in.
     """
     try:
-        return c.resolve(ScriptExecutorProtocol)
+        executor: ScriptExecutorProtocol = c.resolve(ScriptExecutorProtocol)
+        logger.info(
+            "Using consumer-registered ScriptExecutorProtocol: %s",
+            type(executor).__name__,
+        )
+        return executor
     except ContainerError:
+        logger.debug(
+            "No ScriptExecutorProtocol registered by consumer — "
+            "CompositeSkillLoader will use its default MyScriptExecutor."
+        )
         return None
 
 

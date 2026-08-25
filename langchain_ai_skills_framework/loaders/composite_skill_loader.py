@@ -12,6 +12,9 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
 from langchain_ai_skills_framework.executors.my_script_executor import (
     MyScriptExecutor,
 )
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -57,6 +60,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         shared_loader: SkillLoaderProtocol,
         user_loader: PluginSkillStore,
         marketplace_publisher: GitHubMarketplacePublisher | None = None,
+        script_executor: ScriptExecutorProtocol | None = None,
     ) -> None:
         if shared_loader is None:
             raise ValueError("shared_loader must not be None")
@@ -66,6 +70,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         self._shared_loader = shared_loader
         self._user_loader = user_loader
         self._marketplace_publisher = marketplace_publisher
+        self._script_executor: ScriptExecutorProtocol = script_executor or MyScriptExecutor()
 
     @property
     def shared_loader(self) -> SkillLoaderProtocol:
@@ -460,16 +465,15 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     # --- Script execution ----------------------------------------------------
 
-    @staticmethod
     async def _execute_script_content(
+        self,
         *,
         script_content: str,
         script_name: str,
         arguments: dict[str, Any] | None,
     ) -> MyScriptExecutionResult:
         """Execute a script stored as content in MongoDB."""
-        executor = MyScriptExecutor()
-        return await executor.execute_inline_script(
+        return await self._script_executor.execute_inline_script(
             script_name=script_name,
             script=script_content,
             arguments=arguments or {},

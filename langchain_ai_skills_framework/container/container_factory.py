@@ -7,6 +7,9 @@ from simple_container.container.interfaces import IContainer
 from simple_container.container.simple_container import ContainerError, SimpleContainer
 from simple_container.environment.environment_variables import EnvironmentVariables
 
+from langchain_ai_skills_framework.executors.script_executor_protocol import (
+    ScriptExecutorProtocol,
+)
 from langchain_ai_skills_framework.github.token_provider import (
     GitHubAppTokenProvider,
     GitHubTokenProvider,
@@ -89,6 +92,21 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
         snapshot_cache_store=snapshot_cache_store,
         token_provider=c.resolve(GitHubTokenProvider),
     )
+
+
+def _resolve_script_executor(*, c: IContainer) -> ScriptExecutorProtocol | None:
+    """Resolve a consumer-provided script executor, if one is registered.
+
+    Consuming services opt in by registering ``ScriptExecutorProtocol``
+    themselves (e.g. to swap in ``AgentCoreScriptExecutor``) before calling
+    ``register_services_in_container``. Absent that, ``CompositeSkillLoader``
+    falls back to its own default (``MyScriptExecutor``), so this stays
+    backward compatible for consumers that never opt in.
+    """
+    try:
+        return c.resolve(ScriptExecutorProtocol)
+    except ContainerError:
+        return None
 
 
 def _build_token_provider(*, c: IContainer) -> GitHubTokenProvider | None:
@@ -192,6 +210,7 @@ class LangchainAISkillsFrameworkContainerFactory:
                 shared_loader=c.resolve(MarketplaceDirectoryLoader),
                 user_loader=c.resolve(PluginSkillStore),
                 marketplace_publisher=_build_marketplace_publisher(c=c),
+                script_executor=_resolve_script_executor(c=c),
             ),
         )
 

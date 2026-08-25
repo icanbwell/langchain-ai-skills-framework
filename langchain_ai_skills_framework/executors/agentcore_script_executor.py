@@ -188,7 +188,7 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
             session_id=session_id,
             name="writeFiles",
             arguments={
-                "paths": [
+                "content": [
                     {"path": "script.py", "text": script},
                     {"path": "args.json", "text": json.dumps(arguments)},
                 ]

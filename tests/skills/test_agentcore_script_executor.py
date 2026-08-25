@@ -68,9 +68,9 @@ async def test_execute_inline_script_writes_script_and_args_before_running() -> 
 
     write_call = client.invoke_code_interpreter.call_args_list[0]
     assert write_call.kwargs["name"] == "writeFiles"
-    paths = {p["path"]: p["text"] for p in write_call.kwargs["arguments"]["paths"]}
-    assert paths["script.py"] == "import sys; print(sys.stdin.read())"
-    assert json.loads(paths["args.json"]) == {"name": "guillermo"}
+    content = {c["path"]: c["text"] for c in write_call.kwargs["arguments"]["content"]}
+    assert content["script.py"] == "import sys; print(sys.stdin.read())"
+    assert json.loads(content["args.json"]) == {"name": "guillermo"}
 
     exec_call = client.invoke_code_interpreter.call_args_list[1]
     assert exec_call.kwargs["name"] == "executeCommand"

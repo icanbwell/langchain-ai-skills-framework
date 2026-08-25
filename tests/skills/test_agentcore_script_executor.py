@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from langchain_ai_skills_framework.executors.agentcore_script_executor import (
@@ -145,23 +147,30 @@ async def test_execute_inline_script_returns_failure_on_client_error_starting_se
 async def test_execute_inline_script_times_out_and_still_reports_failure() -> None:
     client = _fake_client()
 
-    def _slow_start(**kwargs: Any) -> dict[str, Any]:
+    # session start is fast, so session_id gets bound; the timeout instead fires
+    # while draining the (slow) first invoke_code_interpreter call, mirroring the
+    # scenario where a session was already created in AWS and must be cleaned up.
+    def _slow_invoke(**kwargs: Any) -> dict[str, Any]:
         time.sleep(0.2)
-        return {"sessionId": "session-123"}
+        return _tool_result(exit_code=0)
 
-    client.start_code_interpreter_session.side_effect = _slow_start
+    client.invoke_code_interpreter.side_effect = _slow_invoke
     executor = AgentCoreScriptExecutor(client=client)
 
     result = await executor.execute_inline_script(
         script_name="analyze.py",
         script="print(1)",
         arguments={},
-        timeout=0,
+        timeout=0.05,  # type: ignore[arg-type]  # short enough to expire mid-invoke, long enough for the fast session start to bind session_id
     )
 
     assert result.success is False
     assert result.exit_code == 124
     assert "timed out" in (result.stderr or "")
+    client.stop_code_interpreter_session.assert_called_once_with(
+        codeInterpreterIdentifier="aws.codeinterpreter.v1",
+        sessionId="session-123",
+    )
 
 
 @pytest.mark.asyncio
@@ -182,3 +191,73 @@ async def test_execute_inline_script_rejects_empty_script() -> None:
 
     with pytest.raises(ValueError, match="Script content cannot be empty"):
         await executor.execute_inline_script(script_name="analyze.py", script="   ", arguments={})
+
+
+class _ThreadCheckingStream:
+    """A fake botocore EventStream that records which thread iterated it."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        self._result = result
+        self.iterated_thread: threading.Thread | None = None
+
+    def __iter__(self) -> Any:
+        self.iterated_thread = threading.current_thread()
+        yield {"result": self._result}
+
+
+@pytest.mark.asyncio
+async def test_invoke_drains_the_response_stream_off_the_event_loop() -> None:
+    # Regression test for blocking the event loop: draining response["stream"]
+    # does blocking HTTP chunk reads, so it must happen inside the same
+    # anyio.to_thread.run_sync offload as the invoke call itself, not back on
+    # the event loop thread after awaiting just the call.
+    client = _fake_client()
+    fake_result = {"structuredContent": {"stdout": "ok", "stderr": None, "exitCode": 0}}
+    stream = _ThreadCheckingStream(fake_result)
+    client.invoke_code_interpreter.side_effect = None
+    client.invoke_code_interpreter.return_value = {"stream": stream}
+    executor = AgentCoreScriptExecutor(client=client)
+
+    result = await executor._invoke(session_id="session-123", name="executeCommand", arguments={})
+
+    assert result == fake_result
+    assert stream.iterated_thread is not None
+    assert stream.iterated_thread is not threading.main_thread()
+
+
+def test_executor_builds_its_own_client_with_bounded_socket_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_boto3_client(service_name: str, **kwargs: Any) -> MagicMock:
+        captured["service_name"] = service_name
+        captured["kwargs"] = kwargs
+        return MagicMock()
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.executors.agentcore_script_executor.boto3.client",
+        _fake_boto3_client,
+    )
+
+    AgentCoreScriptExecutor()
+
+    assert captured["service_name"] == "bedrock-agentcore"
+    config = captured["kwargs"].get("config")
+    assert isinstance(config, Config)
+    assert getattr(config, "connect_timeout", None) is not None
+    assert getattr(config, "read_timeout", None) is not None
+
+
+def test_executor_does_not_override_an_injected_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    injected_client = MagicMock()
+
+    def _fail_if_called(*args: Any, **kwargs: Any) -> MagicMock:
+        raise AssertionError("boto3.client should not be called when a client is injected")
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.executors.agentcore_script_executor.boto3.client",
+        _fail_if_called,
+    )
+
+    executor = AgentCoreScriptExecutor(client=injected_client)
+
+    assert executor._client is injected_client

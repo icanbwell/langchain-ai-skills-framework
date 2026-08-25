@@ -8,6 +8,7 @@ from typing import Any
 
 import anyio
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from langchain_ai_skills_framework.executors.base_script_executor import (
@@ -47,12 +48,31 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         session_timeout_seconds: int = 300,
         max_timeout: int = 300,
         max_output_size: int = 10 * 1024 * 1024,
+        connect_timeout_seconds: float = 10.0,
+        read_timeout_seconds: float = 60.0,
         client: Any | None = None,
     ) -> None:
         super().__init__(max_timeout=max_timeout, max_output_size=max_output_size)
         self._identifier = code_interpreter_identifier
         self._session_timeout_seconds = session_timeout_seconds
-        self._client: Any = client if client is not None else boto3.client("bedrock-agentcore", region_name=region_name)
+        if client is not None:
+            self._client: Any = client
+        else:
+            # Bound the client's own sockets. anyio.fail_after cannot cancel a
+            # blocking boto3 call once it's running inside anyio.to_thread.run_sync
+            # (anyio has no way to preempt an OS thread), so a hung
+            # invoke_code_interpreter call would otherwise block past our configured
+            # timeout regardless of what execute_inline_script's fail_after does.
+            # These botocore-level timeouts are the actual backstop.
+            self._client = boto3.client(
+                "bedrock-agentcore",
+                region_name=region_name,
+                config=Config(
+                    connect_timeout=connect_timeout_seconds,
+                    read_timeout=read_timeout_seconds,
+                    retries={"max_attempts": 3},
+                ),
+            )
 
     async def execute_inline_script(
         self,
@@ -62,6 +82,15 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         arguments: dict[str, Any],
         timeout: int = 30,
     ) -> MyScriptExecutionResult:
+        """Run ``script`` inside a fresh AgentCore Code Interpreter session.
+
+        Note on a residual session-leak gap: if ``_start_session()`` itself is
+        cancelled mid-flight (its own boto3 call already reached AWS but our
+        await never got the response), we never learn the session_id and can't
+        stop it locally. This is bounded by the session's own
+        ``sessionTimeoutSeconds`` (default 300s) expiring server-side regardless,
+        so it self-heals; it just isn't cleaned up eagerly.
+        """
         if not script.strip():
             raise ValueError("Script content cannot be empty")
 
@@ -70,17 +99,15 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         effective_timeout = min(timeout, self.max_timeout)
         start_time = time.perf_counter()
 
+        session_id: str | None = None
         try:
             with anyio.fail_after(effective_timeout):
                 session_id = await self._start_session()
-                try:
-                    stdout, stderr, exit_code = await self._run_script(
-                        session_id=session_id,
-                        script=script,
-                        arguments=arguments,
-                    )
-                finally:
-                    await self._stop_session(session_id=session_id)
+                stdout, stderr, exit_code = await self._run_script(
+                    session_id=session_id,
+                    script=script,
+                    arguments=arguments,
+                )
         except TimeoutError:
             execution_time_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
@@ -112,6 +139,13 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
                 execution_time_ms=execution_time_ms,
                 success=False,
             )
+        finally:
+            # Runs outside the fail_after scope (which may already be cancelled
+            # by the time we get here) and shielded from cancellation, so cleanup
+            # itself can't be cut short by the same deadline that just fired.
+            if session_id is not None:
+                with anyio.CancelScope(shield=True):
+                    await self._stop_session(session_id=session_id)
 
         execution_time_ms = (time.perf_counter() - start_time) * 1000
         self._check_output_size(output=(stdout or "").encode("utf-8"))
@@ -161,21 +195,25 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
             logger.warning("Failed to stop AgentCore session %s", session_id, exc_info=True)
 
     async def _invoke(self, *, session_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        response = await anyio.to_thread.run_sync(
-            lambda: self._client.invoke_code_interpreter(
+        def _invoke_and_drain() -> dict[str, Any]:
+            response = self._client.invoke_code_interpreter(
                 codeInterpreterIdentifier=self._identifier,
                 sessionId=session_id,
                 name=name,
                 arguments=arguments,
             )
-        )
-        result: dict[str, Any] | None = None
-        for event in response["stream"]:
-            if "result" in event:
-                result = event["result"]
-        if result is None:
-            raise RuntimeError(f"AgentCore invoke_code_interpreter returned no result for tool={name}")
-        return result
+            # Draining response["stream"] does blocking HTTP chunk reads (it's a
+            # botocore EventStream), so it must happen in the same thread offload
+            # as the call itself rather than back on the event loop.
+            result: dict[str, Any] | None = None
+            for event in response["stream"]:
+                if "result" in event:
+                    result = event["result"]
+            if result is None:
+                raise RuntimeError(f"AgentCore invoke_code_interpreter returned no result for tool={name}")
+            return result
+
+        return await anyio.to_thread.run_sync(_invoke_and_drain)
 
     async def _run_script(
         self,

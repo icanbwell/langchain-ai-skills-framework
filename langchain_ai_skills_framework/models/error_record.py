@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Literal, Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,7 +21,7 @@ class ErrorRecord(BaseModel):
     error_message: str = Field(default="", description="Human-readable error description")
     traceback: str = Field(default="", description="Full traceback if available")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the error occurred (UTC)",
     )
     user_id: str = Field(default="", description="User who triggered the operation")

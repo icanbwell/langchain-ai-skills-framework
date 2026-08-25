@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Tuple, Type, override
+from typing import Any, Literal, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -41,7 +41,7 @@ class ListSkillsTool(BaseTool):
         "List all skills available to the current user, including both shared skills "
         "and the user's own saved skills. Returns skill names and descriptions."
     )
-    args_schema: Type[BaseModel] = ListSkillsInput
+    args_schema: type[BaseModel] = ListSkillsInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
 
@@ -53,7 +53,7 @@ class ListSkillsTool(BaseTool):
         folder: str | None = None,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
@@ -64,7 +64,7 @@ class ListSkillsTool(BaseTool):
         folder: str | None = None,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 

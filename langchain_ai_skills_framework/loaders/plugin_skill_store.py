@@ -9,7 +9,8 @@ Replaces the legacy ``UserSkillStore`` protocol.
 
 from __future__ import annotations
 
-from typing import Mapping, Protocol, Sequence, runtime_checkable
+from collections.abc import Mapping, Sequence
+from typing import Protocol, runtime_checkable
 
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,

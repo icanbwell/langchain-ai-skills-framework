@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -111,7 +111,7 @@ class GitHubMarketplacePublisher:
             f"- **Plugin**: {plugin_name}\n"
             f"- **Skill**: {skill_name}\n"
             f"- **Published by**: {user_id}\n"
-            f"- **Timestamp**: {datetime.now(timezone.utc).isoformat()}\n"
+            f"- **Timestamp**: {datetime.now(UTC).isoformat()}\n"
         )
 
         logger.info(
@@ -170,7 +170,7 @@ class GitHubMarketplacePublisher:
             f"- **Plugin**: {plugin_name}\n"
             f"- **Skill**: {skill_name}\n"
             f"- **Unpublished by**: {user_id}\n"
-            f"- **Timestamp**: {datetime.now(timezone.utc).isoformat()}\n"
+            f"- **Timestamp**: {datetime.now(UTC).isoformat()}\n"
         )
 
         logger.info(

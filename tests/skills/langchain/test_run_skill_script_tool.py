@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import pytest
 from langchain_core.tools import ToolException
+from skillkit import ScriptNotFoundError
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
-from skillkit import ScriptNotFoundError
-
+from langchain_ai_skills_framework.langchain.tools.run_skill_script_tool import (
+    RunSkillScriptTool,
+)
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -22,9 +25,6 @@ from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServ
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
-)
-from langchain_ai_skills_framework.langchain.tools.run_skill_script_tool import (
-    RunSkillScriptTool,
 )
 from tests.skills.langchain.conftest import make_runtime
 
@@ -244,7 +244,7 @@ async def test_arun_script_not_found_lists_available_scripts() -> None:
     )
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    result, artifact = await tool._arun(
+    result, _artifact = await tool._arun(
         plugin_name="test-plugin",
         skill_name="alpha",
         script_name="missing.py",
@@ -262,7 +262,7 @@ async def test_arun_script_not_found_no_scripts_shows_none() -> None:
     loader = _ScriptNotFoundLoader({"alpha": _make_skill("alpha")})
     tool = RunSkillScriptTool(skill_loader=loader)
 
-    result, artifact = await tool._arun(
+    result, _artifact = await tool._arun(
         plugin_name="test-plugin",
         skill_name="alpha",
         script_name="missing.py",

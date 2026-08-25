@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType
 
-
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (

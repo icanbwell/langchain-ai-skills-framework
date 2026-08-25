@@ -3,6 +3,15 @@ from typing import cast
 
 from key_value.aio.stores.base import BaseStore
 from key_value.aio.stores.mongodb import MongoDBStore
+from simple_container.container.interfaces import IContainer
+from simple_container.container.simple_container import ContainerError, SimpleContainer
+from simple_container.environment.environment_variables import EnvironmentVariables
+
+from langchain_ai_skills_framework.github.token_provider import (
+    GitHubAppTokenProvider,
+    GitHubTokenProvider,
+    StaticTokenProvider,
+)
 from langchain_ai_skills_framework.loaders.composite_skill_loader import (
     CompositeSkillLoader,
 )
@@ -19,6 +28,9 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store_factory import (
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
+from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    SkillLoaderProtocol,
+)
 from langchain_ai_skills_framework.loaders.skill_sync import SkillSync
 from langchain_ai_skills_framework.persistence.mongo_database_factory import (
     MongoDatabaseFactory,
@@ -29,20 +41,8 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory_impl impor
 from langchain_ai_skills_framework.persistence.mongo_url_helpers import (
     MongoUrlHelpers,
 )
-from langchain_ai_skills_framework.github.token_provider import (
-    GitHubAppTokenProvider,
-    GitHubTokenProvider,
-    StaticTokenProvider,
-)
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
-)
-from simple_container.container.interfaces import IContainer
-from simple_container.container.simple_container import SimpleContainer
-from simple_container.environment.environment_variables import EnvironmentVariables
-
-from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
-    SkillLoaderProtocol,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
     snapshot_cache_store: BaseStore | None = None
     try:
         snapshot_cache_store = c.resolve(BaseStore)
-    except Exception:
+    except ContainerError:
         logger.debug("SnapshotCacheStore not available; proceeding without cache.")
 
     return MarketplaceDirectoryLoader(

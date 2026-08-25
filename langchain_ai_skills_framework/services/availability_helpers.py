@@ -6,7 +6,6 @@ These are used by multiple service classes to produce consistent
 
 from __future__ import annotations
 
-
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )

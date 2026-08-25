@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import pytest
 from langchain_core.tools import ToolException
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
+)
+from langchain_ai_skills_framework.langchain.tools.read_skill_resource_tool import (
+    ReadSkillResourceTool,
 )
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -18,9 +22,6 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.langchain.tools.read_skill_resource_tool import (
-    ReadSkillResourceTool,
-)
 from tests.skills.langchain.conftest import make_runtime
 
 
@@ -152,7 +153,7 @@ async def test_run_returns_not_found_message_for_missing_skill() -> None:
     loader = _StubSkillLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message, artifact = await tool._arun(
+    message, _artifact = await tool._arun(
         plugin_name="test-plugin", skill_name="missing", resource_name="FORMS.md", runtime=make_runtime()
     )
 
@@ -207,7 +208,7 @@ async def test_run_resource_not_found_lists_available_resources() -> None:
     )
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message, artifact = await tool._arun(
+    message, _artifact = await tool._arun(
         plugin_name="test-plugin", skill_name="alpha", resource_name="MISSING.md", runtime=make_runtime()
     )
     assert "Resource 'MISSING.md' not found in skill 'alpha'" in message
@@ -221,7 +222,7 @@ async def test_run_resource_not_found_no_resources_shows_none() -> None:
     loader = _ResourceNotFoundLoader({"alpha": _make_skill("alpha")})
     tool = ReadSkillResourceTool(skill_loader=loader)
 
-    message, artifact = await tool._arun(
+    message, _artifact = await tool._arun(
         plugin_name="test-plugin", skill_name="alpha", resource_name="MISSING.md", runtime=make_runtime()
     )
     assert "Resource 'MISSING.md' not found in skill 'alpha'" in message

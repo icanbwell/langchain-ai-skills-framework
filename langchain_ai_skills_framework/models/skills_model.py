@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Mapping
 
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 

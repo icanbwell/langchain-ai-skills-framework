@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Type, Literal, Tuple, Any
+from typing import Any, Literal
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -10,10 +10,10 @@ from langchain_core.tools import BaseTool, ToolException
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, ConfigDict, Field
 
+from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.load_skill_service import LoadSkillService
 from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.text_humanizer import Humanizer
@@ -41,7 +41,7 @@ class LoadSkillTool(BaseTool):
         "Load the full content of a skill into the agent's context for detailed"
         " handling instructions, policies, and guidelines."
     )
-    args_schema: Type[BaseModel] = LoadSkillInput
+    args_schema: type[BaseModel] = LoadSkillInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
     user_skill_store: PluginSkillStore | None = None
@@ -53,7 +53,7 @@ class LoadSkillTool(BaseTool):
         skill_name: str,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     async def _arun(
@@ -63,7 +63,7 @@ class LoadSkillTool(BaseTool):
         skill_name: str,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 

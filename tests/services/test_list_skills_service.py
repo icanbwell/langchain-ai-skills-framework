@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -218,7 +218,7 @@ async def test_list_skills_basic_functionality() -> None:
     """Test basic list_skills without filters (regression test)."""
     mock_loader = AsyncMock(spec=SkillLoaderProtocol)
 
-    date = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    date = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
     summaries = [
         SkillSummary(
             name="zebra-skill",

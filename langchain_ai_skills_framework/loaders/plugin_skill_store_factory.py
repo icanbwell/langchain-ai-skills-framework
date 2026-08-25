@@ -41,7 +41,7 @@ class PluginSkillStoreFactory:
         wraps the store with HistoryTrackingPluginSkillStore.
         """
         try:
-            self._environment_variables.mongo_skills_uri
+            _ = self._environment_variables.mongo_skills_uri
         except RuntimeError:
             return NullPluginSkillStore()
 

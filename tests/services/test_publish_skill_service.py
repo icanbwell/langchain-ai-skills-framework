@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,12 +19,12 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginScriptDocument,
     MongoPluginSkillDocument,
 )
-from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
-    GitHubMarketplacePublisher,
-)
 from langchain_ai_skills_framework.models.skills_model import (
     SkillDetails,
     SkillSummary,
+)
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
+    GitHubMarketplacePublisher,
 )
 from langchain_ai_skills_framework.services.publish_skill_service import (
     PublishSkillService,
@@ -49,8 +49,8 @@ def _make_doc(
         content="# Test\nContent",
         state=state,
         modified_by="user-1",
-        date_created=datetime.now(timezone.utc),
-        date_modified=datetime.now(timezone.utc),
+        date_created=datetime.now(UTC),
+        date_modified=datetime.now(UTC),
     )
 
 

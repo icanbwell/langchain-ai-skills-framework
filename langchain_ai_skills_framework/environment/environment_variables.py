@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 from simple_container.environment.environment_variables import EnvironmentVariables
 

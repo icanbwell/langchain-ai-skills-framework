@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Type, Literal
+from typing import Any, Literal
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -60,7 +60,7 @@ class RunPythonScriptTool(BaseTool):
         - Scripts may modify external state (files, databases, APIs)
         - Execution errors are included in the output
         """
-    args_schema: Type[BaseModel] = RunPythonScriptInput
+    args_schema: type[BaseModel] = RunPythonScriptInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
 
     def _run(

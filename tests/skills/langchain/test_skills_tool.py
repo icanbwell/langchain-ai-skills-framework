@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Mapping, Sequence, Any
+from typing import Any
 
 import pytest
 from langchain_core.tools import ToolException
@@ -9,6 +10,7 @@ from langchain_core.tools import ToolException
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.langchain.tools.load_skill_tool import LoadSkillTool
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
@@ -18,7 +20,6 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
-from langchain_ai_skills_framework.langchain.tools.load_skill_tool import LoadSkillTool
 from tests.skills.langchain.conftest import make_runtime
 
 

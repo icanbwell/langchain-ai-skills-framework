@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Type, Literal, Tuple, Any
+from typing import Any, Literal
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -53,7 +53,7 @@ class ReadSkillResourceTool(BaseTool):
         - When a skill's instructions reference a specific resource
         - To access form templates, reference documentation, or data schemas
         - When you need supplementary information beyond the skill instructions"""
-    args_schema: Type[BaseModel] = ReadSkillResourceInput
+    args_schema: type[BaseModel] = ReadSkillResourceInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
     skill_loader: SkillLoaderProtocol
 
@@ -65,7 +65,7 @@ class ReadSkillResourceTool(BaseTool):
         resource_name: str,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     async def _arun(
@@ -76,7 +76,7 @@ class ReadSkillResourceTool(BaseTool):
         resource_name: str,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 

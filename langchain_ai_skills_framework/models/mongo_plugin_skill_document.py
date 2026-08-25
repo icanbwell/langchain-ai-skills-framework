@@ -10,11 +10,11 @@ or "all resources for a skill".
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, ClassVar, Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ---------------------------------------------------------------------------
 # Path builders — Materialized Paths pattern
@@ -102,11 +102,11 @@ class MongoPluginSkillDocument(BaseModel):
     )
     modified_by: str = Field(default="", description="ID of the user who last modified this skill")
     date_created: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the skill was first saved",
     )
     date_modified: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the skill was last updated",
     )
 
@@ -146,11 +146,11 @@ class MongoPluginResourceDocument(BaseModel):
     author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this resource")
     date_created: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the resource was first saved",
     )
     date_modified: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the resource was last updated",
     )
 
@@ -183,11 +183,11 @@ class MongoPluginScriptDocument(BaseModel):
     author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this script")
     date_created: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the script was first saved",
     )
     date_modified: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the script was last updated",
     )
 
@@ -224,11 +224,11 @@ class MongoPluginDefinitionDocument(BaseModel):
         description="MCP server configurations from the plugin's .mcp.json",
     )
     date_created: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the plugin was first registered",
     )
     date_modified: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the plugin was last updated",
     )
 
@@ -254,7 +254,7 @@ class MongoPluginSkillUsageDocument(BaseModel):
     skill_name: str = Field(description="Name of the skill that was used")
     author: str = Field(description="ID of the user who used the skill")
     date_used: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="When the skill was used",
     )
 

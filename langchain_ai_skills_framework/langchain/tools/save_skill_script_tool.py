@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Tuple, Type, override
+from typing import Any, Literal, override
 
 from langchain_core.callbacks import (
     AsyncCallbackManagerForToolRun,
@@ -47,9 +47,9 @@ class SaveSkillScriptTool(BaseTool):
         "outputs. If a script with the same name already exists, its content will be replaced. "
         "The script will be associated with the specified skill for the current user."
     )
-    args_schema: Type[BaseModel] = SaveSkillScriptInput
+    args_schema: type[BaseModel] = SaveSkillScriptInput
     response_format: Literal["content", "content_and_artifact"] = "content_and_artifact"
-    mongo_skill_loader: Optional[PluginSkillStore] = None
+    mongo_skill_loader: PluginSkillStore | None = None
 
     @override
     def _run(
@@ -61,7 +61,7 @@ class SaveSkillScriptTool(BaseTool):
         content: str,
         runtime: ToolRuntime,
         run_manager: CallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         raise NotImplementedError("Synchronous execution is not supported. Use the asynchronous method instead.")
 
     @override
@@ -74,7 +74,7 @@ class SaveSkillScriptTool(BaseTool):
         content: str,
         runtime: ToolRuntime,
         run_manager: AsyncCallbackManagerForToolRun | None = None,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         ctx: dict[str, Any] = runtime.context or {} if runtime else {}
         user_id = (ctx.get("user_id", "") or "").strip()
 

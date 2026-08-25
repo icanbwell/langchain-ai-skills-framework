@@ -13,9 +13,9 @@ import json
 import logging
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import normalize_skill_name
@@ -271,7 +271,7 @@ class MarketplacePluginManager:
         directly — they already carry their own directory context.
         ``pluginRoot`` is only prepended for bare relative paths (no leading dot).
         """
-        if source.startswith("./") or source.startswith("../"):
+        if source.startswith(("./", "../")):
             return (marketplace_root / source).resolve()
 
         # Absolute local path

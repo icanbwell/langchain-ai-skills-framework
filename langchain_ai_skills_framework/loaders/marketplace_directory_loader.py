@@ -2,23 +2,24 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from skillkit import SkillManager, SkillMetadata, Skill
+from skillkit import Skill, SkillManager, SkillMetadata
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
+from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
 from langchain_ai_skills_framework.github.token_provider import (
     GitHubTokenProvider,
 )
-from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
-from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )

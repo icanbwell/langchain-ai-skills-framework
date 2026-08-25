@@ -52,7 +52,7 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         super().__init__(max_timeout=max_timeout, max_output_size=max_output_size)
         self._identifier = code_interpreter_identifier
         self._session_timeout_seconds = session_timeout_seconds
-        self._client = client if client is not None else boto3.client("bedrock-agentcore", region_name=region_name)
+        self._client: Any = client if client is not None else boto3.client("bedrock-agentcore", region_name=region_name)
 
     async def execute_inline_script(
         self,

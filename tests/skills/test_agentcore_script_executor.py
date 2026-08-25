@@ -29,7 +29,9 @@ def _tool_result(*, stdout: str | None = None, stderr: str | None = None, exit_c
     }
 
 
-def _fake_client(*, write_files_result: dict[str, Any] | None = None, exec_result: dict[str, Any] | None = None) -> MagicMock:
+def _fake_client(
+    *, write_files_result: dict[str, Any] | None = None, exec_result: dict[str, Any] | None = None
+) -> MagicMock:
     client = MagicMock()
     client.start_code_interpreter_session.return_value = {"sessionId": "session-123"}
     client.stop_code_interpreter_session.return_value = {}
@@ -85,7 +87,9 @@ async def test_execute_inline_script_starts_and_stops_a_session_per_call() -> No
     await executor.execute_inline_script(script_name="analyze.py", script="print(1)", arguments={})
 
     client.start_code_interpreter_session.assert_called_once()
-    assert client.start_code_interpreter_session.call_args.kwargs["codeInterpreterIdentifier"] == "aws.codeinterpreter.v1"
+    assert (
+        client.start_code_interpreter_session.call_args.kwargs["codeInterpreterIdentifier"] == "aws.codeinterpreter.v1"
+    )
     client.stop_code_interpreter_session.assert_called_once_with(
         codeInterpreterIdentifier="aws.codeinterpreter.v1",
         sessionId="session-123",

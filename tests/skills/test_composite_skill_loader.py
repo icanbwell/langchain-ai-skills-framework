@@ -249,6 +249,27 @@ class TestListAllSummaries:
         assert summaries[0].name == "alpha"
         assert summaries[0].metadata.get("source") == "mongodb"
 
+    @pytest.mark.asyncio
+    async def test_include_staging_forwarded_to_shared_snapshot(self) -> None:
+        """Another user's staging skill must be visible when include_staging=True.
+
+        Regression test: _merged_snapshot previously called
+        load_shared_snapshot() with no arguments, so it always defaulted to
+        published-only, hiding every other user's staging skill from
+        list_all_summaries regardless of the caller's include_staging flag.
+        """
+        other_users_staging_skill = _make_skill("beta", source="mongodb")
+
+        shared = _StubSharedLoader({})
+        user_loader = _make_user_loader_mock(shared_skills={"beta": other_users_staging_skill})
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        summaries = await composite.list_all_summaries(user_id="user-1", allowed_skills=set(), include_staging=True)
+
+        names = [s.name for s in summaries]
+        assert "beta" in names
+        cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(include_staging=True)
+
 
 class TestGetSkillDetailsForUser:
     @pytest.mark.asyncio
@@ -413,6 +434,52 @@ class TestScriptExecutorInjection:
             "skill_name": "health-news-monitor",
             "script_name": "notify.py",
         }
+        # Regression: a staging skill owned by another user must still be
+        # resolvable here, not just visible in list_all_summaries.
+        cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(
+            plugin_name="test-plugin", include_staging=True
+        )
+
+
+class TestReadSkillResourceForUser:
+    @pytest.mark.asyncio
+    async def test_includes_staging_when_falling_back_to_shared_db(self) -> None:
+        owner_user_id = "owner-user"
+        shared_db_skill = SkillDetails(
+            summary=SkillSummary(
+                name="health-news-monitor",
+                description="Description for health-news-monitor",
+                source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+                metadata={"source": "mongodb", "user_id": owner_user_id},
+            ),
+            content="shared db version",
+            source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+        )
+
+        shared = _StubSharedLoader({})
+        user_loader = cast(
+            AsyncMock,
+            _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill}),
+        )
+        # The requesting user has no resource of their own -> falls through to shared DB lookup.
+        user_loader.read_resource.side_effect = [
+            SkillNotFoundError("'health-news-monitor' not found for requesting user"),
+            "resource content from shared db",
+        ]
+
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        result = await composite.read_skill_resource_for_user(
+            user_id="different-user",
+            plugin_name="test-plugin",
+            skill_name="health-news-monitor",
+            resource_name="notes.md",
+        )
+
+        assert result == "resource content from shared db"
+        cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(
+            plugin_name="test-plugin", include_staging=True
+        )
 
 
 class TestResolveScriptExecutor:

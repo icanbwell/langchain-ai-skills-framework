@@ -208,8 +208,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 user_id,
             )
 
-        # Check shared DB skills
-        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name)
+        # Check shared DB skills (published + staging, so a staging skill from
+        # another user that is visible in the list can also be opened)
+        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name, include_staging=True)
         if normalized in shared_snapshot.details_by_name:
             shared_detail = shared_snapshot.details_by_name[normalized]
             owner_user_id = str(
@@ -267,8 +268,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         except SkillNotFoundError:
             pass
 
-        # Check shared DB skills
-        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name)
+        # Check shared DB skills (published + staging, so a staging skill from
+        # another user that is visible in the list can also be run)
+        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name, include_staging=True)
         if normalized in shared_snapshot.details_by_name:
             shared_detail = shared_snapshot.details_by_name[normalized]
             owner_user_id = str(

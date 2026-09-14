@@ -249,6 +249,27 @@ class TestListAllSummaries:
         assert summaries[0].name == "alpha"
         assert summaries[0].metadata.get("source") == "mongodb"
 
+    @pytest.mark.asyncio
+    async def test_include_staging_forwarded_to_shared_snapshot(self) -> None:
+        """Another user's staging skill must be visible when include_staging=True.
+
+        Regression test: _merged_snapshot previously called
+        load_shared_snapshot() with no arguments, so it always defaulted to
+        published-only, hiding every other user's staging skill from
+        list_all_summaries regardless of the caller's include_staging flag.
+        """
+        other_users_staging_skill = _make_skill("beta", source="mongodb")
+
+        shared = _StubSharedLoader({})
+        user_loader = _make_user_loader_mock(shared_skills={"beta": other_users_staging_skill})
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        summaries = await composite.list_all_summaries(user_id="user-1", allowed_skills=set(), include_staging=True)
+
+        names = [s.name for s in summaries]
+        assert "beta" in names
+        cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(include_staging=True)
+
 
 class TestGetSkillDetailsForUser:
     @pytest.mark.asyncio

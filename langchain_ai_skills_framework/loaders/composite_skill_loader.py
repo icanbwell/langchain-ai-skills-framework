@@ -450,7 +450,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         # 2+3. Load shared and user snapshots concurrently
         shared_snapshot, user_snapshot = await asyncio.gather(
-            self._user_loader.load_shared_snapshot(),
+            self._user_loader.load_shared_snapshot(include_staging=include_staging),
             self._user_loader.load_snapshot(author=user_id, include_staging=include_staging),
         )
 

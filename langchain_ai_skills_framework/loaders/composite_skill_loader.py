@@ -450,9 +450,13 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             detail = self._shared_loader.get_skill_details(skill_name=summary.name, plugin_name=summary.plugin_name)
             details[summary.name] = detail
 
-        # 2+3. Load shared and user snapshots concurrently
+        # 2+3. Load shared and user snapshots concurrently.
+        # Other users' staging skills are deliberately excluded from the
+        # shared/browsable listing -- staging is only reachable by a direct,
+        # by-name lookup (get_skill_details_for_user, read_skill_resource_for_user,
+        # run_skill_script_for_user), never via list_all_summaries.
         shared_snapshot, user_snapshot = await asyncio.gather(
-            self._user_loader.load_shared_snapshot(include_staging=include_staging),
+            self._user_loader.load_shared_snapshot(),
             self._user_loader.load_snapshot(author=user_id, include_staging=include_staging),
         )
 

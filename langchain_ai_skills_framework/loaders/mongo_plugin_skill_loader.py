@@ -645,7 +645,7 @@ class MongoPluginSkillLoader:
     async def load_shared_snapshot(
         self, *, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
-        states = ["published", "staging"] if include_staging else ["published"]
+        states = ["published", "staging", "in_review"] if include_staging else ["published"]
         query: dict[str, object] = {"state": {"$in": states}}
         if plugin_name:
             query["plugin_name"] = plugin_name

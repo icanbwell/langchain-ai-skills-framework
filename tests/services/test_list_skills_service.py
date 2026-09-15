@@ -214,6 +214,35 @@ async def test_allow_states_takes_precedence_over_exclude_states() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_skills_populates_author_from_metadata() -> None:
+    """SkillInfo.author is read from SkillSummary.metadata['user_id'] when present."""
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    summaries = [
+        SkillSummary(
+            name="mongo-skill",
+            description="",
+            plugin_name="p1",
+            state="in_review",
+            metadata={"source": "mongodb", "user_id": "other-user@example.com"},
+        ),
+        SkillSummary(
+            name="marketplace-skill",
+            description="",
+            plugin_name="p1",
+            state="published",
+        ),
+    ]
+    mock_loader.list_all_summaries.return_value = summaries
+
+    service = ListSkillsService(skill_loader=mock_loader)
+    result = await service.execute(user_id="u")
+
+    by_name = {s.name: s for s in result}
+    assert by_name["mongo-skill"].author == "other-user@example.com"
+    assert by_name["marketplace-skill"].author is None
+
+
+@pytest.mark.asyncio
 async def test_list_skills_basic_functionality() -> None:
     """Test basic list_skills without filters (regression test)."""
     mock_loader = AsyncMock(spec=SkillLoaderProtocol)

@@ -24,6 +24,7 @@ class SkillInfo:
     folder: str | None = None
     state: str = "published"
     date_modified: datetime | None = None
+    author: str | None = None
 
 
 class ListSkillsService:
@@ -75,6 +76,7 @@ class ListSkillsService:
                     folder=s.folder,
                     state=s.state,
                     date_modified=s.date_modified,
+                    author=str(s.metadata["user_id"]) if s.metadata and s.metadata.get("user_id") else None,
                 )
                 for s in summaries
             ),

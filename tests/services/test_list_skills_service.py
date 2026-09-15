@@ -231,6 +231,13 @@ async def test_list_skills_populates_author_from_metadata() -> None:
             plugin_name="p1",
             state="published",
         ),
+        SkillSummary(
+            name="system-synced-skill",
+            description="",
+            plugin_name="p1",
+            state="published",
+            metadata={"source": "mongodb", "user_id": "system"},
+        ),
     ]
     mock_loader.list_all_summaries.return_value = summaries
 
@@ -240,6 +247,7 @@ async def test_list_skills_populates_author_from_metadata() -> None:
     by_name = {s.name: s for s in result}
     assert by_name["mongo-skill"].author == "other-user@example.com"
     assert by_name["marketplace-skill"].author is None
+    assert by_name["system-synced-skill"].author is None
 
 
 @pytest.mark.asyncio

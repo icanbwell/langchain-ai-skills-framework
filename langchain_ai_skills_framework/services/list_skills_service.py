@@ -8,6 +8,7 @@ from datetime import datetime
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.skill_sync import SYSTEM_USER_ID as _SYSTEM_AUTHOR
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,11 @@ class ListSkillsService:
                     folder=s.folder,
                     state=s.state,
                     date_modified=s.date_modified,
-                    author=str(s.metadata["user_id"]) if s.metadata and s.metadata.get("user_id") else None,
+                    author=(
+                        str(s.metadata["user_id"])
+                        if s.metadata and s.metadata.get("user_id") not in (None, _SYSTEM_AUTHOR)
+                        else None
+                    ),
                 )
                 for s in summaries
             ),

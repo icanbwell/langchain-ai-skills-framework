@@ -8,14 +8,11 @@ from datetime import datetime
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.skill_sync import SYSTEM_USER_ID as _SYSTEM_AUTHOR
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
-
-# Marketplace-synced skills are persisted under author="system" (SkillSync.SYSTEM_USER_ID) -
-# that's a sync-process sentinel, not a human, so it must never surface as a skill's author.
-_SYSTEM_AUTHOR = "system"
 
 
 @dataclass(frozen=True, slots=True)

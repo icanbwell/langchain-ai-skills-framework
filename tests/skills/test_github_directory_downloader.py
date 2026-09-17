@@ -52,6 +52,7 @@ def test_download_uses_expected_storage_options_and_cache_directory(
         "sha": "main",
         "username": "x-access-token",
         "token": "token-value",
+        "skip_instance_cache": True,
     }
     assert len(get_calls) == 1
     assert get_calls[0][0] == "configs"
@@ -122,7 +123,48 @@ def test_download_omits_auth_fields_when_github_token_missing(
         "org": "my-org",
         "repo": "private-repo",
         "sha": "main",
+        "skip_instance_cache": True,
     }
+
+
+def test_download_skips_fsspec_instance_cache_for_unpinned_ref(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression test: an unpinned ref must not reuse a stale cached
+    GithubFileSystem/DirCache across calls, or new commits on the default
+    branch would never be picked up until the process restarts."""
+    monkeypatch.chdir(tmp_path)
+
+    captured_storage_options: dict[str, object] = {}
+
+    class _FakeGithubFilesystem:
+        def get(self, remote_path: str, local_path: str, recursive: bool = False) -> None:
+            del remote_path, local_path, recursive
+
+        def ls(self, path: str, detail: bool = False) -> Sequence[str]:
+            del path, detail
+            return ()
+
+    def _fake_filesystem(protocol: str, **storage_options: object) -> _FakeGithubFilesystem:
+        assert protocol == "github"
+        captured_storage_options.update(storage_options)
+        return _FakeGithubFilesystem()
+
+    monkeypatch.setattr(
+        "langchain_ai_skills_framework.loaders.github_directory_downloader.fsspec",
+        SimpleNamespace(filesystem=_fake_filesystem),
+    )
+
+    downloader = GithubDirectoryDownloader()
+    downloader.download(
+        cache_path=tmp_path / "cache",
+        source_uri="github://my-org/private-repo/configs",
+        github_token=None,
+    )
+
+    assert "sha" not in captured_storage_options
+    assert captured_storage_options["skip_instance_cache"] is True
 
 
 @pytest.mark.parametrize(

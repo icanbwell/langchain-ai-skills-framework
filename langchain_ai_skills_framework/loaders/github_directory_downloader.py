@@ -212,6 +212,11 @@ class GithubDirectoryDownloader:
                 storage_options["username"] = self._github_token_username
                 storage_options["token"] = github_token
 
+            # Without skip_instance_cache, fsspec's _Cached metaclass reuses the same
+            # GithubFileSystem (and its never-expiring DirCache) for the process
+            # lifetime when no "sha" is pinned, so a forced reload would keep replaying
+            # the listing from the first time this process resolved the default branch.
+            storage_options["skip_instance_cache"] = True
             filesystem = fsspec.filesystem("github", **storage_options)
             if source_path and (include_directories or exclude_directories):
                 self._download_filtered(

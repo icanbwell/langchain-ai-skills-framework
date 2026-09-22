@@ -220,7 +220,7 @@ class TestReadMcpConfigs:
         assert len(configs) == 1
         assert configs[0].url == "http://gateway:5000/skills-library/"
 
-    def test_skips_server_with_undefined_env_var(
+    def test_skips_server_with_undefined_env_var_in_url(
         self, tmp_path: Path, manager: MarketplacePluginManager, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("MCP_SERVER_GATEWAY_URL", raising=False)
@@ -236,6 +236,53 @@ class TestReadMcpConfigs:
         configs = manager.read_mcp_configs(entry)
 
         assert [c.server_key for c in configs] == ["fine"]
+
+    def test_skips_server_with_undefined_env_var_in_headers(
+        self, tmp_path: Path, manager: MarketplacePluginManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("UNDEFINED_AUTH_TOKEN", raising=False)
+        mcp_config = {
+            "mcpServers": {
+                "broken": {
+                    "url": "http://localhost:8080",
+                    "headers": {"Authorization": "Bearer ${UNDEFINED_AUTH_TOKEN}"},
+                },
+                "fine": {"url": "http://localhost:9090"},
+            }
+        }
+        (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
+
+        entry = PluginEntry(name="test-plugin", path=tmp_path)
+        configs = manager.read_mcp_configs(entry)
+
+        assert [c.server_key for c in configs] == ["fine"]
+
+    def test_undefined_env_var_in_command_args_env_does_not_skip_entry(
+        self, tmp_path: Path, manager: MarketplacePluginManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # command/args/env are stdio-launch fields this loader never acts on
+        # server-side (see is_http's docstring) -- an unresolved placeholder
+        # there is inert, so it must not sink an otherwise-valid HTTP entry.
+        monkeypatch.delenv("UNDEFINED_LOCAL_DEV_TOKEN", raising=False)
+        mcp_config = {
+            "mcpServers": {
+                "hybrid": {
+                    "url": "http://localhost:8080",
+                    "command": "python",
+                    "args": ["--token", "${UNDEFINED_LOCAL_DEV_TOKEN}"],
+                    "env": {"TOKEN": "${UNDEFINED_LOCAL_DEV_TOKEN}"},
+                }
+            }
+        }
+        (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
+
+        entry = PluginEntry(name="test-plugin", path=tmp_path)
+        configs = manager.read_mcp_configs(entry)
+
+        assert len(configs) == 1
+        assert configs[0].url == "http://localhost:8080"
+        assert configs[0].args == ("--token", "${UNDEFINED_LOCAL_DEV_TOKEN}")
+        assert configs[0].env == {"TOKEN": "${UNDEFINED_LOCAL_DEV_TOKEN}"}
 
     def test_returns_empty_for_missing_file(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         entry = PluginEntry(name="no-mcp", path=tmp_path)

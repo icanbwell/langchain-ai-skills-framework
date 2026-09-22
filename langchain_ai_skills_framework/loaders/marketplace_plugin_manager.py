@@ -113,8 +113,41 @@ class MarketplacePluginManager:
             if not isinstance(server_key, str) or not isinstance(server_config, dict):
                 continue
 
-            def _sub(value: str, _root: str = plugin_root_str) -> str:
-                """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} references."""
+            missing_env_vars: list[str] = []
+
+            def _sub_strict(value: str, _root: str = plugin_root_str, _missing: list[str] = missing_env_vars) -> str:
+                """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} in url/headers.
+
+                Records any ${ENV_VAR} whose variable is unset in _missing
+                instead of silently leaving the literal "${ENV_VAR}" text in
+                the result -- an unresolved placeholder is not a valid url/
+                header value, and passing it through as if it were one just
+                relocates the failure somewhere far less diagnosable
+                downstream (e.g. an SSRF check rejecting a URL that's
+                literally "${MCP_SERVER_GATEWAY_URL}/skills-library/").
+                Only url/headers use this -- see is_http's docstring: this
+                loader never acts on command/args/env server-side, so an
+                unresolved placeholder there is inert, not a latent bug, and
+                forcing it through this same check would drop an otherwise-
+                valid HTTP entry over an irrelevant stdio-only field.
+                """
+                value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
+
+                def _replace(m: re.Match[str]) -> str:
+                    env_value = os.environ.get(m.group(1))
+                    if env_value is None:
+                        _missing.append(m.group(1))
+                        return m.group(0)
+                    return env_value
+
+                return _ENV_VAR_RE.sub(_replace, value)
+
+            def _sub_lenient(value: str, _root: str = plugin_root_str) -> str:
+                """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} in command/args/env.
+
+                Best-effort only, no missing-var tracking -- see _sub_strict's
+                docstring for why these stdio-only fields are exempt.
+                """
                 value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
                 return _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
 
@@ -125,15 +158,34 @@ class MarketplacePluginManager:
             headers_raw = server_config.get("headers", {})
             oauth_raw = server_config.get("oauth")
 
+            resolved_url = _sub_strict(url) if isinstance(url, str) else None
+            resolved_headers = {
+                k: _sub_strict(v) for k, v in headers_raw.items() if isinstance(k, str) and isinstance(v, str)
+            }
+
+            if missing_env_vars:
+                logger.warning(
+                    "Plugin '%s' MCP server '%s': skipping -- .mcp.json references "
+                    "undefined environment variable(s) in url/headers: %s",
+                    entry.name,
+                    server_key,
+                    sorted(set(missing_env_vars)),
+                )
+                continue
+
+            resolved_command = _sub_lenient(command) if isinstance(command, str) else None
+            resolved_args = tuple(_sub_lenient(a) for a in args_raw if isinstance(a, str))
+            resolved_env = {k: _sub_lenient(v) for k, v in env_raw.items() if isinstance(k, str) and isinstance(v, str)}
+
             mcp_entry = PluginMcpServerEntry(
                 server_key=server_key,
                 plugin_name=entry.name,
                 plugin_root=entry.path,
-                url=_sub(url) if isinstance(url, str) else None,
-                command=_sub(command) if isinstance(command, str) else None,
-                args=tuple(_sub(a) for a in args_raw if isinstance(a, str)),
-                env={k: _sub(v) for k, v in env_raw.items() if isinstance(k, str) and isinstance(v, str)},
-                headers={k: _sub(v) for k, v in headers_raw.items() if isinstance(k, str) and isinstance(v, str)},
+                url=resolved_url,
+                command=resolved_command,
+                args=resolved_args,
+                env=resolved_env,
+                headers=resolved_headers,
                 description=server_config.get("description")
                 if isinstance(server_config.get("description"), str)
                 else None,

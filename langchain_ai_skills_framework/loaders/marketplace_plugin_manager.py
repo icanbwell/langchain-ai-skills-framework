@@ -113,10 +113,29 @@ class MarketplacePluginManager:
             if not isinstance(server_key, str) or not isinstance(server_config, dict):
                 continue
 
-            def _sub(value: str, _root: str = plugin_root_str) -> str:
-                """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} references."""
+            missing_env_vars: list[str] = []
+
+            def _sub(value: str, _root: str = plugin_root_str, _missing: list[str] = missing_env_vars) -> str:
+                """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} references.
+
+                Records any ${ENV_VAR} whose variable is unset in _missing
+                instead of silently leaving the literal "${ENV_VAR}" text in
+                the result -- an unresolved placeholder is not a valid url/
+                command/header/env value, and passing it through as if it
+                were one just relocates the failure somewhere far less
+                diagnosable downstream (e.g. an SSRF check rejecting a URL
+                that's literally "${MCP_SERVER_GATEWAY_URL}/skills-library/").
+                """
                 value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
-                return _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
+
+                def _replace(m: re.Match[str]) -> str:
+                    env_value = os.environ.get(m.group(1))
+                    if env_value is None:
+                        _missing.append(m.group(1))
+                        return m.group(0)
+                    return env_value
+
+                return _ENV_VAR_RE.sub(_replace, value)
 
             url = server_config.get("url")
             command = server_config.get("command")
@@ -125,15 +144,31 @@ class MarketplacePluginManager:
             headers_raw = server_config.get("headers", {})
             oauth_raw = server_config.get("oauth")
 
+            resolved_url = _sub(url) if isinstance(url, str) else None
+            resolved_command = _sub(command) if isinstance(command, str) else None
+            resolved_args = tuple(_sub(a) for a in args_raw if isinstance(a, str))
+            resolved_env = {k: _sub(v) for k, v in env_raw.items() if isinstance(k, str) and isinstance(v, str)}
+            resolved_headers = {k: _sub(v) for k, v in headers_raw.items() if isinstance(k, str) and isinstance(v, str)}
+
+            if missing_env_vars:
+                logger.warning(
+                    "Plugin '%s' MCP server '%s': skipping -- .mcp.json references "
+                    "undefined environment variable(s): %s",
+                    entry.name,
+                    server_key,
+                    sorted(set(missing_env_vars)),
+                )
+                continue
+
             mcp_entry = PluginMcpServerEntry(
                 server_key=server_key,
                 plugin_name=entry.name,
                 plugin_root=entry.path,
-                url=_sub(url) if isinstance(url, str) else None,
-                command=_sub(command) if isinstance(command, str) else None,
-                args=tuple(_sub(a) for a in args_raw if isinstance(a, str)),
-                env={k: _sub(v) for k, v in env_raw.items() if isinstance(k, str) and isinstance(v, str)},
-                headers={k: _sub(v) for k, v in headers_raw.items() if isinstance(k, str) and isinstance(v, str)},
+                url=resolved_url,
+                command=resolved_command,
+                args=resolved_args,
+                env=resolved_env,
+                headers=resolved_headers,
                 description=server_config.get("description")
                 if isinstance(server_config.get("description"), str)
                 else None,

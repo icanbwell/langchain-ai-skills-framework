@@ -17,6 +17,7 @@ high_risk_paths:
   - "langchain_ai_skills_framework/loaders/marketplace_plugin_manager.py" # resolves MCP server URLs/auth/env-var substitution from untrusted .mcp.json — SSRF/config-injection surface (see BAI-859)
   - "langchain_ai_skills_framework/loaders/skill_sync.py" # GitHub -> MongoDB sync; a bug here corrupts the shared skill catalog for every consuming service
   - "langchain_ai_skills_framework/persistence/**" # Mongo read/write paths shared across consuming services
+  - "langchain_ai_skills_framework/github/token_provider.py" # mints GitHub App JWTs / exchanges for installation tokens — credential surface
 
 # Title substrings (case-insensitive) that force risk:deep-review.
 high_risk_title_keywords:
@@ -87,3 +88,4 @@ semver_none_path_patterns:
   - "docs/**"
   - "**/*test*"
   - "**/*spec*"
+  - ".github/**" # CI/workflow config only -- never changes the published wheel's contract

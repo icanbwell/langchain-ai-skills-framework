@@ -1,0 +1,74 @@
+# Phase 1 of the org's PR-labeling mandate (EA review, 2026-09-03): every PR must
+# carry a risk:*, type:*, and semver label before it can merge. This is the actual
+# mandate primitive — it BLOCKS MERGE on a missing label, deterministically, no
+# model call, and it works no matter how the PR was created (github.com button,
+# terminal, another tool, or the pr-label-classify.yml workflow in this same
+# skill). Composed from an action already load-bearing in two repos
+# (bwell-sdk, health-data-service) rather than hand-rolled — see
+# references/classification.md's "Phase 1" section.
+#
+# Deliberately a separate workflow from pr-label-classify.yml: the thing that
+# labels a PR must not also be the thing that decides whether the label is
+# present. This one only checks; it never applies, approves, or merges.
+#
+# Wire this repo-relative check as a REQUIRED STATUS CHECK in branch protection
+# (Settings -> Branches, or an org ruleset) — a passing workflow run means
+# nothing on its own until something requires it.
+name: Require PR labels
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, ready_for_review, reopened, synchronize]
+
+jobs:
+  require-risk-label:
+    name: Require a risk:* label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mheap/github-action-required-labels@0ac283b4e65c1fb28ce6079dea5546ceca98ccbe # v5.5.2
+        with:
+          mode: exactly
+          count: 1
+          # Fixed vocabulary — the three risk tiers are skill-canonical, not
+          # per-repo (references/classification.md). Don't add repo-specific
+          # values here.
+          labels: "risk:auto-approve, risk:standard, risk:deep-review"
+          exit_type: failure
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  require-type-label:
+    name: Require a type:* label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mheap/github-action-required-labels@0ac283b4e65c1fb28ce6079dea5546ceca98ccbe # v5.5.2
+        with:
+          mode: exactly
+          count: 1
+          # Base org vocabulary (bug/feature/incident/security/migration/
+          # dependency/upgrade) plus this repo's own extensions, e.g.
+          # bwell-repo-wiki adds type:docs. Add this repo's extensions here —
+          # don't invent a new axis for them.
+          labels: "type:bug, type:feature, type:incident, type:security, type:migration, type:dependency, type:upgrade"
+          exit_type: failure
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # DELETE THIS JOB if this repo never cuts a versioned release (a pure documentation/wiki
+  # library, e.g. bwell-repo-wiki) — semver measures how much a change breaks a contract
+  # *consumers pin to*, which doesn't exist for a repo that never tags a version. See
+  # references/classification.md's "Semver doesn't apply to every repo".
+  require-semver-label:
+    name: Require a semver label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mheap/github-action-required-labels@0ac283b4e65c1fb28ce6079dea5546ceca98ccbe # v5.5.2
+        with:
+          mode: exactly
+          count: 1
+          # Default vocabulary below. If this repo already runs
+          # bwell-sdk/health-data-service's older bare-word scheme, use that
+          # list instead (`do-not-release, Patch, Minor, Major`) rather than
+          # renaming an existing, working gate — see references/
+          # classification.md's semver-axis section.
+          labels: "semver:major, semver:minor, semver:patch, semver:none"
+          exit_type: failure
+          token: ${{ secrets.GITHUB_TOKEN }}

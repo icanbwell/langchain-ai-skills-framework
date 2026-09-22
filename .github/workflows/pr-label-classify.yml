@@ -1,0 +1,344 @@
+# Applies type:*/risk:* labels to a PR by running the deterministic classifier
+# at .github/scripts/classify_pr.py against this repo's own
+# .github/pr-risk-mapping.yml. Design: plugins/software-developers/skills/
+# pr-label-classifier/references/classification.md
+#
+# This workflow only labels. It never approves, merges, or dismisses reviews —
+# a separate, repo-owner-configured branch-protection ruleset is what reads the
+# risk:* label and decides whether a human review is still required. Keeping
+# "labels" and "approves" as two different systems is deliberate: the thing
+# that labels a PR must not also be the thing that waives review on the label
+# it just applied.
+#
+# GITHUB_TOKEN cascade limitation: a `labeled` event caused by GITHUB_TOKEN does
+# NOT trigger other workflow runs on this PR (GitHub's own loop-prevention
+# rule). That means pr-require-labels.yml's checks, which run separately and on
+# purpose (see that workflow's own header), stay on whatever result they had
+# *before* this job ran and don't automatically re-evaluate once this job
+# labels the PR — they only re-run on the next push, or a manual rerun, even
+# though the PR now genuinely satisfies them. Set the optional `PR_LABEL_TOKEN`
+# repo secret (a fine-grained PAT scoped to this repo, Pull requests: Read and
+# write, AND Issues: Read and write — gh label create below needs it on a
+# freshly-adopting repo for the same reason the default token's `issues: write`
+# permission does, below) to fix this: events from a PAT are NOT subject to
+# that restriction, so labeling with it correctly re-triggers
+# pr-require-labels.yml. Without the secret this workflow still labels the PR
+# correctly with the default GITHUB_TOKEN — only the automatic re-trigger is
+# lost, not the labeling itself. See references/classification.md's
+# "Self-healing the required-labels gate" section.
+#
+# Known limitation, not fixed here: this triggers on plain `pull_request`, so
+# a PR from a fork gets a read-only GITHUB_TOKEN (GitHub's own rule, not this
+# workflow's `permissions:` block) and every `gh label create`/`gh pr edit
+# --add-label` call below 403s — silently, since both are wrapped in
+# best-effort `|| echo WARNING` guards. A fork PR gets zero labels and sits
+# blocked on Phase 1's require-labels gate until a maintainer hand-applies
+# them. The fix (`pull_request_target`, or a separate `workflow_run`-triggered
+# labeling job) grants a write-scoped token to a workflow run whose trigger
+# context is influenceable by the fork's own untrusted branch — a real
+# security tradeoff to make deliberately, not a drop-in swap. Left as-is
+# until this repo (or another adopter) actually has external contributors.
+#
+# Self-classification: for a same-repo (non-fork) PR, `actions/checkout` on a
+# `pull_request` event checks out the merge of head into base, which includes
+# whatever this PR itself changed .github/pr-risk-mapping.yml or
+# .github/scripts/classify_pr.py to say — and unlike a fork, a same-repo
+# branch keeps GITHUB_TOKEN's write permissions, so a PR could otherwise
+# loosen its own risk mapping and have that take effect on its own
+# classification. The "Read risk-mapping and classifier from the base branch"
+# step below reads both files from the PR's base SHA instead of the checked-
+# out tree, so a PR's own edits to either file only take effect for the NEXT
+# PR, once merged.
+name: Classify PR risk/type
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  pull-requests: write
+  contents: read
+  # gh label create (Apply labels step) is Issues-API-gated even though it's creating a
+  # label, not an issue — without this, the first push in a freshly-adopting repo (where
+  # none of the risk:*/type:* labels exist yet) 403s creating them.
+  issues: write
+
+concurrency:
+  group: pr-label-classify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - run: pip install pyyaml
+
+      - name: Gather PR diff signals
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # base.sha is the base branch's current tip, not this PR's fork
+          # point — it advances every time another PR merges into the base
+          # branch while this one is still open. A plain two-dot diff
+          # (`git diff base head`) compares tree snapshots directly, so on a
+          # long-lived PR it pulls in the base branch's own independent
+          # commits alongside this PR's changes, which can misclassify risk/
+          # semver on files this PR never touched. Diff against the
+          # merge-base instead, so only this PR's own changes are considered.
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          git diff --name-only "$MERGE_BASE" "$HEAD_SHA" > changed_files.txt
+          read -r additions deletions <<< "$(
+            git diff --shortstat "$MERGE_BASE" "$HEAD_SHA" | awk '
+              { for (i = 1; i <= NF; i++) {
+                  if ($i ~ /^[0-9]+$/) { n = $i }
+                  if ($(i) ~ /insertion/) { a = n }
+                  if ($(i) ~ /deletion/) { d = n }
+                }
+              }
+              END { print (a ? a : 0), (d ? d : 0) }'
+          )"
+          echo "additions=$additions" >> "$GITHUB_OUTPUT"
+          echo "deletions=$deletions" >> "$GITHUB_OUTPUT"
+
+      - name: Poll mergeable status
+        id: mergeable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # github.event.pull_request.mergeable (the webhook payload field) is computed
+          # asynchronously by GitHub and is essentially always null right when
+          # opened/synchronize/edited fires — the triggers this workflow runs on — so
+          # reading it directly makes the merge-conflict downgrade below unreachable.
+          # Poll the API instead, which computes it on demand.
+          state="UNKNOWN"
+          for _ in 1 2 3 4 5; do
+            # A transient `gh` failure (API rate limit/5xx, or the PR object not
+            # yet fully materialized right after 'opened') must not abort this
+            # step under `set -e` — that would skip Classify/Apply labels
+            # entirely and leave the PR with zero labels, worse than an
+            # "unknown" mergeable status. Treat a failed call the same as
+            # "UNKNOWN" and let the retry loop keep going.
+            state="$(gh pr view "$PR" --json mergeable -q .mergeable 2>/dev/null)" || state="UNKNOWN"
+            [ "$state" != "UNKNOWN" ] && break
+            sleep 3
+          done
+          case "$state" in
+            MERGEABLE)   echo "mergeable=true" >> "$GITHUB_OUTPUT" ;;
+            CONFLICTING) echo "mergeable=false" >> "$GITHUB_OUTPUT" ;;
+            *)           echo "mergeable=unknown" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Poll CI status
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # classify_pr.py's auto-approve-downgrade safeguard needs a real
+          # --ci-status; without this step it always defaults to "unknown",
+          # which the script treats as clean, making the safeguard dead code.
+          # Exclude this workflow's own check ("Classify PR risk/type") — it's
+          # always still running while this step executes, which would
+          # otherwise make the signal permanently "pending" for every PR.
+          #
+          # `gh pr checks --json` still exits non-zero (e.g. 8) whenever any
+          # check is pending or failing — exactly the cases this safeguard
+          # cares about. Under `set -e`, `buckets="$(... )" || buckets="[]"`
+          # discarded the JSON gh had already printed to stdout on every
+          # non-success exit, permanently resetting buckets to "[]" (read as
+          # "unknown", which the script treats as clean) whenever a check was
+          # actually pending or failing — making the safeguard dead code.
+          # Capture stdout regardless of exit status, and only fall back to
+          # "[]" if gh produced no output at all (a genuine API failure).
+          set +e
+          buckets="$(gh pr checks "$PR" --json name,bucket \
+            -q '[.[] | select(.name | test("Classify PR risk/type") | not) | .bucket] | @json' \
+            2>/dev/null)"
+          set -e
+          [ -n "$buckets" ] || buckets="[]"
+          status="unknown"
+          if echo "$buckets" | grep -q '"fail"'; then
+            status="failure"
+          elif echo "$buckets" | grep -q '"pending"'; then
+            status="pending"
+          elif echo "$buckets" | grep -q '"pass"'; then
+            status="success"
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Read risk-mapping and classifier from the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # Deliberately NOT the checked-out working tree — see this
+          # workflow's own "Self-classification" header comment. Reading
+          # these files from the base SHA means a same-repo PR's own edits to
+          # any of them can't affect its own classification — including a PR
+          # that edits prune_stale_labels.py itself to defeat the attribution
+          # fix (e.g. widening actor_logins to match anything).
+          #
+          # A path can genuinely not exist at BASE_SHA yet: the very first PR
+          # that adopts Phase 2 in a repo adds these files for the first
+          # time, so `git show base:path` fails there under `set -e`. Fall
+          # back to the checked-out (head) copy in that case only — there is
+          # no base version to prefer, and this is exactly the same-repo
+          # trust boundary this step exists to avoid crossing for a repo that
+          # already has these files at base.
+          read_from_base_or_fallback() {
+            local path="$1" dest="$2"
+            if git cat-file -e "$BASE_SHA:$path" 2>/dev/null; then
+              git show "$BASE_SHA:$path" > "$dest"
+            else
+              cp "$path" "$dest"
+            fi
+          }
+          read_from_base_or_fallback .github/pr-risk-mapping.yml base_pr_risk_mapping.yml
+          read_from_base_or_fallback .github/scripts/classify_pr.py base_classify_pr.py
+          read_from_base_or_fallback .github/scripts/prune_stale_labels.py base_prune_stale_labels.py
+
+      - name: Classify
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          python3 base_classify_pr.py \
+            --mapping base_pr_risk_mapping.yml \
+            --title "$PR_TITLE" \
+            --files-file changed_files.txt \
+            --additions "${{ steps.diff.outputs.additions }}" \
+            --deletions "${{ steps.diff.outputs.deletions }}" \
+            --mergeable "${{ steps.mergeable.outputs.mergeable }}" \
+            --ci-status "${{ steps.ci.outputs.status }}" \
+            --verbose \
+            > labels.txt
+          cat labels.txt
+
+      - name: Apply labels
+        env:
+          # Prefer the optional PAT (see this workflow's header comment) so the
+          # `labeled` event this step produces isn't silently swallowed by
+          # GitHub's GITHUB_TOKEN loop-prevention rule; falls back to the
+          # default token (labels still apply, just without the auto-retrigger)
+          # when the secret isn't configured. `secrets.PR_LABEL_TOKEN` reads as
+          # an empty string, not an error, when the secret doesn't exist — that
+          # empty string is falsy, so `||` falls through to `github.token`.
+          GH_TOKEN: ${{ secrets.PR_LABEL_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          # `secrets.PR_LABEL_TOKEN || github.token` only falls through to the
+          # default token when the secret is UNSET; a PAT that's set but expired
+          # (fine-grained PATs have a mandatory max lifetime) is a non-empty,
+          # invalid value, so every `gh` call below would fail auth and get
+          # masked by that call's own best-effort `|| echo WARNING`/`|| true` —
+          # exiting green while silently applying zero labels. Fail loudly here,
+          # before any per-label fallback can hide it.
+          gh auth status || { echo "::error::GH_TOKEN (PR_LABEL_TOKEN or default) failed auth check — labels will not be applied. If PR_LABEL_TOKEN is set, its PAT has likely expired; renew it." >&2; exit 1; }
+          PR="${{ github.event.pull_request.number }}"
+          # Drop stale risk:*/type:*/semver:* labels from a prior push before
+          # adding the freshly computed ones, so a PR that got riskier on a
+          # later commit doesn't keep an earlier, now-wrong risk:auto-approve
+          # label. Scoped by WHO most recently applied each currently-attached
+          # label on THIS PR (via the issue timeline), not by the label
+          # DEFINITION's description — a description is repo-wide and sticks
+          # to the label forever once any PR's classify run has set it, so
+          # description-based scoping silently stripped a human's manual
+          # override (e.g. escalating risk:standard -> risk:deep-review) on
+          # the very next push. Verified live in ui-platform. See
+          # scripts/prune_stale_labels.py's own docstring.
+          #
+          # Two candidate identities, not one: this run's own resolved actor
+          # AND the well-known default `github-actions[bot]`. If a repo adds
+          # PR_LABEL_TOKEN after already having labeled PRs under the default
+          # token (or removes it later), matching only the current run's
+          # identity would make every label applied under the other identity
+          # permanently un-prunable — stale and fresh labels would coexist
+          # forever across that transition.
+          ACTOR_LOGIN="$(gh api user -q .login 2>/dev/null || echo 'github-actions[bot]')"
+          printf '%s\n' "$ACTOR_LOGIN" "github-actions[bot]" | sort -u > actor_logins.txt
+          gh pr view "$PR" --json labels \
+            -q '.labels[] | select(.name | test("^(risk|type|semver):")) | .name' \
+            | sort -u > current_managed_labels.txt
+          gh api --paginate --slurp "repos/${{ github.repository }}/issues/$PR/timeline" \
+            > timeline.json 2>/dev/null || echo '[]' > timeline.json
+          python3 base_prune_stale_labels.py \
+            --current-labels-file current_managed_labels.txt \
+            --timeline-file timeline.json \
+            --actor-logins-file actor_logins.txt \
+            | sort -u > stale_labels.txt || true
+          while read -r old; do gh pr edit "$PR" --remove-label "$old"; done < stale_labels.txt
+          # Labels that survive pruning (i.e. a human's kept override) must
+          # block this run from also adding the freshly-computed label for
+          # that same axis — otherwise the PR ends up with two labels on one
+          # axis (the human's + the new one), which trips
+          # pr-require-labels.yml's `mode: exactly, count: 1` gate and blocks
+          # merge. That's a different, visible failure from the original
+          # silent-override bug, but still a regression from before this fix.
+          comm -23 current_managed_labels.txt stale_labels.txt \
+            | sed -E 's/:.*//' | sort -u > surviving_axes.txt
+          while read -r label; do
+            axis="${label%%:*}"
+            if grep -qx "$axis" surviving_axes.txt; then
+              echo "Skipping $label — axis '$axis' already has a surviving (non-stale) label on this PR"
+              continue
+            fi
+            # --force (re)stamps color/description on every run, even if the
+            # label already existed (created by hand, or by an older run
+            # before this description existed).
+            gh label create "$label" --color ededed --force \
+              --description "Applied by pr-label-classify" \
+              || echo "WARNING: failed to (re)create label '$label'" >&2
+            # Best-effort, same as the remove-loop above: one failed label (API
+            # hiccup, or the create step above failing silently) must not abort the
+            # step and leave the PR unlabeled — it already had its old labels stripped.
+            gh pr edit "$PR" --add-label "$label" \
+              || echo "WARNING: failed to apply label '$label'" >&2
+          done < labels.txt
+
+
+  retrigger-required-labels:
+    # Rerun pr-require-labels.yml when labels are applied via pr-label-classify
+    # (whether by PR_LABEL_TOKEN's labeled event, or by explicit rerun below).
+    # Scoped to its own job to limit actions: write permission to just this step.
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Retrigger label requirement checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Runs unconditionally, whether or not PR_LABEL_TOKEN is configured
+          # above — it's the no-secret-required backstop for the exact same
+          # GITHUB_TOKEN anti-recursion rule described in this workflow's own
+          # header comment and in references/classification.md's
+          # "Self-healing the required-labels gate". A repo that never sets up
+          # PR_LABEL_TOKEN (the common case — verified 2026-09-21 across every
+          # repo that had adopted this skill, none had the secret configured)
+          # still gets self-healing this way. If PR_LABEL_TOKEN IS configured
+          # and already triggered a fresh run via its own `labeled` event, this
+          # is a cheap, harmless extra rerun of whatever run it finds — not
+          # worth adding a conditional to skip.
+          run_id="$(gh run list --repo "${{ github.repository }}" --limit 100 \
+            --workflow pr-require-labels.yml \
+            --json databaseId,headSha \
+            -q "[.[] | select(.headSha == \"$HEAD_SHA\")][0].databaseId" || true)"
+          if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
+            gh run rerun "$run_id" --repo "${{ github.repository }}" || true
+          fi

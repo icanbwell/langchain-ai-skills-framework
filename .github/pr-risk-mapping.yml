@@ -1,0 +1,89 @@
+# Per-repo PR risk mapping — filled in once during pr-label-classifier's adoption
+# checklist, then read on every push by .github/workflows/pr-label-classify.yml
+# (via .github/scripts/classify_pr.py). Design/rationale:
+# plugins/software-developers/skills/pr-label-classifier/references/classification.md
+#
+# Risk is defined per repo: name what's actually risky HERE, don't inherit a
+# generic rule. E.g. for a FHIR composition service: dedup/identity logic,
+# clinical code mapping, anything that drops or suppresses records. For a docs
+# or skill-marketplace repo, "risky" looks completely different — maybe nothing
+# ever qualifies as high_risk_paths, and small_diff_line_threshold can be large.
+
+# Glob patterns (fnmatch, matched against each changed file's repo-relative
+# path) that always force risk:deep-review, regardless of diff size or tests.
+high_risk_paths:
+  - "langchain_ai_skills_framework/executors/**" # runs shell/agentcore scripts on behalf of skills — arbitrary code execution surface
+  - "langchain_ai_skills_framework/publishing/**" # writes to the shared GitHub marketplace repo every consuming service reads from
+  - "langchain_ai_skills_framework/loaders/marketplace_plugin_manager.py" # resolves MCP server URLs/auth/env-var substitution from untrusted .mcp.json — SSRF/config-injection surface (see BAI-859)
+  - "langchain_ai_skills_framework/loaders/skill_sync.py" # GitHub -> MongoDB sync; a bug here corrupts the shared skill catalog for every consuming service
+  - "langchain_ai_skills_framework/persistence/**" # Mongo read/write paths shared across consuming services
+
+# Title substrings (case-insensitive) that force risk:deep-review.
+high_risk_title_keywords:
+  - "breaking"
+  - "BREAKING CHANGE"
+  - "migration"
+
+# A PR under this many total changed lines (additions + deletions) is a
+# candidate for risk:auto-approve; at or above it, risk:standard (unless a
+# high_risk_* trigger above already applies). Calibrate to this repo's own
+# typical PR size — don't copy another repo's number.
+small_diff_line_threshold: 50
+
+# If true, a change must also touch a file matching test_path_patterns to be
+# eligible for risk:auto-approve; otherwise it's capped at risk:standard.
+require_tests_for_auto_approve: true
+
+test_path_patterns:
+  - "**/*test*"
+  - "**/*spec*"
+
+# type:* keyword mapping — title substrings (case-insensitive), first match
+# wins per type, first type listed wins overall. A PR matching none of these
+# gets no type:* label — add a keyword here rather than leaving it to guess.
+type_keywords:
+  security: ["security", "cve", "vuln"]
+  incident: ["incident", "hotfix", "sev1", "sev2"]
+  migration: ["migration", "migrate"]
+  dependency: ["bump", "dependabot", "deps:"]
+  upgrade: ["upgrade"]
+  bug: ["fix", "bug"]
+  feature: ["feat", "add "]
+
+# semver — mandatory on every PR (org mandate, EA review 2026-09-03), as an
+# integration-risk signal distinct from risk:* (risk = how much scrutiny;
+# semver = how much this changes the contract). Unlike risk/type, this axis
+# always resolves to one of the four values below — never left unlabeled.
+#
+# If this repo already runs bwell-sdk/health-data-service's older bare-word
+# scheme, override the label NAMES here to match it instead of migrating:
+#   semver_labels:
+#     major: "Major"
+#     minor: "Minor"
+#     patch: "Patch"
+#     none: "do-not-release"
+# Leave unset to use the semver:major|minor|patch|none default names.
+# semver_labels: {}
+
+# Title substrings/markers forcing semver:major (or your override). The
+# conventional-commit breaking marker (`feat!:`, `fix!:`) is always checked
+# in addition to these.
+semver_major_title_keywords:
+  - "breaking"
+  - "breaking change"
+
+# Title substrings forcing semver:minor, checked after major and none.
+semver_minor_title_keywords:
+  - "feat"
+  - "feature"
+  - "add "
+
+# If every changed file matches one of these globs, the PR gets semver:none
+# (no release-worthy contract change) rather than a version bump. Checked
+# after major, before minor — a breaking docs typo still needs `!:` or a
+# breaking-title-keyword to register as major.
+semver_none_path_patterns:
+  - "**/*.md"
+  - "docs/**"
+  - "**/*test*"
+  - "**/*spec*"

@@ -92,6 +92,13 @@ warn_unused_configs = true
 module = ["fsspec", "fsspec.*", "skills_ref.*", "setuptools.*"]
 ignore_missing_imports = true
 
+# .github/scripts/* are copied verbatim from the org's pr-label-classifier skill template
+# (not authored/maintained in this repo) rather than diverged from it to satisfy this
+# repo's own --strict gate -- see BAI-863.
+[[tool.mypy.overrides]]
+module = ["classify_pr", "prune_stale_labels"]
+ignore_errors = true
+
 [tool.ruff]
 line-length = 120
 

@@ -112,7 +112,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._token_provider = token_provider
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
-        self._plugins_collection = environment_variables.plugins_collection
+        self._plugins_collection = environment_variables.plugin_definitions_snapshot_collection
         self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{MongoPluginSkillDocument.SCHEMA_VERSION}"
 
         self._lock = RLock()
@@ -411,7 +411,8 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
 
         for entry in plugin_entries:
             # Collect MCP configs per plugin (avoids a second pass)
-            plugin_mcp = self._plugin_manager.read_mcp_configs(entry)
+            mcp_result = self._plugin_manager.read_mcp_configs(entry)
+            plugin_mcp = mcp_result.entries
             all_mcp_servers.extend(plugin_mcp)
 
             plugin_skills: list[SkillSummary] = []
@@ -423,6 +424,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                         name=entry.name,
                         description=entry.description,
                         mcp_servers=tuple(plugin_mcp),
+                        skipped_mcp_servers=mcp_result.skipped,
                     )
                 )
                 continue
@@ -445,6 +447,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                         name=entry.name,
                         description=entry.description,
                         mcp_servers=tuple(plugin_mcp),
+                        skipped_mcp_servers=mcp_result.skipped,
                     )
                 )
                 continue
@@ -485,6 +488,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                     description=entry.description,
                     skills=tuple(sorted(plugin_skills, key=lambda s: s.name)),
                     mcp_servers=tuple(plugin_mcp),
+                    skipped_mcp_servers=mcp_result.skipped,
                 )
             )
 

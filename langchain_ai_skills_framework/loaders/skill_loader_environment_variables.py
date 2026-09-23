@@ -62,13 +62,38 @@ class SkillLoaderEnvironmentVariables(Protocol):
 
     @property
     def plugins_collection(self) -> str | None:
-        """MongoDB collection for individual plugin definition documents.
+        """MongoDB collection for persisted plugin definition documents.
 
-        Each plugin discovered from the marketplace is written as a
-        separate document to this collection (keyed by plugin name).
+        This is ``PluginSkillStoreFactory``'s/``MongoPluginSkillLoader``'s
+        collection — the durable, non-expiring plugin store that
+        ``CompositeSkillLoader`` reads back from once the shared marketplace
+        loader is swapped out after startup sync. Do not reuse this for any
+        other writer; see ``plugin_definitions_snapshot_collection`` for
+        ``MarketplaceDirectoryLoader``'s own (TTL'd, write-only) cache, which
+        used to collide with this one by sharing the same default name.
 
         Expected environment variable: PLUGINS_COLLECTION
         Default: "plugins"
+        """
+        ...
+
+    @property
+    def plugin_definitions_snapshot_collection(self) -> str | None:
+        """MongoDB collection for MarketplaceDirectoryLoader's per-plugin
+        snapshot cache (``_write_plugins_to_collection``).
+
+        This is a TTL'd, write-only cache of marketplace plugin definitions
+        (populated on refresh_async/reload_plugins), separate from and never
+        read back by anything in this package — distinct from
+        ``plugins_collection``, which is the durable store
+        ``PluginSkillStoreFactory``/``MongoPluginSkillLoader`` reads and
+        writes. The two used to default to the same collection name
+        ("plugins"), so this cache's per-plugin snapshot writes and the
+        durable store's own plugin documents landed in the same MongoDB
+        collection with two incompatible document shapes.
+
+        Expected environment variable: PLUGIN_DEFINITIONS_SNAPSHOT_COLLECTION
+        Default: "marketplace_plugin_definitions"
         """
         ...
 

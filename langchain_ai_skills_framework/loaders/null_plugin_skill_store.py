@@ -247,6 +247,7 @@ class NullPluginSkillStore:
         description: str,
         skills: Sequence[str],
         mcp_servers: Sequence[dict[str, object]],
+        mcp_servers_skipped: Sequence[dict[str, object]] = (),
     ) -> MongoPluginDefinitionDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 

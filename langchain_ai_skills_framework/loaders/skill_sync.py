@@ -11,6 +11,9 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.skills_model import SkillSummary
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.utilities.snapshot_serializer import (
+    serialize_skipped_mcp_server,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -253,19 +256,36 @@ class SkillSync:
                         mcp_dict["visibility"] = mcp.visibility
                     mcp_server_dicts.append(mcp_dict)
 
+                skipped_mcp_server_dicts: list[dict[str, object]] = [
+                    serialize_skipped_mcp_server(skipped=skipped) for skipped in plugin.skipped_mcp_servers
+                ]
+
                 await self._store.save_plugin(
                     plugin_name=plugin.name,
                     description=plugin.description or "",
                     skills=[s.name for s in plugin.skills],
                     mcp_servers=mcp_server_dicts,
+                    mcp_servers_skipped=skipped_mcp_server_dicts,
                 )
                 result.plugins_synced += 1
-                logger.info(
-                    "SkillSync: synced plugin '%s' (skills=%d, mcp_servers=%d).",
-                    plugin.name,
-                    len(plugin.skills),
-                    len(mcp_server_dicts),
-                )
+                result.mcp_servers_skipped += len(skipped_mcp_server_dicts)
+                if skipped_mcp_server_dicts:
+                    logger.error(
+                        "SkillSync: synced plugin '%s' (skills=%d, mcp_servers=%d) -- "
+                        "%d MCP server(s) skipped for unresolved ${ENV_VAR} references: %s",
+                        plugin.name,
+                        len(plugin.skills),
+                        len(mcp_server_dicts),
+                        len(skipped_mcp_server_dicts),
+                        [s["server_key"] for s in skipped_mcp_server_dicts],
+                    )
+                else:
+                    logger.info(
+                        "SkillSync: synced plugin '%s' (skills=%d, mcp_servers=%d).",
+                        plugin.name,
+                        len(plugin.skills),
+                        len(mcp_server_dicts),
+                    )
             except Exception:
                 logger.exception("SkillSync: failed to sync plugin '%s'.", plugin.name)
                 result.errors += 1
@@ -276,6 +296,7 @@ class SyncResult:
 
     def __init__(self) -> None:
         self.plugins_synced: int = 0
+        self.mcp_servers_skipped: int = 0
         self.skills_added: int = 0
         self.resources_added: int = 0
         self.scripts_added: int = 0

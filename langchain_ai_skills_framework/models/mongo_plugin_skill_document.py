@@ -228,6 +228,16 @@ class MongoPluginDefinitionDocument(BaseModel):
         default_factory=list,
         description="MCP server configurations from the plugin's .mcp.json",
     )
+    mcp_servers_skipped: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "MCP servers declared in .mcp.json but dropped for referencing an "
+            "unset ${ENV_VAR} in url/headers (BAI-859) -- see each entry's "
+            "server_key/missing_env_vars. Persisted so a misconfiguration "
+            "that silently shrinks the tool catalog is queryable here, not "
+            "only visible via logs."
+        ),
+    )
     date_created: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="When the plugin was first registered",

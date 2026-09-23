@@ -83,3 +83,26 @@ class PluginMcpServerEntry:
     def is_http(self) -> bool:
         """Whether this server uses HTTP transport (has a url)."""
         return self.url is not None
+
+
+@dataclass(frozen=True)
+class SkippedMcpServer:
+    """An MCP server declared in a plugin's ``.mcp.json`` that was dropped
+    during discovery because its ``url``/``headers`` referenced an
+    environment variable that isn't set in this process (BAI-859).
+
+    Kept as a first-class, queryable record — rather than only a log line —
+    so a misconfiguration that silently drops a server from the tool catalog
+    (as opposed to a hard failure) is still visible without log archaeology:
+    it's threaded through ``PluginDefinition``, persisted alongside the
+    plugin document, and surfaced in ``reload_plugins``'s own summary.
+    """
+
+    server_key: str
+    """Key from the plugin's mcpServers dict (e.g., "plugin-marketplace")."""
+
+    plugin_name: str
+    """Owning plugin name."""
+
+    missing_env_vars: tuple[str, ...]
+    """Names of the ${ENV_VAR} placeholders that were unset."""

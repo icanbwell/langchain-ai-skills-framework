@@ -41,6 +41,7 @@ class FakeEnvVars:
     github_app_installation_id: str | None = None
     snapshot_cache_plugins_collection: str | None = None
     plugins_collection: str | None = "plugins"
+    plugin_definitions_snapshot_collection: str | None = "marketplace_plugin_definitions"
     plugin_skills_collection: str | None = "plugin_skills"
     plugin_references_collection: str | None = "plugin_references"
     plugin_scripts_collection: str | None = "plugin_scripts"
@@ -758,3 +759,60 @@ class TestMarketplaceJsonDiscovery:
         summaries = loader.list_skill_summaries(allowed_skills=set())
         assert len(summaries) == 1
         assert summaries[0].name == "valid-skill"
+
+
+class _FakeKeyValueStore:
+    """Records every ``put`` call's collection so tests can assert on it."""
+
+    def __init__(self) -> None:
+        self.puts: list[tuple[str, str | None]] = []
+
+    async def put(
+        self,
+        key: str,
+        value: object,
+        *,
+        collection: str | None = None,
+        ttl: float | None = None,
+    ) -> None:
+        self.puts.append((key, collection))
+
+    async def get(self, key: str, *, collection: str | None = None) -> None:
+        return None
+
+    async def delete(self, key: str, *, collection: str | None = None) -> bool:
+        return False
+
+
+class TestPluginDefinitionsSnapshotCollection:
+    """Regression: MarketplaceDirectoryLoader's per-plugin snapshot cache
+    used to default to the same MongoDB collection name ("plugins") as
+    PluginSkillStoreFactory's/MongoPluginSkillLoader's own durable plugin
+    store, so the two writers' incompatible document shapes landed side by
+    side in one collection. It must use its own dedicated collection.
+    """
+
+    @pytest.mark.asyncio
+    async def test_write_plugins_to_collection_uses_dedicated_collection(self, tmp_path: Path) -> None:
+        _write_marketplace_skill(tmp_path, "bailey", "some-skill")
+        _write_marketplace_json(tmp_path, [{"name": "bailey", "source": "./plugins/bailey"}])
+
+        store = _FakeKeyValueStore()
+        env = FakeEnvVars(
+            plugins_marketplace=str(tmp_path),
+            plugins_collection="plugins",
+            plugin_definitions_snapshot_collection="marketplace_plugin_definitions",
+        )
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+            snapshot_cache_store=store,  # type: ignore[arg-type]
+        )
+
+        await loader.refresh_async()
+
+        plugin_puts = [c for _, c in store.puts if c == "marketplace_plugin_definitions"]
+        assert plugin_puts, "expected a write to the dedicated snapshot collection"
+        assert not any(c == "plugins" for _, c in store.puts), (
+            "must not collide with PluginSkillStoreFactory's/MongoPluginSkillLoader's own 'plugins' collection"
+        )

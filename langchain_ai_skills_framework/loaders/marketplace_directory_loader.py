@@ -112,7 +112,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self._token_provider = token_provider
         self._snapshot_cache_store = snapshot_cache_store
         self._snapshot_cache_collection = environment_variables.snapshot_cache_plugins_collection
-        self._plugins_collection = environment_variables.plugins_collection
+        self._plugins_collection = environment_variables.plugin_definitions_snapshot_collection
         self._SNAPSHOT_CACHE_KEY = f"marketplace_snapshot_v{MongoPluginSkillDocument.SCHEMA_VERSION}"
 
         self._lock = RLock()

@@ -49,6 +49,10 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return os.environ.get("PLUGINS_COLLECTION") or "plugins"
 
     @property
+    def plugin_definitions_snapshot_collection(self) -> str | None:
+        return os.environ.get("PLUGIN_DEFINITIONS_SNAPSHOT_COLLECTION") or "marketplace_plugin_definitions"
+
+    @property
     def plugin_skills_collection(self) -> str | None:
         return os.environ.get("PLUGIN_SKILLS_COLLECTION") or "plugin_skills"
 

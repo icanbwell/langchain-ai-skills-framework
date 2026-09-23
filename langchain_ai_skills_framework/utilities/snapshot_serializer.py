@@ -141,7 +141,13 @@ def _deserialize_mcp_entry(*, data: dict[str, Any]) -> PluginMcpServerEntry:
 # --- Plugin definition serialization ----------------------------------------
 
 
-def _serialize_skipped_mcp_server(*, skipped: SkippedMcpServer) -> dict[str, Any]:
+def serialize_skipped_mcp_server(*, skipped: SkippedMcpServer) -> dict[str, Any]:
+    """Convert a SkippedMcpServer to a JSON-serializable dict.
+
+    Public (no leading underscore) since SkillSync._sync_plugins also builds
+    this exact shape for PluginSkillStore.save_plugin's mcp_servers_skipped
+    param -- kept here as the single source of truth rather than duplicated.
+    """
     return {
         "server_key": skipped.server_key,
         "plugin_name": skipped.plugin_name,
@@ -164,7 +170,7 @@ def serialize_plugin_definition(*, plugin: PluginDefinition) -> dict[str, Any]:
         "description": plugin.description,
         "skills": [_serialize_summary(summary=s) for s in plugin.skills],
         "mcp_servers": [_serialize_mcp_entry(entry=e) for e in plugin.mcp_servers],
-        "skipped_mcp_servers": [_serialize_skipped_mcp_server(skipped=s) for s in plugin.skipped_mcp_servers],
+        "skipped_mcp_servers": [serialize_skipped_mcp_server(skipped=s) for s in plugin.skipped_mcp_servers],
     }
 
 

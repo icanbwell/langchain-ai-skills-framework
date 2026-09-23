@@ -11,6 +11,9 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.skills_model import SkillSummary
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
+from langchain_ai_skills_framework.utilities.snapshot_serializer import (
+    serialize_skipped_mcp_server,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -254,12 +257,7 @@ class SkillSync:
                     mcp_server_dicts.append(mcp_dict)
 
                 skipped_mcp_server_dicts: list[dict[str, object]] = [
-                    {
-                        "server_key": skipped.server_key,
-                        "plugin_name": skipped.plugin_name,
-                        "missing_env_vars": list(skipped.missing_env_vars),
-                    }
-                    for skipped in plugin.skipped_mcp_servers
+                    serialize_skipped_mcp_server(skipped=skipped) for skipped in plugin.skipped_mcp_servers
                 ]
 
                 await self._store.save_plugin(

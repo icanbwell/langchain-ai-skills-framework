@@ -246,3 +246,39 @@ class TestSkillSync:
 
         assert result.errors == 1
         assert result.skills_added == 1
+
+    @pytest.mark.asyncio
+    async def test_sync_plugins_surfaces_skipped_mcp_servers(self) -> None:
+        from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
+        from langchain_ai_skills_framework.models.plugin_mcp_config import SkippedMcpServer
+
+        plugin_def = PluginDefinition(
+            name="bailey",
+            description="Test plugin",
+            skipped_mcp_servers=(
+                SkippedMcpServer(
+                    server_key="skills-library",
+                    plugin_name="bailey",
+                    missing_env_vars=("MCP_SERVER_GATEWAY_URL",),
+                ),
+            ),
+        )
+        shared = _make_shared_loader(summaries=[])
+        shared.list_plugin_definitions = AsyncMock(return_value=[plugin_def])
+        store = _make_store()
+        sync = SkillSync(shared_loader=shared, user_store=store)
+
+        result = await sync.sync()
+
+        assert result.plugins_synced == 1
+        assert result.mcp_servers_skipped == 1
+        assert result.errors == 0
+        store.save_plugin.assert_awaited_once()
+        _, kwargs = store.save_plugin.await_args
+        assert kwargs["mcp_servers_skipped"] == [
+            {
+                "server_key": "skills-library",
+                "plugin_name": "bailey",
+                "missing_env_vars": ["MCP_SERVER_GATEWAY_URL"],
+            }
+        ]

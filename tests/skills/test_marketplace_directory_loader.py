@@ -762,10 +762,11 @@ class TestMarketplaceJsonDiscovery:
 
 
 class _FakeKeyValueStore:
-    """Records every ``put`` call's collection so tests can assert on it."""
+    """Records every ``put`` call's collection (and value) so tests can assert on it."""
 
     def __init__(self) -> None:
         self.puts: list[tuple[str, str | None]] = []
+        self.values: dict[tuple[str, str | None], object] = {}
 
     async def put(
         self,
@@ -776,6 +777,7 @@ class _FakeKeyValueStore:
         ttl: float | None = None,
     ) -> None:
         self.puts.append((key, collection))
+        self.values[(key, collection)] = value
 
     async def get(self, key: str, *, collection: str | None = None) -> None:
         return None
@@ -816,3 +818,58 @@ class TestPluginDefinitionsSnapshotCollection:
         assert not any(c == "plugins" for _, c in store.puts), (
             "must not collide with PluginSkillStoreFactory's/MongoPluginSkillLoader's own 'plugins' collection"
         )
+
+
+class TestSkippedMcpServersSurfaced:
+    """BAI-859 follow-up: a .mcp.json server skipped for an unresolved
+    ${ENV_VAR} must be visible somewhere other than a log line -- it's
+    threaded onto PluginDefinition and persisted in the snapshot cache doc.
+    """
+
+    @pytest.mark.asyncio
+    async def test_skipped_server_reaches_plugin_definition_and_persisted_doc(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MCP_SERVER_GATEWAY_URL", raising=False)
+        _write_marketplace_skill(tmp_path, "bailey", "some-skill")
+        _write_marketplace_json(tmp_path, [{"name": "bailey", "source": "./plugins/bailey"}])
+
+        plugin_dir = tmp_path / "plugins" / "bailey"
+        (plugin_dir / ".mcp.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "skills-library": {"url": "${MCP_SERVER_GATEWAY_URL}/skills-library/"},
+                        "fhir-server": {"url": "http://localhost:9090"},
+                    }
+                }
+            )
+        )
+
+        store = _FakeKeyValueStore()
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+            snapshot_cache_store=store,  # type: ignore[arg-type]
+        )
+
+        plugin_defs = await loader.list_plugin_definitions()
+        assert len(plugin_defs) == 1
+        bailey = plugin_defs[0]
+
+        assert [s.server_key for s in bailey.mcp_servers] == ["fhir-server"]
+        assert len(bailey.skipped_mcp_servers) == 1
+        assert bailey.skipped_mcp_servers[0].server_key == "skills-library"
+        assert bailey.skipped_mcp_servers[0].missing_env_vars == ("MCP_SERVER_GATEWAY_URL",)
+
+        await loader.refresh_async()
+        persisted = store.values[("bailey", "marketplace_plugin_definitions")]
+        assert isinstance(persisted, dict)
+        assert persisted["skipped_mcp_servers"] == [
+            {
+                "server_key": "skills-library",
+                "plugin_name": "bailey",
+                "missing_env_vars": ["MCP_SERVER_GATEWAY_URL"],
+            }
+        ]

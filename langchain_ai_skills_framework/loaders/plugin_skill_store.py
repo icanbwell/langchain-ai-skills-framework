@@ -218,6 +218,7 @@ class PluginSkillStore(Protocol):
         description: str,
         skills: Sequence[str],
         mcp_servers: Sequence[dict[str, object]],
+        mcp_servers_skipped: Sequence[dict[str, object]] = (),
     ) -> MongoPluginDefinitionDocument: ...
 
     async def plugin_exists(self, *, plugin_name: str) -> bool: ...

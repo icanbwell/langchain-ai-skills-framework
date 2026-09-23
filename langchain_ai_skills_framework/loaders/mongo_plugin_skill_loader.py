@@ -835,15 +835,26 @@ class MongoPluginSkillLoader:
         description: str,
         skills: Sequence[str],
         mcp_servers: Sequence[dict[str, object]],
+        mcp_servers_skipped: Sequence[dict[str, object]] = (),
     ) -> MongoPluginDefinitionDocument:
         """Upsert a plugin definition document."""
         now = datetime.now(UTC)
         sv = self.SCHEMA_VERSION_FIELD
-        logger.info(
-            "save_plugin: upserting plugin '%s' to collection '%s'",
-            plugin_name,
-            self._plugins_collection.name,
-        )
+        if mcp_servers_skipped:
+            logger.error(
+                "save_plugin: upserting plugin '%s' to collection '%s' -- "
+                "%d MCP server(s) skipped for unresolved ${ENV_VAR} references: %s",
+                plugin_name,
+                self._plugins_collection.name,
+                len(mcp_servers_skipped),
+                [s.get("server_key") for s in mcp_servers_skipped],
+            )
+        else:
+            logger.info(
+                "save_plugin: upserting plugin '%s' to collection '%s'",
+                plugin_name,
+                self._plugins_collection.name,
+            )
         raw = await self._plugins_collection.find_one_and_update(
             self._version_filter({"plugin_name": plugin_name}),
             {
@@ -851,6 +862,7 @@ class MongoPluginSkillLoader:
                     "description": description,
                     "skills": list(skills),
                     "mcp_servers": [dict(s) for s in mcp_servers],
+                    "mcp_servers_skipped": [dict(s) for s in mcp_servers_skipped],
                     "date_modified": now,
                 },
                 "$setOnInsert": {

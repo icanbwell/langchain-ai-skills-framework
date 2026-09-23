@@ -157,7 +157,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert len(configs) == 1
         assert configs[0].server_key == "my-server"
@@ -179,7 +179,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert len(configs) == 1
         assert configs[0].is_http is False
@@ -200,7 +200,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         root = str(tmp_path)
         assert configs[0].command == f"{root}/bin/run"
@@ -215,7 +215,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert len(configs) == 1
         assert configs[0].url == "http://gateway:5000/skills-library/"
@@ -233,9 +233,13 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        result = manager.read_mcp_configs(entry)
 
-        assert [c.server_key for c in configs] == ["fine"]
+        assert [c.server_key for c in result.entries] == ["fine"]
+        assert len(result.skipped) == 1
+        assert result.skipped[0].server_key == "broken"
+        assert result.skipped[0].plugin_name == "test-plugin"
+        assert result.skipped[0].missing_env_vars == ("MCP_SERVER_GATEWAY_URL",)
 
     def test_skips_server_with_undefined_env_var_in_headers(
         self, tmp_path: Path, manager: MarketplacePluginManager, monkeypatch: pytest.MonkeyPatch
@@ -253,9 +257,11 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        result = manager.read_mcp_configs(entry)
 
-        assert [c.server_key for c in configs] == ["fine"]
+        assert [c.server_key for c in result.entries] == ["fine"]
+        assert [s.server_key for s in result.skipped] == ["broken"]
+        assert result.skipped[0].missing_env_vars == ("UNDEFINED_AUTH_TOKEN",)
 
     def test_undefined_env_var_in_command_args_env_does_not_skip_entry(
         self, tmp_path: Path, manager: MarketplacePluginManager, monkeypatch: pytest.MonkeyPatch
@@ -277,7 +283,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert len(configs) == 1
         assert configs[0].url == "http://localhost:8080"
@@ -286,19 +292,19 @@ class TestReadMcpConfigs:
 
     def test_returns_empty_for_missing_file(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         entry = PluginEntry(name="no-mcp", path=tmp_path)
-        assert manager.read_mcp_configs(entry) == []
+        assert manager.read_mcp_configs(entry).entries == ()
 
     def test_returns_empty_for_invalid_json(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         (tmp_path / ".mcp.json").write_text("not json")
         entry = PluginEntry(name="bad-json", path=tmp_path)
-        assert manager.read_mcp_configs(entry) == []
+        assert manager.read_mcp_configs(entry).entries == ()
 
     def test_namespaced_key(self, tmp_path: Path, manager: MarketplacePluginManager) -> None:
         mcp_config = {"mcpServers": {"search": {"url": "http://localhost:9090"}}}
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="my-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert configs[0].namespaced_key == "my-plugin__search"
 
@@ -315,7 +321,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert configs[0].headers == {"X-Custom": "value"}
         assert configs[0].auth == "oauth2"
@@ -329,7 +335,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert configs[0].visibility == "internal"
 
@@ -345,7 +351,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert configs[0].visibility == "external"
 
@@ -363,7 +369,7 @@ class TestReadMcpConfigs:
         (tmp_path / ".mcp.json").write_text(json.dumps(mcp_config))
 
         entry = PluginEntry(name="test-plugin", path=tmp_path)
-        configs = manager.read_mcp_configs(entry)
+        configs = manager.read_mcp_configs(entry).entries
 
         assert configs[0].visibility == "internal"
 

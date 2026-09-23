@@ -44,14 +44,23 @@ async def initialize_skills(
         result = await skill_sync.sync()
         logger.info(
             "Skills startup: sync complete — "
-            "plugins_synced=%d skills_synced=%d resources_synced=%d "
-            "scripts_synced=%d errors=%d",
+            "plugins_synced=%d mcp_servers_skipped=%d skills_synced=%d "
+            "resources_synced=%d scripts_synced=%d errors=%d",
             result.plugins_synced,
+            result.mcp_servers_skipped,
             result.skills_added,
             result.resources_added,
             result.scripts_added,
             result.errors,
         )
+        if result.mcp_servers_skipped:
+            logger.error(
+                "Skills startup: %d MCP server(s) were skipped for referencing "
+                "an unset ${ENV_VAR} in .mcp.json url/headers -- the tool "
+                "catalog is missing entries. See the 'mcp_servers_skipped' "
+                "field on the affected plugin document(s) for details.",
+                result.mcp_servers_skipped,
+            )
     except Exception:
         logger.exception(
             "Skills startup: marketplace sync failed — the gateway will continue with previously synced skills"
@@ -76,10 +85,19 @@ async def reload_plugins(
     result = await skill_sync.sync()
     summary = (
         f"plugins_synced={result.plugins_synced} "
+        f"mcp_servers_skipped={result.mcp_servers_skipped} "
         f"skills_synced={result.skills_added} "
         f"resources_synced={result.resources_added} "
         f"scripts_synced={result.scripts_added} "
         f"errors={result.errors}"
     )
-    logger.info("reload_plugins: complete — %s", summary)
+    if result.mcp_servers_skipped:
+        logger.error(
+            "reload_plugins: complete but %d MCP server(s) were skipped for "
+            "referencing an unset ${ENV_VAR} in .mcp.json url/headers — %s",
+            result.mcp_servers_skipped,
+            summary,
+        )
+    else:
+        logger.info("reload_plugins: complete — %s", summary)
     return summary

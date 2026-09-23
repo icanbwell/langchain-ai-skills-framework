@@ -450,6 +450,7 @@ class HistoryTrackingPluginSkillStore:
         description: str,
         skills: Sequence[str],
         mcp_servers: Sequence[dict[str, object]],
+        mcp_servers_skipped: Sequence[dict[str, object]] = (),
     ) -> MongoPluginDefinitionDocument:
         exists = await self._inner.plugin_exists(plugin_name=plugin_name)
         action: Literal["created", "updated"] = "updated" if exists else "created"
@@ -460,6 +461,7 @@ class HistoryTrackingPluginSkillStore:
                 description=description,
                 skills=skills,
                 mcp_servers=mcp_servers,
+                mcp_servers_skipped=mcp_servers_skipped,
             )
         except Exception as exc:
             await self._record_error(

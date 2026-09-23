@@ -16,6 +16,7 @@ from typing import Any
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import (
     PluginMcpServerEntry,
+    SkippedMcpServer,
     coerce_mcp_visibility,
 )
 from langchain_ai_skills_framework.models.skills_model import (
@@ -140,6 +141,22 @@ def _deserialize_mcp_entry(*, data: dict[str, Any]) -> PluginMcpServerEntry:
 # --- Plugin definition serialization ----------------------------------------
 
 
+def _serialize_skipped_mcp_server(*, skipped: SkippedMcpServer) -> dict[str, Any]:
+    return {
+        "server_key": skipped.server_key,
+        "plugin_name": skipped.plugin_name,
+        "missing_env_vars": list(skipped.missing_env_vars),
+    }
+
+
+def _deserialize_skipped_mcp_server(*, data: dict[str, Any]) -> SkippedMcpServer:
+    return SkippedMcpServer(
+        server_key=data["server_key"],
+        plugin_name=data["plugin_name"],
+        missing_env_vars=tuple(data.get("missing_env_vars", [])),
+    )
+
+
 def serialize_plugin_definition(*, plugin: PluginDefinition) -> dict[str, Any]:
     """Convert a PluginDefinition to a JSON-serializable dict."""
     return {
@@ -147,6 +164,7 @@ def serialize_plugin_definition(*, plugin: PluginDefinition) -> dict[str, Any]:
         "description": plugin.description,
         "skills": [_serialize_summary(summary=s) for s in plugin.skills],
         "mcp_servers": [_serialize_mcp_entry(entry=e) for e in plugin.mcp_servers],
+        "skipped_mcp_servers": [_serialize_skipped_mcp_server(skipped=s) for s in plugin.skipped_mcp_servers],
     }
 
 
@@ -157,4 +175,5 @@ def deserialize_plugin_definition(*, data: dict[str, Any]) -> PluginDefinition:
         description=data.get("description"),
         skills=tuple(_deserialize_summary(data=s) for s in data.get("skills", [])),
         mcp_servers=tuple(_deserialize_mcp_entry(data=e) for e in data.get("mcp_servers", [])),
+        skipped_mcp_servers=tuple(_deserialize_skipped_mcp_server(data=s) for s in data.get("skipped_mcp_servers", [])),
     )

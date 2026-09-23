@@ -11,7 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
+from langchain_ai_skills_framework.models.plugin_mcp_config import (
+    PluginMcpServerEntry,
+    SkippedMcpServer,
+)
 from langchain_ai_skills_framework.models.skills_model import SkillSummary
 
 
@@ -30,3 +33,9 @@ class PluginDefinition:
 
     mcp_servers: tuple[PluginMcpServerEntry, ...] = ()
     """MCP server entries declared in this plugin's ``.mcp.json``."""
+
+    skipped_mcp_servers: tuple[SkippedMcpServer, ...] = ()
+    """MCP servers declared in ``.mcp.json`` but dropped for referencing an
+    unset ``${ENV_VAR}`` in url/headers (BAI-859) -- kept here rather than
+    only logged so a misconfiguration is queryable/persisted, not just a
+    log line an operator has to happen to notice."""

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from langchain_ai_skills_framework.models.plugin_mcp_config import (
     PluginMcpServerEntry,
+    SkippedMcpServer,
     coerce_mcp_visibility,
 )
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import normalize_skill_name
@@ -26,6 +27,16 @@ from langchain_ai_skills_framework.utilities.skill_name_normalizer import normal
 logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)}")
+
+
+@dataclass(frozen=True)
+class McpConfigReadResult:
+    """Result of reading one plugin's ``.mcp.json``: the servers that
+    resolved cleanly, plus any that were skipped for referencing an unset
+    ``${ENV_VAR}`` (see :class:`SkippedMcpServer`)."""
+
+    entries: tuple[PluginMcpServerEntry, ...] = ()
+    skipped: tuple[SkippedMcpServer, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,7 +88,7 @@ class MarketplacePluginManager:
 
         return entries
 
-    def read_mcp_configs(self, entry: PluginEntry) -> list[PluginMcpServerEntry]:
+    def read_mcp_configs(self, entry: PluginEntry) -> McpConfigReadResult:
         """Read .mcp.json from a plugin directory and return server entries.
 
         Substitutes ``${CLAUDE_PLUGIN_ROOT}`` in url, command, args, and env
@@ -85,7 +96,7 @@ class MarketplacePluginManager:
         """
         mcp_json_path = entry.path / ".mcp.json"
         if not mcp_json_path.is_file():
-            return []
+            return McpConfigReadResult()
 
         try:
             raw = mcp_json_path.read_text(encoding="utf-8")
@@ -97,17 +108,18 @@ class MarketplacePluginManager:
                 mcp_json_path,
                 exc,
             )
-            return []
+            return McpConfigReadResult()
 
         if not isinstance(data, dict):
-            return []
+            return McpConfigReadResult()
 
         servers_dict = data.get("mcpServers", {})
         if not isinstance(servers_dict, dict):
-            return []
+            return McpConfigReadResult()
 
         plugin_root_str = str(entry.path)
         entries: list[PluginMcpServerEntry] = []
+        skipped: list[SkippedMcpServer] = []
 
         for server_key, server_config in servers_dict.items():
             if not isinstance(server_key, str) or not isinstance(server_config, dict):
@@ -164,12 +176,19 @@ class MarketplacePluginManager:
             }
 
             if missing_env_vars:
-                logger.warning(
+                logger.error(
                     "Plugin '%s' MCP server '%s': skipping -- .mcp.json references "
                     "undefined environment variable(s) in url/headers: %s",
                     entry.name,
                     server_key,
                     sorted(set(missing_env_vars)),
+                )
+                skipped.append(
+                    SkippedMcpServer(
+                        server_key=server_key,
+                        plugin_name=entry.name,
+                        missing_env_vars=tuple(sorted(set(missing_env_vars))),
+                    )
                 )
                 continue
 
@@ -213,13 +232,19 @@ class MarketplacePluginManager:
                 len(entries),
             )
 
-        return entries
+        return McpConfigReadResult(entries=tuple(entries), skipped=tuple(skipped))
 
     def collect_all_mcp_configs(self, entries: Sequence[PluginEntry]) -> list[PluginMcpServerEntry]:
-        """Read MCP configs from all plugin entries and return a flat list."""
+        """Read MCP configs from all plugin entries and return a flat list.
+
+        Skipped servers (see :class:`SkippedMcpServer`) are dropped here --
+        this helper has no plugin-scoped destination to attach them to.
+        Callers that need skip visibility (``MarketplaceDirectoryLoader``)
+        call ``read_mcp_configs`` directly instead.
+        """
         result: list[PluginMcpServerEntry] = []
         for entry in entries:
-            result.extend(self.read_mcp_configs(entry))
+            result.extend(self.read_mcp_configs(entry).entries)
         return result
 
     # --- Private implementation ------------------------------------------------

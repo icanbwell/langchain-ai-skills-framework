@@ -32,7 +32,6 @@ from langchain_ai_skills_framework.loaders.github_directory_downloader import (
 from langchain_ai_skills_framework.loaders.marketplace_plugin_manager import (
     MarketplacePluginManager,
 )
-from langchain_ai_skills_framework.loaders.script_path_resolver import resolve_script_file_path
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
@@ -232,22 +231,37 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         details = self.get_skill_details(skill_name=skill_name)
         if details.source_path is None:
             raise SkillNotFoundError(f"Skill '{skill_name}' has no source path")
-        skill_dir = details.source_path.parent
-        script_path = resolve_script_file_path(skill_dir=skill_dir, script_name=script_name)
+        script_path = self._resolve_script_path(details, script_name)
         if script_path is None:
             raise SkillNotFoundError(f"Script '{script_name}' not found for skill '{skill_name}'")
+
+        # A resolved script may legitimately live under either the skill's own
+        # scripts/ dir or a plugin-level scripts/ dir (see _resolve_script_path).
+        # Build both candidate roots and accept containment under either.
+        skill_scripts_dir = details.source_path.parent / "scripts"
+        plugin_dir = self._find_plugin_dir_for_skill(details)
+        plugin_scripts_dir = plugin_dir / "scripts" if plugin_dir else None
+
         try:
-            resolved_skill_dir = skill_dir.resolve()
             resolved_script = script_path.resolve()
+            resolved_roots = [skill_scripts_dir.resolve()]
+            if plugin_scripts_dir is not None:
+                resolved_roots.append(plugin_scripts_dir.resolve())
         except OSError as exc:
             raise SkillValidationError(
                 f"Error resolving script '{script_name}' for skill '{skill_name}': {exc}"
             ) from exc
 
-        try:
-            resolved_script.relative_to(resolved_skill_dir)
-        except ValueError as exc:
-            raise SkillValidationError(f"Invalid script path '{script_name}' for skill '{skill_name}'") from exc
+        is_contained = False
+        for root in resolved_roots:
+            try:
+                resolved_script.relative_to(root)
+                is_contained = True
+                break
+            except ValueError:
+                continue
+        if not is_contained:
+            raise SkillValidationError(f"Invalid script path '{script_name}' for skill '{skill_name}'")
 
         try:
             return resolved_script.read_text(encoding="utf-8")

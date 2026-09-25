@@ -197,15 +197,22 @@ class TestLocalMarketplaceDiscovery:
             loader.list_skill_summaries(allowed_skills=set())
 
     def test_read_skill_script_rejects_path_traversal(self, tmp_path: Path) -> None:
+        # read_skill_script now resolves via the shared _resolve_script_path (same
+        # method run_skill_script/list_skill_script_names use), which builds
+        # candidates as `<scripts_dir>/(cleaned_name + ext)`. A script_name of
+        # "../secret" therefore lands the candidate one level up from the scripts/
+        # dir -- i.e. directly inside the skill dir -- not one level up from the
+        # skill dir itself. Place the "secret" file there (as secret.py, since
+        # _resolve_script_path only matches .py/.sh candidates) so the escape
+        # attempt actually resolves to a file, exercising the containment check
+        # rather than short-circuiting on SkillNotFoundError.
         _write_marketplace_skill(tmp_path, "plugin-a", "my-skill")
-        scripts_dir = tmp_path / "plugins" / "plugin-a" / "skills" / "my-skill" / "scripts"
+        skill_dir = tmp_path / "plugins" / "plugin-a" / "skills" / "my-skill"
+        scripts_dir = skill_dir / "scripts"
         scripts_dir.mkdir(parents=True, exist_ok=True)
         (scripts_dir / "run.py").write_text("print('legit')", encoding="utf-8")
 
-        # A secret file outside the skill directory, at the exact location the bare
-        # `skill_dir / script_name` candidate in resolve_script_file_path would land on
-        # for script_name="../secret" -- i.e. one level up from the skill directory.
-        secret_path = tmp_path / "plugins" / "plugin-a" / "skills" / "secret"
+        secret_path = skill_dir / "secret.py"
         secret_path.write_text("top secret", encoding="utf-8")
 
         env = FakeEnvVars(plugins_marketplace=str(tmp_path))
@@ -231,6 +238,44 @@ class TestLocalMarketplaceDiscovery:
 
         content = loader.read_skill_script(skill_name="my-skill", script_name="run")
         assert content == "print('legit')"
+
+    def test_read_skill_script_falls_back_to_plugin_level_scripts_dir(self, tmp_path: Path) -> None:
+        # Skill has no scripts/ dir of its own; the script lives at the plugin level
+        # (tmp_path/plugins/plugin-a/scripts/), which _find_plugin_dir_for_skill locates
+        # by walking up from the skill dir. list_skill_script_names/run_skill_script
+        # already handle this fallback via _resolve_script_path; read_skill_script must
+        # match, or read/execute/list fall out of sync.
+        _write_marketplace_skill(tmp_path, "plugin-a", "my-skill")
+        plugin_scripts_dir = tmp_path / "plugins" / "plugin-a" / "scripts"
+        plugin_scripts_dir.mkdir(parents=True, exist_ok=True)
+        (plugin_scripts_dir / "run.py").write_text("print('plugin level')", encoding="utf-8")
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        content = loader.read_skill_script(skill_name="my-skill", script_name="run")
+        assert content == "print('plugin level')"
+
+    def test_read_skill_script_strips_explicit_suffix(self, tmp_path: Path) -> None:
+        # script_name passed with an explicit .py suffix must resolve the same as
+        # without one -- _resolve_script_path strips known suffixes before matching.
+        _write_marketplace_skill(tmp_path, "plugin-a", "my-skill")
+        scripts_dir = tmp_path / "plugins" / "plugin-a" / "skills" / "my-skill" / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        (scripts_dir / "run.py").write_text("print('legit')", encoding="utf-8")
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        content_without_suffix = loader.read_skill_script(skill_name="my-skill", script_name="run")
+        content_with_suffix = loader.read_skill_script(skill_name="my-skill", script_name="run.py")
+        assert content_without_suffix == content_with_suffix == "print('legit')"
 
     def test_include_list_filters_plugins(self, tmp_path: Path) -> None:
         _write_marketplace_skill(tmp_path, "glass-health", "glass-skill")

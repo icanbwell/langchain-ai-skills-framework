@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.loaders.script_path_resolver import resolve_script_file_path
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
@@ -170,15 +171,8 @@ class SkillSync:
                 details = self._shared.get_skill_details(skill_name=skill_name, plugin_name=plugin_name)
                 if details.source_path:
                     skill_dir = details.source_path.parent
-                    script_path = skill_dir / "scripts" / f"{script_name}.py"
-                    if not script_path.is_file():
-                        script_path = skill_dir / "scripts" / f"{script_name}.sh"
-                    if not script_path.is_file():
-                        # Fallback: check skill directory root (legacy layout)
-                        script_path = skill_dir / f"{script_name}.py"
-                    if not script_path.is_file():
-                        script_path = skill_dir / script_name
-                    if script_path.is_file():
+                    script_path = resolve_script_file_path(skill_dir=skill_dir, script_name=script_name)
+                    if script_path is not None:
                         content = script_path.read_text(encoding="utf-8")
                         await self._store.save_script(
                             author=SYSTEM_USER_ID,

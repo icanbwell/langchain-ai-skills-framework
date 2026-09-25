@@ -85,6 +85,14 @@ class _StubSharedLoader(SkillLoaderProtocol):
     def read_skill_resource(self, *, skill_name: str, resource_name: str, plugin_name: str | None = None) -> str:
         raise NotImplementedError
 
+    def read_skill_script(self, *, skill_name: str, script_name: str, plugin_name: str | None = None) -> str:
+        raise NotImplementedError
+
+    async def read_skill_script_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, script_name: str
+    ) -> str:
+        return self.read_skill_script(skill_name=skill_name, script_name=script_name)
+
     async def run_skill_script(
         self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
@@ -477,6 +485,64 @@ class TestReadSkillResourceForUser:
         )
 
         assert result == "resource content from shared db"
+        cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(
+            plugin_name="test-plugin", include_staging=True
+        )
+
+
+class TestReadSkillScriptForUser:
+    @pytest.mark.asyncio
+    async def test_reads_own_script_first(self) -> None:
+        own_skill = _make_skill("my-skill", source="mongodb")
+        shared = _StubSharedLoader({})
+        user_loader = cast(AsyncMock, _make_user_loader_mock(user_skills={"my-skill": own_skill}))
+        user_loader.read_script.return_value = "print('own script')"
+
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        result = await composite.read_skill_script_for_user(
+            user_id="user-1", plugin_name="test-plugin", skill_name="my-skill", script_name="run"
+        )
+
+        assert result == "print('own script')"
+        cast(AsyncMock, user_loader.read_script).assert_awaited_once_with(
+            author="user-1", plugin_name="test-plugin", skill_name="my-skill", script_name="run"
+        )
+
+    @pytest.mark.asyncio
+    async def test_includes_staging_when_falling_back_to_shared_db(self) -> None:
+        owner_user_id = "owner-user"
+        shared_db_skill = SkillDetails(
+            summary=SkillSummary(
+                name="health-news-monitor",
+                description="Description for health-news-monitor",
+                source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+                metadata={"source": "mongodb", "user_id": owner_user_id},
+            ),
+            content="shared db version",
+            source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+        )
+
+        shared = _StubSharedLoader({})
+        user_loader = cast(
+            AsyncMock,
+            _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill}),
+        )
+        user_loader.read_script.side_effect = [
+            SkillNotFoundError("'health-news-monitor' not found for requesting user"),
+            "script content from shared db",
+        ]
+
+        composite = CompositeSkillLoader(shared_loader=shared, user_loader=user_loader)
+
+        result = await composite.read_skill_script_for_user(
+            user_id="different-user",
+            plugin_name="test-plugin",
+            skill_name="health-news-monitor",
+            script_name="run",
+        )
+
+        assert result == "script content from shared db"
         cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(
             plugin_name="test-plugin", include_staging=True
         )

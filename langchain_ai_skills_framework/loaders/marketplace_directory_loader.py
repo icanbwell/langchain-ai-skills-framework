@@ -32,6 +32,7 @@ from langchain_ai_skills_framework.loaders.github_directory_downloader import (
 from langchain_ai_skills_framework.loaders.marketplace_plugin_manager import (
     MarketplacePluginManager,
 )
+from langchain_ai_skills_framework.loaders.script_path_resolver import resolve_script_file_path
 from langchain_ai_skills_framework.loaders.skill_loader_environment_variables import (
     SkillLoaderEnvironmentVariables,
 )
@@ -226,6 +227,20 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str, resource_name: str
     ) -> str:
         return self.read_skill_resource(skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name)
+
+    def read_skill_script(self, *, skill_name: str, script_name: str, plugin_name: str | None = None) -> str:
+        details = self.get_skill_details(skill_name=skill_name)
+        if details.source_path is None:
+            raise SkillNotFoundError(f"Skill '{skill_name}' has no source path")
+        script_path = resolve_script_file_path(skill_dir=details.source_path.parent, script_name=script_name)
+        if script_path is None:
+            raise SkillNotFoundError(f"Script '{script_name}' not found for skill '{skill_name}'")
+        return script_path.read_text(encoding="utf-8")
+
+    async def read_skill_script_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, script_name: str
+    ) -> str:
+        return self.read_skill_script(skill_name=skill_name, script_name=script_name, plugin_name=plugin_name)
 
     def list_skill_resource_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]:
         try:

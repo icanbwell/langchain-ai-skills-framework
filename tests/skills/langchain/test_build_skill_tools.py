@@ -67,6 +67,14 @@ class _StubSharedLoader(SkillLoaderProtocol):
     ) -> str:
         raise NotImplementedError
 
+    def read_skill_script(self, *, skill_name: str, script_name: str, plugin_name: str | None = None) -> str:
+        raise NotImplementedError
+
+    async def read_skill_script_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, script_name: str
+    ) -> str:
+        raise NotImplementedError
+
     async def run_skill_script(
         self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:

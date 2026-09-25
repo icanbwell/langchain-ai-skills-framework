@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
@@ -42,6 +42,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     normalize_folder,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
@@ -675,6 +676,11 @@ class MongoPluginSkillLoader:
         if raw is None:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for author '{author}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)
+        resources = await self.list_resource_documents(
+            author=author, plugin_name=plugin_name, skill_name=normalized_name
+        )
+        scripts = await self.list_script_documents(author=author, plugin_name=plugin_name, skill_name=normalized_name)
+        manifest = self._build_manifest(doc=doc, resources=resources, scripts=scripts)
         summary = SkillSummary(
             name=doc.skill_name,
             description=doc.description,
@@ -689,6 +695,7 @@ class MongoPluginSkillLoader:
             allowed_tools=doc.allowed_tools,
             date_modified=doc.date_modified,
             required_external_servers=doc.required_external_servers,
+            manifest=manifest,
         )
         return SkillDetails(
             summary=summary,
@@ -818,6 +825,35 @@ class MongoPluginSkillLoader:
     def _digest_and_size(content: str) -> tuple[str, int]:
         encoded = content.encode("utf-8")
         return f"sha256:{hashlib.sha256(encoded).hexdigest()}", len(encoded)
+
+    @staticmethod
+    def _build_manifest(
+        *,
+        doc: MongoPluginSkillDocument,
+        resources: Sequence[MongoPluginResourceDocument],
+        scripts: Sequence[MongoPluginScriptDocument],
+    ) -> tuple[ManifestFileEntry, ...] | Literal["dynamic"] | None:
+        if doc.is_dynamic:
+            return "dynamic"
+        if doc.digest is None or doc.size is None:
+            return None
+
+        entries: list[ManifestFileEntry] = [ManifestFileEntry(path="SKILL.md", digest=doc.digest, size=doc.size)]
+        for resource in resources:
+            if resource.digest is None or resource.size is None:
+                return None
+            entries.append(
+                ManifestFileEntry(
+                    path=f"references/{resource.resource_name}", digest=resource.digest, size=resource.size
+                )
+            )
+        for script in scripts:
+            if script.digest is None or script.size is None:
+                return None
+            entries.append(
+                ManifestFileEntry(path=f"scripts/{script.script_name}", digest=script.digest, size=script.size)
+            )
+        return tuple(sorted(entries, key=lambda entry: entry.path))
 
     @staticmethod
     def _extract_description(content: str) -> str:

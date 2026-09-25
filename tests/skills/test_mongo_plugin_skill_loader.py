@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from langchain_ai_skills_framework.loaders.mongo_plugin_skill_loader import MongoPluginSkillLoader
+from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
+    MongoPluginResourceDocument,
+    MongoPluginScriptDocument,
+    MongoPluginSkillDocument,
+)
+from langchain_ai_skills_framework.models.skills_model import ManifestFileEntry
 
 
 def _expected_digest_and_size(content: str) -> tuple[str, int]:
@@ -122,3 +128,97 @@ def test_digest_and_size_counts_utf8_bytes_not_characters() -> None:
     assert size == len("café".encode())
     assert size != len("café")
     assert digest == f"sha256:{hashlib.sha256('café'.encode()).hexdigest()}"
+
+
+class TestBuildManifest:
+    """Unit tests for the pure manifest-assembly helper (no Mongo I/O)."""
+
+    def _skill_doc(self, **overrides: object) -> MongoPluginSkillDocument:
+        defaults: dict[str, object] = {
+            "plugin_name": "my-plugin",
+            "skill_name": "my-skill",
+            "author": "system",
+            "digest": "sha256:" + "a" * 64,
+            "size": 10,
+        }
+        defaults.update(overrides)
+        return MongoPluginSkillDocument(**defaults)  # type: ignore[arg-type]
+
+    def test_dynamic_skill_short_circuits(self) -> None:
+        doc = self._skill_doc(is_dynamic=True)
+
+        manifest = MongoPluginSkillLoader._build_manifest(doc=doc, resources=[], scripts=[])
+
+        assert manifest == "dynamic"
+
+    def test_missing_digest_returns_none(self) -> None:
+        doc = self._skill_doc(digest=None, size=None)
+
+        manifest = MongoPluginSkillLoader._build_manifest(doc=doc, resources=[], scripts=[])
+
+        assert manifest is None
+
+    def test_skill_with_no_resources_or_scripts(self) -> None:
+        doc = self._skill_doc()
+
+        manifest = MongoPluginSkillLoader._build_manifest(doc=doc, resources=[], scripts=[])
+
+        assert manifest == (ManifestFileEntry(path="SKILL.md", digest="sha256:" + "a" * 64, size=10),)
+
+    def test_skill_with_resources_and_scripts_sorted_by_path(self) -> None:
+        doc = self._skill_doc()
+        resource = MongoPluginResourceDocument(
+            plugin_name="my-plugin",
+            skill_name="my-skill",
+            resource_name="checklist.md",
+            author="system",
+            digest="sha256:" + "b" * 64,
+            size=5,
+        )
+        script = MongoPluginScriptDocument(
+            plugin_name="my-plugin",
+            skill_name="my-skill",
+            script_name="run.py",
+            author="system",
+            digest="sha256:" + "c" * 64,
+            size=7,
+        )
+
+        manifest = MongoPluginSkillLoader._build_manifest(doc=doc, resources=[resource], scripts=[script])
+
+        assert manifest == (
+            ManifestFileEntry(path="SKILL.md", digest="sha256:" + "a" * 64, size=10),
+            ManifestFileEntry(path="references/checklist.md", digest="sha256:" + "b" * 64, size=5),
+            ManifestFileEntry(path="scripts/run.py", digest="sha256:" + "c" * 64, size=7),
+        )
+
+    def test_resource_missing_digest_returns_none(self) -> None:
+        """One un-hashed file invalidates the whole manifest rather than emitting a partial one."""
+        doc = self._skill_doc()
+        resource = MongoPluginResourceDocument(
+            plugin_name="my-plugin", skill_name="my-skill", resource_name="checklist.md", author="system"
+        )
+
+        manifest = MongoPluginSkillLoader._build_manifest(doc=doc, resources=[resource], scripts=[])
+
+        assert manifest is None
+
+
+async def test_get_skill_details_populates_manifest(mock_mongo_database: MagicMock) -> None:
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+    mock_mongo_database["plugin_skills"].find_one = AsyncMock(
+        return_value={
+            "author": "user-1",
+            "plugin_name": "my-plugin",
+            "skill_name": "my-skill",
+            "content": "# Skill",
+            "digest": "sha256:" + "a" * 64,
+            "size": 8,
+        }
+    )
+    mock_mongo_database["plugin_references"].find.return_value.to_list = AsyncMock(return_value=[])
+    mock_mongo_database["plugin_scripts"].find.return_value.to_list = AsyncMock(return_value=[])
+
+    details = await loader.get_skill_details(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
+
+    assert details.summary.manifest == (ManifestFileEntry(path="SKILL.md", digest="sha256:" + "a" * 64, size=8),)

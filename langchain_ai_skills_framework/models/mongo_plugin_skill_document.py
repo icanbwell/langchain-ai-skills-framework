@@ -74,7 +74,7 @@ class MongoPluginSkillDocument(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    SCHEMA_VERSION: ClassVar[int] = 3
+    SCHEMA_VERSION: ClassVar[int] = 4
 
     plugin_name: str = Field(description="Plugin that owns this skill")
     skill_name: str = Field(description="Normalized name of the skill")
@@ -89,6 +89,12 @@ class MongoPluginSkillDocument(BaseModel):
     required_external_servers: tuple[str, ...] = Field(
         default=(),
         description="mcpServers keys from .mcp.json that this skill needs even though they're external",
+    )
+    digest: str | None = Field(default=None, description="sha256:<hex> digest of `content`, computed at write time")
+    size: int | None = Field(default=None, description="Byte size of `content` (UTF-8 encoded), computed at write time")
+    is_dynamic: bool = Field(
+        default=False,
+        description="When True, this skill opts out of manifest computation (SEP-2640 dynamic-content escape hatch)",
     )
     metadata: dict[str, Any] | None = Field(
         default=None,
@@ -148,6 +154,8 @@ class MongoPluginResourceDocument(BaseModel):
     resource_name: str = Field(description="Name of the resource file")
     path: str = Field(default="", description="Materialized path: plugin/skills/[folder/]name/references/resource")
     content: str = Field(default="", description="Content of the resource file")
+    digest: str | None = Field(default=None, description="sha256:<hex> digest of `content`, computed at write time")
+    size: int | None = Field(default=None, description="Byte size of `content` (UTF-8 encoded), computed at write time")
     author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this resource")
     date_created: datetime = Field(
@@ -185,6 +193,8 @@ class MongoPluginScriptDocument(BaseModel):
     script_name: str = Field(description="Name of the script file")
     path: str = Field(default="", description="Materialized path: plugin/skills/name/scripts/script")
     content: str = Field(default="", description="Content of the script file")
+    digest: str | None = Field(default=None, description="sha256:<hex> digest of `content`, computed at write time")
+    size: int | None = Field(default=None, description="Byte size of `content` (UTF-8 encoded), computed at write time")
     author: str = Field(description="'system' for marketplace-synced, actual user id for user-saved")
     modified_by: str = Field(default="", description="ID of the user who last modified this script")
     date_created: datetime = Field(

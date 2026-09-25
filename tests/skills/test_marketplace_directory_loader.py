@@ -196,6 +196,42 @@ class TestLocalMarketplaceDiscovery:
         with pytest.raises(SkillValidationError, match="does not exist"):
             loader.list_skill_summaries(allowed_skills=set())
 
+    def test_read_skill_script_rejects_path_traversal(self, tmp_path: Path) -> None:
+        _write_marketplace_skill(tmp_path, "plugin-a", "my-skill")
+        scripts_dir = tmp_path / "plugins" / "plugin-a" / "skills" / "my-skill" / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        (scripts_dir / "run.py").write_text("print('legit')", encoding="utf-8")
+
+        # A secret file outside the skill directory, at the exact location the bare
+        # `skill_dir / script_name` candidate in resolve_script_file_path would land on
+        # for script_name="../secret" -- i.e. one level up from the skill directory.
+        secret_path = tmp_path / "plugins" / "plugin-a" / "skills" / "secret"
+        secret_path.write_text("top secret", encoding="utf-8")
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        with pytest.raises(SkillValidationError):
+            loader.read_skill_script(skill_name="my-skill", script_name="../secret")
+
+    def test_read_skill_script_returns_content_for_legit_script(self, tmp_path: Path) -> None:
+        _write_marketplace_skill(tmp_path, "plugin-a", "my-skill")
+        scripts_dir = tmp_path / "plugins" / "plugin-a" / "skills" / "my-skill" / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        (scripts_dir / "run.py").write_text("print('legit')", encoding="utf-8")
+
+        env = FakeEnvVars(plugins_marketplace=str(tmp_path))
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=env,
+            github_directory_downloader=MagicMock(),
+        )
+
+        content = loader.read_skill_script(skill_name="my-skill", script_name="run")
+        assert content == "print('legit')"
+
     def test_include_list_filters_plugins(self, tmp_path: Path) -> None:
         _write_marketplace_skill(tmp_path, "glass-health", "glass-skill")
         _write_marketplace_skill(tmp_path, "other-plugin", "other-skill")

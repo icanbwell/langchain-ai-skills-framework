@@ -288,3 +288,123 @@ async def test_build_snapshot_scopes_resources_by_plugin_and_skill_name(mock_mon
     assert any(entry.path == "references/only-a.md" for entry in manifest_a)
     assert isinstance(manifest_b, tuple)
     assert not any(entry.path == "references/only-a.md" for entry in manifest_b)
+
+
+async def test_build_snapshot_scopes_resources_by_author_for_shared_snapshot(mock_mongo_database: MagicMock) -> None:
+    """A shared snapshot can include user-authored skills (e.g. staging/in_review),
+    not just author="system". Each skill's manifest must reflect that skill's own
+    author's resources, not just the "system" author's."""
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+
+    skill_docs = [
+        {
+            "author": "system",
+            "plugin_name": "my-plugin",
+            "skill_name": "system-skill",
+            "content": "S",
+            "digest": "sha256:" + "a" * 64,
+            "size": 1,
+        },
+        {
+            "author": "user-1",
+            "plugin_name": "my-plugin",
+            "skill_name": "user-skill",
+            "content": "U",
+            "digest": "sha256:" + "b" * 64,
+            "size": 1,
+        },
+    ]
+    mock_mongo_database["plugin_skills"].find = MagicMock(return_value=_AsyncIter(skill_docs))
+
+    resource_docs = [
+        {
+            "author": "system",
+            "plugin_name": "my-plugin",
+            "skill_name": "system-skill",
+            "resource_name": "system-only.md",
+            "content": "x",
+            "digest": "sha256:" + "c" * 64,
+            "size": 1,
+        },
+        {
+            "author": "user-1",
+            "plugin_name": "my-plugin",
+            "skill_name": "user-skill",
+            "resource_name": "user-only.md",
+            "content": "y",
+            "digest": "sha256:" + "d" * 64,
+            "size": 1,
+        },
+    ]
+    mock_mongo_database["plugin_references"].find = MagicMock(return_value=_AsyncIter(resource_docs))
+    mock_mongo_database["plugin_scripts"].find = MagicMock(return_value=_AsyncIter([]))
+
+    snapshot = await loader.load_shared_snapshot(include_staging=True)
+
+    by_name = {s.name: s for s in snapshot.ordered_summaries}
+    system_manifest = by_name["system-skill"].manifest
+    user_manifest = by_name["user-skill"].manifest
+
+    assert isinstance(system_manifest, tuple)
+    assert any(entry.path == "references/system-only.md" for entry in system_manifest)
+    assert not any(entry.path == "references/user-only.md" for entry in system_manifest)
+
+    assert isinstance(user_manifest, tuple)
+    assert any(entry.path == "references/user-only.md" for entry in user_manifest)
+    assert not any(entry.path == "references/system-only.md" for entry in user_manifest)
+
+
+async def test_get_skill_details_uses_skills_own_plugin_not_caller_plugin_arg(
+    mock_mongo_database: MagicMock,
+) -> None:
+    """When plugin_name=None is passed in, resources/scripts must be scoped to the
+    resolved skill's own plugin_name, not folded together with a same-named skill
+    in a different plugin."""
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+
+    mock_mongo_database["plugin_skills"].find_one = AsyncMock(
+        return_value={
+            "author": "user-1",
+            "plugin_name": "plugin-a",
+            "skill_name": "shared-name",
+            "content": "# Skill",
+            "digest": "sha256:" + "a" * 64,
+            "size": 8,
+        }
+    )
+
+    resource_docs = [
+        {
+            "author": "user-1",
+            "plugin_name": "plugin-a",
+            "skill_name": "shared-name",
+            "resource_name": "only-a.md",
+            "content": "x",
+            "digest": "sha256:" + "c" * 64,
+            "size": 1,
+        },
+        {
+            "author": "user-1",
+            "plugin_name": "plugin-b",
+            "skill_name": "shared-name",
+            "resource_name": "only-b.md",
+            "content": "y",
+            "digest": "sha256:" + "d" * 64,
+            "size": 1,
+        },
+    ]
+
+    def _fake_find(query: dict[str, object]) -> _AsyncIter:
+        plugin_name = query.get("plugin_name")
+        docs = [d for d in resource_docs if plugin_name is None or d["plugin_name"] == plugin_name]
+        return _AsyncIter(docs)
+
+    mock_mongo_database["plugin_references"].find = MagicMock(side_effect=_fake_find)
+    mock_mongo_database["plugin_scripts"].find = MagicMock(return_value=_AsyncIter([]))
+
+    details = await loader.get_skill_details(author="user-1", plugin_name=None, skill_name="shared-name")
+
+    manifest = details.summary.manifest
+    assert isinstance(manifest, tuple)
+    assert any(entry.path == "references/only-a.md" for entry in manifest)
+    assert not any(entry.path == "references/only-b.md" for entry in manifest)

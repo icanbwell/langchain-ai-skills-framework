@@ -232,10 +232,27 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         details = self.get_skill_details(skill_name=skill_name)
         if details.source_path is None:
             raise SkillNotFoundError(f"Skill '{skill_name}' has no source path")
-        script_path = resolve_script_file_path(skill_dir=details.source_path.parent, script_name=script_name)
+        skill_dir = details.source_path.parent
+        script_path = resolve_script_file_path(skill_dir=skill_dir, script_name=script_name)
         if script_path is None:
             raise SkillNotFoundError(f"Script '{script_name}' not found for skill '{skill_name}'")
-        return script_path.read_text(encoding="utf-8")
+        try:
+            resolved_skill_dir = skill_dir.resolve()
+            resolved_script = script_path.resolve()
+        except OSError as exc:
+            raise SkillValidationError(
+                f"Error resolving script '{script_name}' for skill '{skill_name}': {exc}"
+            ) from exc
+
+        try:
+            resolved_script.relative_to(resolved_skill_dir)
+        except ValueError as exc:
+            raise SkillValidationError(f"Invalid script path '{script_name}' for skill '{skill_name}'") from exc
+
+        try:
+            return resolved_script.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            raise SkillValidationError(f"Error reading script '{script_name}' for skill '{skill_name}': {exc}") from exc
 
     async def read_skill_script_for_user(
         self, *, user_id: str, plugin_name: str | None = None, skill_name: str, script_name: str

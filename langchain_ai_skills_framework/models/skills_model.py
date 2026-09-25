@@ -43,7 +43,10 @@ class SkillSummary:
     """Per-file SHA-256 digest + size manifest, computed at write time by
     ``MongoPluginSkillLoader``. ``None`` means not yet computed (e.g. content
     written before this field existed and not yet resaved/resynced).
-    ``"dynamic"`` means the skill opted out of manifest computation."""
+    ``"dynamic"`` means the skill opted out of manifest computation.
+    Script entries' ``path`` uses the script's stored stem name with no file
+    extension (e.g. ``scripts/run`` for a script saved from ``run.py``) — do
+    not assume ``scripts/<name>`` maps 1:1 to an on-disk filename."""
 
 
 @dataclass(frozen=True, slots=True)

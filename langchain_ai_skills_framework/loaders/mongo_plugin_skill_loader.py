@@ -57,7 +57,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-_SYSTEM_AUTHOR = "system"
 
 # Default collection names — overridable via environment variables.
 DEFAULT_SKILLS_COLLECTION = "plugin_skills"
@@ -679,9 +678,11 @@ class MongoPluginSkillLoader:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for author '{author}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)
         resources = await self.list_resource_documents(
-            author=author, plugin_name=plugin_name, skill_name=normalized_name
+            author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
         )
-        scripts = await self.list_script_documents(author=author, plugin_name=plugin_name, skill_name=normalized_name)
+        scripts = await self.list_script_documents(
+            author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
+        )
         manifest = self._build_manifest(doc=doc, resources=resources, scripts=scripts)
         summary = SkillSummary(
             name=doc.skill_name,
@@ -746,22 +747,22 @@ class MongoPluginSkillLoader:
         async for raw in self._skills_collection.find(query):
             docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
 
-        resource_author = _SYSTEM_AUTHOR if owner_label == "shared" else owner_label
+        authors = sorted({doc.author for doc in docs})
         skill_names = sorted({doc.skill_name for doc in docs})
 
-        resources_by_key: dict[tuple[str, str], list[MongoPluginResourceDocument]] = defaultdict(list)
+        resources_by_key: dict[tuple[str, str, str], list[MongoPluginResourceDocument]] = defaultdict(list)
         async for raw in self._resources_collection.find(
-            self._version_filter({"author": resource_author, "skill_name": {"$in": skill_names}})
+            self._version_filter({"author": {"$in": authors}, "skill_name": {"$in": skill_names}})
         ):
             rdoc = MongoPluginResourceDocument.from_mongo_dict(raw)
-            resources_by_key[(rdoc.plugin_name, rdoc.skill_name)].append(rdoc)
+            resources_by_key[(rdoc.author, rdoc.plugin_name, rdoc.skill_name)].append(rdoc)
 
-        scripts_by_key: dict[tuple[str, str], list[MongoPluginScriptDocument]] = defaultdict(list)
+        scripts_by_key: dict[tuple[str, str, str], list[MongoPluginScriptDocument]] = defaultdict(list)
         async for raw in self._scripts_collection.find(
-            self._version_filter({"author": resource_author, "skill_name": {"$in": skill_names}})
+            self._version_filter({"author": {"$in": authors}, "skill_name": {"$in": skill_names}})
         ):
             sdoc = MongoPluginScriptDocument.from_mongo_dict(raw)
-            scripts_by_key[(sdoc.plugin_name, sdoc.skill_name)].append(sdoc)
+            scripts_by_key[(sdoc.author, sdoc.plugin_name, sdoc.skill_name)].append(sdoc)
 
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
@@ -769,8 +770,8 @@ class MongoPluginSkillLoader:
         for doc in docs:
             manifest = self._build_manifest(
                 doc=doc,
-                resources=resources_by_key.get((doc.plugin_name, doc.skill_name), []),
-                scripts=scripts_by_key.get((doc.plugin_name, doc.skill_name), []),
+                resources=resources_by_key.get((doc.author, doc.plugin_name, doc.skill_name), []),
+                scripts=scripts_by_key.get((doc.author, doc.plugin_name, doc.skill_name), []),
             )
             summary = SkillSummary(
                 name=doc.skill_name,

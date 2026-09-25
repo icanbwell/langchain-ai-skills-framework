@@ -227,6 +227,52 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     ) -> str:
         return self.read_skill_resource(skill_name=skill_name, resource_name=resource_name, plugin_name=plugin_name)
 
+    def read_skill_script(self, *, skill_name: str, script_name: str, plugin_name: str | None = None) -> str:
+        details = self.get_skill_details(skill_name=skill_name)
+        if details.source_path is None:
+            raise SkillNotFoundError(f"Skill '{skill_name}' has no source path")
+        script_path = self._resolve_script_path(details, script_name)
+        if script_path is None:
+            raise SkillNotFoundError(f"Script '{script_name}' not found for skill '{skill_name}'")
+
+        # A resolved script may legitimately live under either the skill's own
+        # scripts/ dir or a plugin-level scripts/ dir (see _resolve_script_path).
+        # Build both candidate roots and accept containment under either.
+        skill_scripts_dir = details.source_path.parent / "scripts"
+        plugin_dir = self._find_plugin_dir_for_skill(details)
+        plugin_scripts_dir = plugin_dir / "scripts" if plugin_dir else None
+
+        try:
+            resolved_script = script_path.resolve()
+            resolved_roots = [skill_scripts_dir.resolve()]
+            if plugin_scripts_dir is not None:
+                resolved_roots.append(plugin_scripts_dir.resolve())
+        except OSError as exc:
+            raise SkillValidationError(
+                f"Error resolving script '{script_name}' for skill '{skill_name}': {exc}"
+            ) from exc
+
+        is_contained = False
+        for root in resolved_roots:
+            try:
+                resolved_script.relative_to(root)
+                is_contained = True
+                break
+            except ValueError:
+                continue
+        if not is_contained:
+            raise SkillValidationError(f"Invalid script path '{script_name}' for skill '{skill_name}'")
+
+        try:
+            return resolved_script.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            raise SkillValidationError(f"Error reading script '{script_name}' for skill '{skill_name}': {exc}") from exc
+
+    async def read_skill_script_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, script_name: str
+    ) -> str:
+        return self.read_skill_script(skill_name=skill_name, script_name=script_name, plugin_name=plugin_name)
+
     def list_skill_resource_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]:
         try:
             details = self.get_skill_details(skill_name=skill_name)

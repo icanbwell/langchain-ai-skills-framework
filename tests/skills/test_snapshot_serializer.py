@@ -8,6 +8,7 @@ from types import MappingProxyType
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
 from langchain_ai_skills_framework.models.skills_model import (
+    ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
@@ -210,6 +211,74 @@ class TestSnapshotSerializer:
 
         assert restored.ordered_summaries[0].name == "legacy_skill"
         assert restored.ordered_summaries[0].required_external_servers == ()
+
+    def test_round_trip_manifest_none(self) -> None:
+        summary = _make_summary()
+        assert summary.manifest is None
+        snapshot = SkillSnapshot(
+            details_by_name=MappingProxyType({}),
+            ordered_summaries=(summary,),
+            mcp_servers=(),
+        )
+        serialized = serialize_snapshot(snapshot=snapshot)
+        restored = deserialize_snapshot(data=serialized)
+
+        assert restored.ordered_summaries[0].manifest is None
+
+    def test_round_trip_manifest_entries(self) -> None:
+        summary = SkillSummary(
+            name="manifest_skill",
+            description="A skill with a manifest",
+            manifest=(
+                ManifestFileEntry(path="SKILL.md", digest="sha256:abc", size=123),
+                ManifestFileEntry(path="references/foo.md", digest="sha256:def", size=456),
+            ),
+        )
+        snapshot = SkillSnapshot(
+            details_by_name=MappingProxyType({}),
+            ordered_summaries=(summary,),
+            mcp_servers=(),
+        )
+        serialized = serialize_snapshot(snapshot=snapshot)
+        restored = deserialize_snapshot(data=serialized)
+
+        assert restored.ordered_summaries[0].manifest == summary.manifest
+
+    def test_round_trip_manifest_dynamic(self) -> None:
+        summary = SkillSummary(
+            name="dynamic_skill",
+            description="A dynamic skill",
+            manifest="dynamic",
+        )
+        snapshot = SkillSnapshot(
+            details_by_name=MappingProxyType({}),
+            ordered_summaries=(summary,),
+            mcp_servers=(),
+        )
+        serialized = serialize_snapshot(snapshot=snapshot)
+        restored = deserialize_snapshot(data=serialized)
+
+        assert restored.ordered_summaries[0].manifest == "dynamic"
+
+    def test_deserialize_summary_without_manifest_key(self) -> None:
+        """A snapshot serialized before `manifest` existed (no key at all) must
+        still deserialize, defaulting to None rather than raising."""
+        snapshot = SkillSnapshot(
+            details_by_name=MappingProxyType({}),
+            ordered_summaries=(),
+            mcp_servers=(),
+        )
+        serialized = serialize_snapshot(snapshot=snapshot)
+        legacy_summary_dict = {
+            "name": "legacy_skill",
+            "description": "A skill serialized before manifest existed",
+        }
+        serialized["ordered_summaries"] = [legacy_summary_dict]
+
+        restored = deserialize_snapshot(data=serialized)
+
+        assert restored.ordered_summaries[0].name == "legacy_skill"
+        assert restored.ordered_summaries[0].manifest is None
 
     def test_deserialize_mcp_entry_without_visibility_key(self) -> None:
         """A cached MCP entry from before `visibility` existed must default to

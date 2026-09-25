@@ -10,13 +10,15 @@ Replaces the legacy ``MongoUserSkillLoader``.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
@@ -41,6 +43,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     normalize_folder,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
@@ -185,6 +188,7 @@ class MongoPluginSkillLoader:
         folder: str | None = None,
         path: str | None = None,
         state: str | None = None,
+        is_dynamic: bool = False,
     ) -> MongoPluginSkillDocument:
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
@@ -211,6 +215,7 @@ class MongoPluginSkillLoader:
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
+        digest, size = self._digest_and_size(content)
         set_fields: dict[str, object] = {
             "content": content,
             "description": description,
@@ -218,6 +223,9 @@ class MongoPluginSkillLoader:
             "folder": folder,
             "modified_by": effective_modified_by,
             "date_modified": now,
+            "digest": digest,
+            "size": size,
+            "is_dynamic": is_dynamic,
         }
 
         if state is not None:
@@ -348,6 +356,7 @@ class MongoPluginSkillLoader:
                     "path": path,
                     "modified_by": effective_modified_by,
                     "date_modified": now,
+                    **dict(zip(("digest", "size"), self._digest_and_size(content), strict=True)),
                 },
                 "$setOnInsert": {
                     "author": author,
@@ -513,6 +522,7 @@ class MongoPluginSkillLoader:
                     "path": path,
                     "modified_by": effective_modified_by,
                     "date_modified": now,
+                    **dict(zip(("digest", "size"), self._digest_and_size(content), strict=True)),
                 },
                 "$setOnInsert": {
                     "author": author,
@@ -667,6 +677,13 @@ class MongoPluginSkillLoader:
         if raw is None:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for author '{author}'")
         doc = MongoPluginSkillDocument.from_mongo_dict(raw)
+        resources = await self.list_resource_documents(
+            author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
+        )
+        scripts = await self.list_script_documents(
+            author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
+        )
+        manifest = self._build_manifest(doc=doc, resources=resources, scripts=scripts)
         summary = SkillSummary(
             name=doc.skill_name,
             description=doc.description,
@@ -681,6 +698,7 @@ class MongoPluginSkillLoader:
             allowed_tools=doc.allowed_tools,
             date_modified=doc.date_modified,
             required_external_servers=doc.required_external_servers,
+            manifest=manifest,
         )
         return SkillDetails(
             summary=summary,
@@ -725,11 +743,36 @@ class MongoPluginSkillLoader:
     # --- Snapshot builder ----------------------------------------------------
 
     async def _build_snapshot(self, *, query: dict[str, object], owner_label: str) -> SkillSnapshot:
+        docs: list[MongoPluginSkillDocument] = []
+        async for raw in self._skills_collection.find(query):
+            docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
+
+        authors = sorted({doc.author for doc in docs})
+        skill_names = sorted({doc.skill_name for doc in docs})
+
+        resources_by_key: dict[tuple[str, str, str], list[MongoPluginResourceDocument]] = defaultdict(list)
+        async for raw in self._resources_collection.find(
+            self._version_filter({"author": {"$in": authors}, "skill_name": {"$in": skill_names}})
+        ):
+            rdoc = MongoPluginResourceDocument.from_mongo_dict(raw)
+            resources_by_key[(rdoc.author, rdoc.plugin_name, rdoc.skill_name)].append(rdoc)
+
+        scripts_by_key: dict[tuple[str, str, str], list[MongoPluginScriptDocument]] = defaultdict(list)
+        async for raw in self._scripts_collection.find(
+            self._version_filter({"author": {"$in": authors}, "skill_name": {"$in": skill_names}})
+        ):
+            sdoc = MongoPluginScriptDocument.from_mongo_dict(raw)
+            scripts_by_key[(sdoc.author, sdoc.plugin_name, sdoc.skill_name)].append(sdoc)
+
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
 
-        async for raw in self._skills_collection.find(query):
-            doc = MongoPluginSkillDocument.from_mongo_dict(raw)
+        for doc in docs:
+            manifest = self._build_manifest(
+                doc=doc,
+                resources=resources_by_key.get((doc.author, doc.plugin_name, doc.skill_name), []),
+                scripts=scripts_by_key.get((doc.author, doc.plugin_name, doc.skill_name), []),
+            )
             summary = SkillSummary(
                 name=doc.skill_name,
                 description=doc.description,
@@ -744,6 +787,7 @@ class MongoPluginSkillLoader:
                 allowed_tools=doc.allowed_tools,
                 date_modified=doc.date_modified,
                 required_external_servers=doc.required_external_servers,
+                manifest=manifest,
             )
             detail = SkillDetails(
                 summary=summary,
@@ -805,6 +849,40 @@ class MongoPluginSkillLoader:
     def _validate_not_empty(value: str, field_name: str) -> None:
         if not value or not value.strip():
             raise ValueError(f"{field_name} must be a non-empty string")
+
+    @staticmethod
+    def _digest_and_size(content: str) -> tuple[str, int]:
+        encoded = content.encode("utf-8")
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}", len(encoded)
+
+    @staticmethod
+    def _build_manifest(
+        *,
+        doc: MongoPluginSkillDocument,
+        resources: Sequence[MongoPluginResourceDocument],
+        scripts: Sequence[MongoPluginScriptDocument],
+    ) -> tuple[ManifestFileEntry, ...] | Literal["dynamic"] | None:
+        if doc.is_dynamic:
+            return "dynamic"
+        if doc.digest is None or doc.size is None:
+            return None
+
+        entries: list[ManifestFileEntry] = [ManifestFileEntry(path="SKILL.md", digest=doc.digest, size=doc.size)]
+        for resource in resources:
+            if resource.digest is None or resource.size is None:
+                return None
+            entries.append(
+                ManifestFileEntry(
+                    path=f"references/{resource.resource_name}", digest=resource.digest, size=resource.size
+                )
+            )
+        for script in scripts:
+            if script.digest is None or script.size is None:
+                return None
+            entries.append(
+                ManifestFileEntry(path=f"scripts/{script.script_name}", digest=script.digest, size=script.size)
+            )
+        return tuple(sorted(entries, key=lambda entry: entry.path))
 
     @staticmethod
     def _extract_description(content: str) -> str:

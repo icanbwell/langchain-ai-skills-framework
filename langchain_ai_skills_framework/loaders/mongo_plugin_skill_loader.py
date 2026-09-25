@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +57,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_SYSTEM_AUTHOR = "system"
 
 # Default collection names — overridable via environment variables.
 DEFAULT_SKILLS_COLLECTION = "plugin_skills"
@@ -740,11 +742,36 @@ class MongoPluginSkillLoader:
     # --- Snapshot builder ----------------------------------------------------
 
     async def _build_snapshot(self, *, query: dict[str, object], owner_label: str) -> SkillSnapshot:
+        docs: list[MongoPluginSkillDocument] = []
+        async for raw in self._skills_collection.find(query):
+            docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
+
+        resource_author = _SYSTEM_AUTHOR if owner_label == "shared" else owner_label
+        skill_names = sorted({doc.skill_name for doc in docs})
+
+        resources_by_key: dict[tuple[str, str], list[MongoPluginResourceDocument]] = defaultdict(list)
+        async for raw in self._resources_collection.find(
+            self._version_filter({"author": resource_author, "skill_name": {"$in": skill_names}})
+        ):
+            rdoc = MongoPluginResourceDocument.from_mongo_dict(raw)
+            resources_by_key[(rdoc.plugin_name, rdoc.skill_name)].append(rdoc)
+
+        scripts_by_key: dict[tuple[str, str], list[MongoPluginScriptDocument]] = defaultdict(list)
+        async for raw in self._scripts_collection.find(
+            self._version_filter({"author": resource_author, "skill_name": {"$in": skill_names}})
+        ):
+            sdoc = MongoPluginScriptDocument.from_mongo_dict(raw)
+            scripts_by_key[(sdoc.plugin_name, sdoc.skill_name)].append(sdoc)
+
         details_map: dict[str, SkillDetails] = {}
         summaries: list[SkillSummary] = []
 
-        async for raw in self._skills_collection.find(query):
-            doc = MongoPluginSkillDocument.from_mongo_dict(raw)
+        for doc in docs:
+            manifest = self._build_manifest(
+                doc=doc,
+                resources=resources_by_key.get((doc.plugin_name, doc.skill_name), []),
+                scripts=scripts_by_key.get((doc.plugin_name, doc.skill_name), []),
+            )
             summary = SkillSummary(
                 name=doc.skill_name,
                 description=doc.description,
@@ -759,6 +786,7 @@ class MongoPluginSkillLoader:
                 allowed_tools=doc.allowed_tools,
                 date_modified=doc.date_modified,
                 required_external_servers=doc.required_external_servers,
+                manifest=manifest,
             )
             detail = SkillDetails(
                 summary=summary,

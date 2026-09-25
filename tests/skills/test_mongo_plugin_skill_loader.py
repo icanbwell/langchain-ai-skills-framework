@@ -19,6 +19,22 @@ def _expected_digest_and_size(content: str) -> tuple[str, int]:
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}", len(encoded)
 
 
+class _AsyncIter:
+    """Minimal async iterable/iterator wrapping a plain list, for `async for` over a fake Motor cursor."""
+
+    def __init__(self, items: list[dict[str, object]]) -> None:
+        self._items = iter(items)
+
+    def __aiter__(self) -> _AsyncIter:
+        return self
+
+    async def __anext__(self) -> dict[str, object]:
+        try:
+            return next(self._items)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
 async def test_save_skill_computes_digest_and_size(mock_mongo_database: MagicMock) -> None:
     loader = MongoPluginSkillLoader(database=mock_mongo_database)
     content = "# Skill content\n\nSome body text."
@@ -222,3 +238,53 @@ async def test_get_skill_details_populates_manifest(mock_mongo_database: MagicMo
     details = await loader.get_skill_details(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert details.summary.manifest == (ManifestFileEntry(path="SKILL.md", digest="sha256:" + "a" * 64, size=8),)
+
+
+async def test_build_snapshot_scopes_resources_by_plugin_and_skill_name(mock_mongo_database: MagicMock) -> None:
+    """Two plugins with a same-named skill must not cross-contaminate manifests."""
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+
+    skill_docs = [
+        {
+            "author": "system",
+            "plugin_name": "plugin-a",
+            "skill_name": "shared-name",
+            "content": "A",
+            "digest": "sha256:" + "a" * 64,
+            "size": 1,
+        },
+        {
+            "author": "system",
+            "plugin_name": "plugin-b",
+            "skill_name": "shared-name",
+            "content": "B",
+            "digest": "sha256:" + "b" * 64,
+            "size": 1,
+        },
+    ]
+
+    mock_mongo_database["plugin_skills"].find = MagicMock(return_value=_AsyncIter(skill_docs))
+
+    resource_docs = [
+        {
+            "author": "system",
+            "plugin_name": "plugin-a",
+            "skill_name": "shared-name",
+            "resource_name": "only-a.md",
+            "content": "x",
+            "digest": "sha256:" + "c" * 64,
+            "size": 1,
+        }
+    ]
+    mock_mongo_database["plugin_references"].find = MagicMock(return_value=_AsyncIter(resource_docs))
+    mock_mongo_database["plugin_scripts"].find = MagicMock(return_value=_AsyncIter([]))
+
+    snapshot = await loader.load_shared_snapshot()
+
+    by_plugin = {s.plugin_name: s for s in snapshot.ordered_summaries}
+    manifest_a = by_plugin["plugin-a"].manifest
+    manifest_b = by_plugin["plugin-b"].manifest
+    assert isinstance(manifest_a, tuple)
+    assert any(entry.path == "references/only-a.md" for entry in manifest_a)
+    assert isinstance(manifest_b, tuple)
+    assert not any(entry.path == "references/only-a.md" for entry in manifest_b)

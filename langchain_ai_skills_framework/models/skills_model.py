@@ -4,8 +4,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestFileEntry:
+    """One file's content-integrity record within a skill's manifest (SEP-2640)."""
+
+    path: str
+    digest: str
+    size: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +39,11 @@ class SkillSummary:
     needs even though they're marked ``visibility="external"``. Empty (the
     default) means the skill needs no external server — every existing skill's
     current, unchanged behavior."""
+    manifest: tuple[ManifestFileEntry, ...] | Literal["dynamic"] | None = None
+    """Per-file SHA-256 digest + size manifest, computed at write time by
+    ``MongoPluginSkillLoader``. ``None`` means not yet computed (e.g. content
+    written before this field existed and not yet resaved/resynced).
+    ``"dynamic"`` means the skill opted out of manifest computation."""
 
 
 @dataclass(frozen=True, slots=True)

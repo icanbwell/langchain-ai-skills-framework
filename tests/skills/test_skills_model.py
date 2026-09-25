@@ -1,8 +1,8 @@
-"""Tests for SkillSummary.required_external_servers."""
+"""Tests for SkillSummary.required_external_servers and SkillSummary.manifest."""
 
 from __future__ import annotations
 
-from langchain_ai_skills_framework.models.skills_model import SkillSummary
+from langchain_ai_skills_framework.models.skills_model import ManifestFileEntry, SkillSummary
 
 
 def _make_summary(**overrides: object) -> SkillSummary:
@@ -40,3 +40,27 @@ class TestSkillSummaryRequiredExternalServers:
         assert summary.plugin_name == "test-plugin"
         assert summary.allowed_tools == ("search_tool",)
         assert summary.required_external_servers == ("partner-server",)
+
+
+class TestSkillSummaryManifest:
+    """Backward-compatibility and explicit-value coverage for the manifest field."""
+
+    def test_defaults_to_none(self) -> None:
+        summary = _make_summary()
+
+        assert summary.manifest is None
+
+    def test_explicit_manifest_tuple(self) -> None:
+        entries = (
+            ManifestFileEntry(path="SKILL.md", digest="sha256:" + "a" * 64, size=42),
+            ManifestFileEntry(path="references/checklist.md", digest="sha256:" + "b" * 64, size=10),
+        )
+
+        summary = _make_summary(manifest=entries)
+
+        assert summary.manifest == entries
+
+    def test_dynamic_literal(self) -> None:
+        summary = _make_summary(manifest="dynamic")
+
+        assert summary.manifest == "dynamic"

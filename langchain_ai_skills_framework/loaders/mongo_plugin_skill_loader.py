@@ -10,6 +10,7 @@ Replaces the legacy ``MongoUserSkillLoader``.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections.abc import Mapping, Sequence
@@ -185,6 +186,7 @@ class MongoPluginSkillLoader:
         folder: str | None = None,
         path: str | None = None,
         state: str | None = None,
+        is_dynamic: bool = False,
     ) -> MongoPluginSkillDocument:
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
@@ -211,6 +213,7 @@ class MongoPluginSkillLoader:
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
 
+        digest, size = self._digest_and_size(content)
         set_fields: dict[str, object] = {
             "content": content,
             "description": description,
@@ -218,6 +221,9 @@ class MongoPluginSkillLoader:
             "folder": folder,
             "modified_by": effective_modified_by,
             "date_modified": now,
+            "digest": digest,
+            "size": size,
+            "is_dynamic": is_dynamic,
         }
 
         if state is not None:
@@ -348,6 +354,7 @@ class MongoPluginSkillLoader:
                     "path": path,
                     "modified_by": effective_modified_by,
                     "date_modified": now,
+                    **dict(zip(("digest", "size"), self._digest_and_size(content), strict=True)),
                 },
                 "$setOnInsert": {
                     "author": author,
@@ -513,6 +520,7 @@ class MongoPluginSkillLoader:
                     "path": path,
                     "modified_by": effective_modified_by,
                     "date_modified": now,
+                    **dict(zip(("digest", "size"), self._digest_and_size(content), strict=True)),
                 },
                 "$setOnInsert": {
                     "author": author,
@@ -805,6 +813,11 @@ class MongoPluginSkillLoader:
     def _validate_not_empty(value: str, field_name: str) -> None:
         if not value or not value.strip():
             raise ValueError(f"{field_name} must be a non-empty string")
+
+    @staticmethod
+    def _digest_and_size(content: str) -> tuple[str, int]:
+        encoded = content.encode("utf-8")
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}", len(encoded)
 
     @staticmethod
     def _extract_description(content: str) -> str:

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 import time
 import uuid
+from collections.abc import Mapping
 from typing import Any
 
 import anyio
@@ -36,6 +38,12 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
     ``executeCommand`` (``python3 script.py < args.json``), since
     ``executeCode`` has no stdin channel of its own.
 
+    ``sandbox_env``, if given, is injected as an ``env KEY=value ...`` prefix
+    on the ``executeCommand`` invocation only — it never touches this
+    process's own environment, so it can carry sandbox-only settings (e.g. an
+    egress proxy for the sandboxed script's pip/uv installs) without affecting
+    this service's own AWS calls.
+
     See docs/superpowers/specs/2026-08-25-agentcore-script-executor-design.md
     in baileyai-skills-service for the full design rationale.
     """
@@ -51,10 +59,12 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         connect_timeout_seconds: float = 10.0,
         read_timeout_seconds: float = 60.0,
         client: Any | None = None,
+        sandbox_env: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__(max_timeout=max_timeout, max_output_size=max_output_size)
         self._identifier = code_interpreter_identifier
         self._session_timeout_seconds = session_timeout_seconds
+        self._sandbox_env = sandbox_env
         if client is not None:
             self._client: Any = client
         else:
@@ -236,7 +246,7 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         result = await self._invoke(
             session_id=session_id,
             name="executeCommand",
-            arguments={"command": "python3 script.py < args.json"},
+            arguments={"command": self._build_run_command()},
         )
         structured = result.get("structuredContent", result)
         return (
@@ -244,3 +254,10 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
             structured.get("stderr"),
             int(structured.get("exitCode", 1)),
         )
+
+    def _build_run_command(self) -> str:
+        base_command = "python3 script.py < args.json"
+        if not self._sandbox_env:
+            return base_command
+        env_prefix = " ".join(f"{key}={shlex.quote(value)}" for key, value in self._sandbox_env.items())
+        return f"env {env_prefix} {base_command}"

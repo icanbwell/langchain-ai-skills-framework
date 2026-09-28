@@ -247,6 +247,49 @@ def test_executor_builds_its_own_client_with_bounded_socket_timeouts(monkeypatch
     assert getattr(config, "read_timeout", None) is not None
 
 
+@pytest.mark.asyncio
+async def test_execute_inline_script_command_unchanged_without_sandbox_env() -> None:
+    client = _fake_client()
+    executor = AgentCoreScriptExecutor(client=client)
+
+    await executor.execute_inline_script(script_name="analyze.py", script="print(1)", arguments={})
+
+    exec_call = client.invoke_code_interpreter.call_args_list[1]
+    assert exec_call.kwargs["arguments"] == {"command": "python3 script.py < args.json"}
+
+
+@pytest.mark.asyncio
+async def test_execute_inline_script_prefixes_command_with_sandbox_env() -> None:
+    client = _fake_client()
+    executor = AgentCoreScriptExecutor(
+        client=client,
+        sandbox_env={"HTTPS_PROXY": "http://10.0.0.5:3128", "NO_PROXY": "localhost,127.0.0.1"},
+    )
+
+    await executor.execute_inline_script(script_name="analyze.py", script="print(1)", arguments={})
+
+    exec_call = client.invoke_code_interpreter.call_args_list[1]
+    assert exec_call.kwargs["arguments"] == {
+        "command": "env HTTPS_PROXY=http://10.0.0.5:3128 NO_PROXY=localhost,127.0.0.1 python3 script.py < args.json"
+    }
+
+
+@pytest.mark.asyncio
+async def test_execute_inline_script_quotes_sandbox_env_values_with_shell_metacharacters() -> None:
+    client = _fake_client()
+    executor = AgentCoreScriptExecutor(
+        client=client,
+        sandbox_env={"SOME_VAR": "value with space & ampersand"},
+    )
+
+    await executor.execute_inline_script(script_name="analyze.py", script="print(1)", arguments={})
+
+    exec_call = client.invoke_code_interpreter.call_args_list[1]
+    assert exec_call.kwargs["arguments"] == {
+        "command": "env SOME_VAR='value with space & ampersand' python3 script.py < args.json"
+    }
+
+
 def test_executor_does_not_override_an_injected_client(monkeypatch: pytest.MonkeyPatch) -> None:
     injected_client = MagicMock()
 

@@ -42,7 +42,8 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
     on the ``executeCommand`` invocation only — it never touches this
     process's own environment, so it can carry sandbox-only settings (e.g. an
     egress proxy for the sandboxed script's pip/uv installs) without affecting
-    this service's own AWS calls.
+    this service's own AWS calls. Keys must be valid shell identifiers and
+    are validated at construction.
 
     See docs/superpowers/specs/2026-08-25-agentcore-script-executor-design.md
     in baileyai-skills-service for the full design rationale.
@@ -64,6 +65,9 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         super().__init__(max_timeout=max_timeout, max_output_size=max_output_size)
         self._identifier = code_interpreter_identifier
         self._session_timeout_seconds = session_timeout_seconds
+        for key in sandbox_env or {}:
+            if not self._ARGUMENT_KEY_PATTERN.fullmatch(key):
+                raise ValueError(f"Invalid sandbox_env key: {key!r}")
         self._sandbox_env = sandbox_env
         if client is not None:
             self._client: Any = client

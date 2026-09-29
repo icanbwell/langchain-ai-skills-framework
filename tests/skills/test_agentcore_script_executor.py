@@ -290,6 +290,12 @@ async def test_execute_inline_script_quotes_sandbox_env_values_with_shell_metach
     }
 
 
+@pytest.mark.parametrize("bad_key", ["FOO;rm -rf /", "$(id)", "A B", "A=B", "1ABC", ""])
+def test_executor_rejects_invalid_sandbox_env_keys(bad_key: str) -> None:
+    with pytest.raises(ValueError, match="Invalid sandbox_env key"):
+        AgentCoreScriptExecutor(client=_fake_client(), sandbox_env={bad_key: "x"})
+
+
 def test_executor_does_not_override_an_injected_client(monkeypatch: pytest.MonkeyPatch) -> None:
     injected_client = MagicMock()
 

@@ -232,6 +232,47 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             skill_name=normalized, resource_name=resource_name, plugin_name=plugin_name
         )
 
+    def read_skill_script(self, *, skill_name: str, script_name: str, plugin_name: str | None = None) -> str:
+        return self._shared_loader.read_skill_script(
+            skill_name=skill_name, script_name=script_name, plugin_name=plugin_name
+        )
+
+    async def read_skill_script_for_user(
+        self, *, user_id: str, plugin_name: str | None = None, skill_name: str, script_name: str
+    ) -> str:
+        """Read a script's raw source, checking user's MongoDB scripts first, then shared loader."""
+        normalized = normalize_skill_name(value=skill_name)
+
+        try:
+            return await self._user_loader.read_script(
+                author=user_id, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
+            )
+        except SkillNotFoundError:
+            logger.debug(
+                "Script '%s' not found in user skill '%s' for user '%s', trying shared skills",
+                script_name,
+                normalized,
+                user_id,
+            )
+
+        shared_snapshot = await self._user_loader.load_shared_snapshot(plugin_name=plugin_name, include_staging=True)
+        if normalized in shared_snapshot.details_by_name:
+            shared_detail = shared_snapshot.details_by_name[normalized]
+            owner_user_id = str(
+                shared_detail.summary.metadata.get("user_id", "") if shared_detail.summary.metadata else ""
+            )
+            if owner_user_id:
+                try:
+                    return await self._user_loader.read_script(
+                        author=owner_user_id, plugin_name=plugin_name, skill_name=normalized, script_name=script_name
+                    )
+                except SkillNotFoundError:
+                    pass
+
+        return self._shared_loader.read_skill_script(
+            skill_name=normalized, script_name=script_name, plugin_name=plugin_name
+        )
+
     async def run_skill_script(
         self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:

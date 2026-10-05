@@ -48,7 +48,7 @@ jobs:
           # dependency/upgrade) plus this repo's own extensions, e.g.
           # bwell-repo-wiki adds type:docs. Add this repo's extensions here —
           # don't invent a new axis for them.
-          labels: "type:bug, type:feature, type:incident, type:security, type:migration, type:dependency, type:upgrade"
+          labels: "type:bug, type:feature, type:incident, type:security, type:migration, type:dependency, type:upgrade, type:docs"
           exit_type: failure
           token: ${{ secrets.GITHUB_TOKEN }}
 

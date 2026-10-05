@@ -48,6 +48,7 @@ type_keywords:
   migration: ["migration", "migrate"]
   dependency: ["bump", "dependabot", "deps:"]
   upgrade: ["upgrade"]
+  docs: ["docs"]
   bug: ["fix", "bug"]
   feature: ["feat", "add "]
 

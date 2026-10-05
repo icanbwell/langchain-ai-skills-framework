@@ -10,11 +10,15 @@ Replaces the legacy ``MongoUserSkillLoader``.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import hashlib
+import inspect
 import logging
 import re
+import time
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -23,13 +27,20 @@ from typing import Any, Literal
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo import ReturnDocument
-from pymongo.errors import OperationFailure
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_loader_error import (
     SkillLoaderError,
 )
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.schema_migrations import (
+    IDENTITY_FIELDS,
+    MIN_MIGRATABLE_VERSION,
+    CollectionKind,
+    MissingMigrationError,
+    migrate_fields,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
@@ -65,6 +76,10 @@ DEFAULT_SCRIPTS_COLLECTION = "plugin_scripts"
 DEFAULT_USAGE_COLLECTION = "plugin_skill_usage"
 DEFAULT_PLUGINS_COLLECTION = "plugins"
 
+# How often a loader re-probes for documents left at an older schema_version (for example, written by a
+# not-yet-upgraded pod during a rolling deploy). The probe is a single indexed ``count_documents`` per collection.
+DEFAULT_REPAIR_INTERVAL_SECONDS = 300.0
+
 
 class MongoPluginSkillLoader:
     """Reads and writes plugin-scoped skills in MongoDB.
@@ -93,9 +108,15 @@ class MongoPluginSkillLoader:
         scripts_collection_name: str = DEFAULT_SCRIPTS_COLLECTION,
         usage_collection_name: str = DEFAULT_USAGE_COLLECTION,
         plugins_collection_name: str = DEFAULT_PLUGINS_COLLECTION,
+        auto_repair: bool = True,
+        repair_interval_seconds: float = DEFAULT_REPAIR_INTERVAL_SECONDS,
     ) -> None:
         self._database = database
         self._schema_version = schema_version
+        self._auto_repair = auto_repair
+        self._repair_interval_seconds = repair_interval_seconds
+        self._repair_lock = asyncio.Lock()
+        self._last_repair_check: float | None = None
         self._skills_collection: AsyncIOMotorCollection[dict[str, object]] = database[skills_collection_name]
         self._resources_collection: AsyncIOMotorCollection[dict[str, object]] = database[references_collection_name]
         self._scripts_collection: AsyncIOMotorCollection[dict[str, object]] = database[scripts_collection_name]
@@ -170,6 +191,117 @@ class MongoPluginSkillLoader:
                 await collection.create_index(keys, unique=unique, name=name)
             else:
                 raise
+
+    # --- Schema-version repair ------------------------------------------------
+
+    async def _ensure_current(self) -> None:
+        """Re-tag documents stored under an older ``schema_version`` so reads can see them.
+
+        Runs on first use and again at most every ``repair_interval_seconds``. Failures are logged and never
+        propagate: a repair problem must not take reads down.
+        """
+        if not self._auto_repair:
+            return
+        if self._last_repair_check is not None and (
+            time.monotonic() - self._last_repair_check < self._repair_interval_seconds
+        ):
+            return
+        async with self._repair_lock:
+            if self._last_repair_check is not None and (
+                time.monotonic() - self._last_repair_check < self._repair_interval_seconds
+            ):
+                return
+            try:
+                await self.repair_stale_documents()
+            except Exception:
+                logger.exception("Schema-version repair failed; stale documents may remain invisible until it succeeds")
+            finally:
+                self._last_repair_check = time.monotonic()
+
+    async def repair_stale_documents(self) -> Mapping[str, int]:
+        """Migrate every document with ``MIN_MIGRATABLE_VERSION <= schema_version < current`` in place.
+
+        Safe to run concurrently from several pods: each update is conditional on the document still being at the
+        old version, so a race is a no-op for the loser. A document is left untouched (and logged at ERROR) when a
+        document with the same identity already exists at the current version, because that one holds the user's
+        latest save and the unique index would reject the re-tag anyway.
+
+        Returns counts keyed ``"<collection>.migrated"`` / ``"<collection>.conflicts"``.
+        """
+        targets: tuple[tuple[CollectionKind, AsyncIOMotorCollection[dict[str, object]]], ...] = (
+            ("skills", self._skills_collection),
+            ("references", self._resources_collection),
+            ("scripts", self._scripts_collection),
+            ("plugins", self._plugins_collection),
+            ("usage", self._usage_collection),
+        )
+        counts: dict[str, int] = {}
+        for kind, collection in targets:
+            migrated, conflicts = await self._repair_collection(kind=kind, collection=collection)
+            counts[f"{collection.name}.migrated"] = migrated
+            counts[f"{collection.name}.conflicts"] = conflicts
+        return counts
+
+    async def _repair_collection(
+        self, *, kind: CollectionKind, collection: AsyncIOMotorCollection[dict[str, object]]
+    ) -> tuple[int, int]:
+        sv = self.SCHEMA_VERSION_FIELD
+        stale_filter: dict[str, object] = {sv: {"$gte": MIN_MIGRATABLE_VERSION, "$lt": self._schema_version}}
+        if await collection.count_documents(stale_filter, limit=1) == 0:
+            return 0, 0
+
+        identity_fields = IDENTITY_FIELDS[kind]
+        migrated = 0
+        conflicts = 0
+        async for doc in collection.find(stale_filter):
+            old_version = doc.get(sv)
+            if not isinstance(old_version, int):
+                continue
+            if identity_fields:
+                sibling = await collection.find_one(
+                    {sv: self._schema_version, **{f: doc.get(f) for f in identity_fields}}, {"_id": 1}
+                )
+                if sibling is not None:
+                    conflicts += 1
+                    logger.error(
+                        "Not migrating %s _id=%s from schema_version %s: a document with the same identity "
+                        "already exists at schema_version %s (_id=%s). Resolve manually.",
+                        collection.name,
+                        doc.get("_id"),
+                        old_version,
+                        self._schema_version,
+                        sibling.get("_id"),
+                    )
+                    continue
+            try:
+                fields = migrate_fields(kind=kind, doc=doc, from_version=old_version, to_version=self._schema_version)
+            except MissingMigrationError:
+                logger.exception("Cannot migrate %s _id=%s", collection.name, doc.get("_id"))
+                continue
+            try:
+                result = await collection.update_one(
+                    {"_id": doc["_id"], sv: old_version},
+                    {"$set": {**fields, sv: self._schema_version}},
+                )
+            except DuplicateKeyError:
+                conflicts += 1
+                logger.error(
+                    "Not migrating %s _id=%s: a same-identity document was created at schema_version %s concurrently.",
+                    collection.name,
+                    doc.get("_id"),
+                    self._schema_version,
+                )
+                continue
+            migrated += result.modified_count
+        if migrated or conflicts:
+            logger.info(
+                "Schema-version repair on %s: migrated=%d conflicts=%d (target schema_version=%s)",
+                collection.name,
+                migrated,
+                conflicts,
+                self._schema_version,
+            )
+        return migrated, conflicts
 
     def _version_filter(self, query: dict[str, object]) -> dict[str, object]:
         """Add schema_version to a query filter."""
@@ -982,3 +1114,21 @@ class MongoPluginSkillLoader:
         """Return True if the plugins collection has at least one document for the current schema version."""
         count = await self._plugins_collection.count_documents(self._version_filter({}), limit=1)
         return count > 0
+
+
+def _repair_before(method: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+    @functools.wraps(method)
+    async def wrapper(self: MongoPluginSkillLoader, *args: Any, **kwargs: Any) -> Any:
+        await self._ensure_current()
+        return await method(self, *args, **kwargs)
+
+    return wrapper
+
+
+# Every public data-access coroutine repairs stale documents before touching a collection, so any caller
+# (including consumers that never call ``ensure_indexes``) sees user-authored documents saved under an older
+# schema_version. ``repair_stale_documents`` itself and ``ensure_indexes`` (index setup) are excluded.
+_REPAIR_EXEMPT = frozenset({"ensure_indexes", "repair_stale_documents"})
+for _name, _member in list(vars(MongoPluginSkillLoader).items()):
+    if not _name.startswith("_") and _name not in _REPAIR_EXEMPT and inspect.iscoroutinefunction(_member):
+        setattr(MongoPluginSkillLoader, _name, _repair_before(_member))

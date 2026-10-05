@@ -1,5 +1,38 @@
 # AGENTS.md — HP Validation Tests
 
+## Version upgrades must be backwards compatible
+
+This package is a pinned dependency of other services (baileyai, baileyai-skills-service) that share
+its MongoDB collections. A release must never make data or code written for the previous version
+stop working. Before opening a PR, check each of these:
+
+- **Schema bumps need a migration.** Any change to `MongoPluginSkillDocument.SCHEMA_VERSION` must
+  register a step for the previous version in `langchain_ai_skills_framework/loaders/schema_migrations.py`
+  (`tests/skills/test_schema_migrations.py` fails otherwise). Reads filter by exact `schema_version`,
+  so an unmigrated bump silently hides every user-authored document. If the new fields can't be
+  defaulted by the model, the step must compute them from stored data (the v3→v4 step derives
+  `digest`/`size` from `content`).
+- **Prefer additive changes.** New document fields get a default and the models keep
+  `extra="ignore"`. Do not rename, remove, or change the type or meaning of a stored field. If you
+  must, add the new field, migrate, and keep reading the old one for a release.
+- **Never leave old and new pods incompatible during a rolling deploy.** Old pods keep writing the
+  previous `schema_version` while new pods run. A change that makes old-pod writes unreadable, or
+  new-pod writes unreadable to old pods in a way that breaks them, needs a staged release.
+- **Don't break public interfaces.** Adding a required method to `SkillLoaderProtocol`,
+  `PluginSkillStore`, or another protocol, or changing a public signature, breaks external
+  implementers under `mypy --strict` (as #67 did). Add optional methods or defaulted parameters
+  instead. If a break is unavoidable, make it a major version, say so in the PR title (`feat!:`),
+  and describe the consumer migration in the PR body.
+- **Unique indexes include `schema_version`.** Changing index keys or names needs a rollout-safe
+  path through `_ensure_index`, and a migration must not violate them (see the conflict guard in
+  `MongoPluginSkillLoader.repair_stale_documents`).
+- **Test the upgrade, not just the new state.** Include a test that data stored under the previous
+  version is still readable (or migrated) after your change.
+
+> Note: the remainder of this file describes the Karate CQL validation suite from another
+> repository and does not describe this package. It should be replaced with framework-specific
+> guidance.
+
 This document describes the conventions, patterns, and execution instructions for authoring and running the Karate-based end-to-end validation tests in this project.
 
 ---

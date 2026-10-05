@@ -1,719 +1,93 @@
-# AGENTS.md — HP Validation Tests
+# AGENTS.md — langchain-ai-skills-framework
 
-This document describes the conventions, patterns, and execution instructions for authoring and running the Karate-based end-to-end validation tests in this project.
+`CLAUDE.md` is a symlink to this file. Edit this file only.
 
----
+## What this package is
 
-## Table of Contents
+A Python library (>=3.12) that loads Agent Skills (`SKILL.md` files) and serves them as LangChain tools. It is a
+pinned dependency of other services, notably `baileyai` and `baileyai-skills-service`, which also share its MongoDB
+collections. See `README.md` for the overview and `docs/skill-authoring.md` for skill frontmatter and naming rules.
 
-1. [Project Overview](#project-overview)
-2. [Repository Structure](#repository-structure)
-3. [Configuration (`karate-config.js`)](#configuration-karate-configjs)
-4. [Required Credentials](#required-credentials)
-5. [Utility Features Reference](#utility-features-reference)
-6. [Authoring CQL Evaluation Tests — Patterns & Conventions](#authoring-cql-evaluation-tests--patterns--conventions)
-7. [Payload Files](#payload-files)
-8. [Executing Tests](#executing-tests)
-9. [Test Reports](#test-reports)
+Skills come from two sources, merged by `CompositeSkillLoader` with precedence user → shared DB → marketplace:
 
----
+- **Plugin marketplace** (`MarketplaceDirectoryLoader`): shared skills from the filesystem or GitHub, laid out as
+  `plugins/<plugin>/skills/<skill>/SKILL.md`.
+- **User-persisted skills** (`MongoPluginSkillLoader`): MongoDB collections `plugin_skills`, `plugin_references`,
+  `plugin_scripts`, plus `plugins` and `plugin_skill_usage`.
 
-## Project Overview
+## Layout
 
-This project validates health-plan (HP) CQL measure libraries deployed to the bSights CQL Engine. Each feature file exercises a named CQL library (`libraryId`) against a synthetic patient with specific FHIR resources loaded, then asserts that the CQL evaluation returns the expected cohort membership, numerator, and completion date values.
+| Path | Contents |
+|---|---|
+| `langchain_ai_skills_framework/loaders/` | Skill loaders, `PluginSkillStore` and `SkillLoaderProtocol`, `SkillSync`, `schema_migrations.py` |
+| `.../models/` | Pydantic models, including the Mongo document models and `SCHEMA_VERSION` |
+| `.../services/` | One service per operation (save, load, list, delete, publish, run script, ...) |
+| `.../langchain/tools/` | LangChain tool wrappers over the services; `tool_factory.py` builds them |
+| `.../executors/` | Script executors (local, shell, AgentCore) |
+| `.../persistence/` | Mongo database factory, history and error writers |
+| `.../publishing/` | `GitHubMarketplacePublisher` |
+| `.../container/`, `.../environment/` | Dependency-injection container and environment-variable settings |
+| `.../startup.py` | `initialize_skills` and `reload_plugins` |
+| `tests/` | Unit tests (Mongo is mocked); `tests_integration/` needs a real environment |
 
-The test suite also covers DQM workflows, questionnaire service flows, and task lifecycle scenarios, but the primary focus documented here is the `feature/cql/` suite.
+## Commands
 
----
-
-## Repository Structure
-
-```
-src/test/java/
-├── karate-config.js               # Global Karate configuration, env switching, shared helpers
-├── runner/
-│   └── KarateTestRunner.java      # JUnit5 parallel runner (entry point for Gradle)
-├── feature/
-│   └── cql/                       # One .feature file per CQL measure library
-│       ├── bcs1-evaluation.feature
-│       ├── bcs3-evaluation.feature
-│       └── ...
-├── util/                          # Reusable callable feature utilities
-│   ├── get-dates.feature
-│   ├── get-token.feature
-│   ├── get-user-token.feature
-│   ├── create-resource.feature
-│   ├── load-resource.feature
-│   ├── delete-resource.feature
-│   ├── execute-cql.feature
-│   ├── cql-evaluation.feature
-│   ├── identifier-validators.feature
-│   ├── task-constants.feature
-│   ├── task-setup.feature
-│   ├── task-search.feature
-│   ├── task-search-rest.feature
-│   ├── consent-creation.feature
-│   └── user-creation.feature
-└── payload/
-    ├── cqlrequest.json            # CQL engine request template
-    └── cql/                       # FHIR resource payload templates
-        ├── observation-mammography.json
-        ├── condition-diabetes.json
-        └── ...
-```
-
----
-
-## Configuration (`karate-config.js`)
-
-`karate-config.js` is the global Karate bootstrap. It runs before every feature and populates a `config` object that is available as top-level variables in every scenario.
-
-### Environment selection
-
-The active environment is set via the `karate.env` system property (defaults to `dev`). Supported values:
-
-| Value | Description |
-|-------|-------------|
-| `dev` | Development environment (`*.dev.bwell.zone`) |
-| `staging` | Staging environment (`*.staging.bwell.zone`) |
-| `client-sandbox` | Client sandbox (`*.client-sandbox.bwell.zone`) |
-| `prod` | Production (`*.prod.bwell.zone`) |
-
-### Key config variables
-
-| Variable | Description |
-|----------|-------------|
-| `fhirServerUrl` | Base URL for the FHIR R4 server (used by resource utilities) |
-| `cqlEngineUrl` | Base URL for the bSights CQL Engine (`/api/v1/library`) |
-| `apiGatewayUrl` | API Gateway base URL (used by task/questionnaire tests) |
-| `tokenUrl` | Cognito OAuth2 token endpoint |
-| `bigUrl` | bWell Identity Gateway (BIG) base URL |
-| `bwellIdentityGatewayUrl` | Alternate identity gateway URL used by `user-creation.feature` |
-| `clientId` | OAuth2 client ID (from `-Dclient.id`) |
-| `clientSecret` | OAuth2 client secret (from `-Dclient.secret`) |
-| `clientKey` | Client key used for JWE patient token generation (from `-Dclient.key`) |
-| `generateCorrelationId(prefix)` | Helper function — returns `"PREFIX-<8-char-uuid>"` |
-
-### Global retry defaults
-
-```js
-karate.configure('retry', { count: 45, interval: 3000 });
-```
-
-Individual utilities may override these defaults inline.
-
----
-
-## Required Credentials
-
-| Property | Gradle flag | How to obtain |
-|----------|-------------|---------------|
-| OAuth2 Client ID | `-Dclient.id=…` | Request from the team |
-| OAuth2 Client Secret | `-Dclient.secret=…` | Request from the team |
-| Client Key | `-Dclient.key=…` | Retrieve from the b.well admin tools UI — see [README.md](README.md) |
-
----
-
-## Utility Features Reference
-
-All utilities are tagged `@ignore` so they are never executed directly. They are invoked via `call read('classpath:util/<name>.feature')` from within a scenario or background.
-
----
-
-### `util/get-dates.feature`
-
-Populates a set of pre-calculated date variables using Java's `ZonedDateTime` (UTC). Call this once in the `Background`.
-
-**Variables exposed after call:**
-
-| Variable | Format | Example |
-|----------|--------|---------|
-| `currentDate` | `yyyy-MM-dd` | `2026-02-26` |
-| `currentDateTime` | ISO-8601 with offset | `2026-02-26T13:00:00+00:00` |
-| `yesterdayDate` | `yyyy-MM-dd` | `2026-02-25` |
-| `yesterdayDateTime` | ISO-8601 with offset | `2026-02-25T13:00:00+00:00` |
-| `yesterdayDateTimeNoTimezone` | `yyyy-MM-dd'T'HH:mm:ss` | `2026-02-25T13:00:00` |
-| `threeDaysAgo` | ISO-8601 with offset | |
-| `threeDaysAgoNoTimezone` | no offset | |
-| `oneWeekAgo` | ISO-8601 with offset | |
-| `oneMonthAgo` | ISO-8601 with offset | |
-| `threeMonthsAgo` | ISO-8601 with offset | |
-| `oneYearAgo` | ISO-8601 with offset | |
-| `twoYearsAgo` | ISO-8601 with offset | |
-| `threeYearsAgo` | ISO-8601 with offset | |
-
----
-
-### `util/get-token.feature`
-
-Obtains a service-level OAuth2 access token from Cognito using the `client_credentials` grant.
-
-**Requires (from config):** `clientId`, `clientSecret`, `tokenUrl`
-
-**Returns:** `access_token`
-
-**Usage:**
-```gherkin
-* def auth_service_token_response = call read('classpath:util/get-token.feature')
-* def serviceToken = 'Bearer ' + auth_service_token_response.access_token
-```
-
----
-
-### `util/get-user-token.feature`
-
-Creates a synthetic patient via the BIG identity gateway and returns a user access token along with FHIR person/patient identifiers.
-
-**Input parameters (passed as JSON argument):**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `patientAge` | Yes | Age of the synthetic patient (drives cohort eligibility) |
-| `gender` | Yes | `'male'` or `'female'` |
-
-**Returns (as `user_token_response`):**
-
-| Field | Description |
-|-------|-------------|
-| `accessToken` | JWT access token object |
-| `clientPersonId` | Client-scoped FHIR Person ID |
-| `clientPatientId` | Client-scoped FHIR Patient ID |
-| `bwellPersonId` | bWell FHIR Person ID |
-| `bwellPatientId` | bWell FHIR Patient ID |
-| `managingOrganizationId` | Managing organization ID |
-
-**Usage:**
-```gherkin
-* def user_token_response = call read('classpath:util/get-user-token.feature') { patientAge: 45, gender: 'female' }
-* def clientPersonId = user_token_response.clientPersonId
-* def patientId = user_token_response.clientPatientId
-```
-
----
-
-### `util/load-resource.feature`
-
-POSTs a FHIR resource from a payload template in `src/test/java/payload/cql/` to the FHIR server, associating it with the current patient.
-
-**Input parameters:**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `filename` | Yes | Filename within `payload/cql/` (e.g., `'observation-mammography.json'`) |
-| `resourceType` | Yes | FHIR resource type (e.g., `'Observation'`, `'Condition'`) |
-| `date` | Yes | Date/datetime string to inject into the payload (typically a variable from `get-dates`) |
-
-**Returns:** `resourceId` — the server-assigned ID of the created resource.
-
-**Usage:**
-```gherkin
-* call read('classpath:util/load-resource.feature') { filename: 'observation-mammography.json', resourceType: 'Observation', date: #(yesterdayDateTime) }
-* def observationId = resourceId
-```
-
-> **Note:** The `date` argument uses the Karate expression syntax `#(variableName)` to pass a variable by reference.
-
----
-
-### `util/create-resource.feature`
-
-Lower-level FHIR resource creation utility. POSTs an arbitrary `payload` object you supply directly.
-
-**Input parameters:**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `resourceType` | Yes | FHIR resource type |
-| `payload` | Yes | Full JSON payload object |
-
-**Returns:** `resourceId`
-
----
-
-### `util/delete-resource.feature`
-
-DELETEs a FHIR resource by ID.
-
-**Input parameters:**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `resourceId` | Yes | Server-assigned resource ID |
-| `resourceType` | Yes | FHIR resource type |
-
-**Usage:**
-```gherkin
-* call read('classpath:util/delete-resource.feature') { resourceId: #(observationId), resourceType: 'Observation' }
-```
-
-> **Cleanup convention:** The last scenario in each feature file is responsible for deleting all shared resources (loaded in `Background`) **and** the patient record itself (`resourceType: 'Patient'`, `resourceId: #(patientId)`).
-
----
-
-### `util/execute-cql.feature`
-
-Sends a POST request to the CQL Engine and makes the evaluation results available as `results`.
-
-**Requires (in scope):** `cqlEngineUrl`, `serviceToken`, `libraryId`, `clientPersonId`, `patientId`
-
-**Optional overrides:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `createResources` | `false` | Whether the CQL engine should create task resources |
-| `maxRetries` | `4` | Retry count for the HTTP call |
-| `retryInterval` | `1000` | Retry interval in ms |
-
-**Returns:** `results` — the `evaluationResults` object from the CQL Engine response.
-
-**Usage:**
-```gherkin
-* call read('classpath:util/execute-cql.feature')
-And match results.InCohort_Out_Bool == true
-And match results.Numerator == false
-And match results.Completed_Out_Date == null
-```
-
-The request body is built from `payload/cqlrequest.json`:
-```json
-{
-  "clientPersonId": "#(clientPersonId)",
-  "libraryId": "#(libraryId)",
-  "createResources": "#(createResources)",
-  "refreshLibraryCache": true,
-  "refreshClientPersonCache": true
-}
-```
-
----
-
-### `util/cql-evaluation.feature`
-
-Higher-level CQL evaluation wrapper with built-in logging. Used for scenarios that need more orchestration around the CQL call.
-
-**Requires:** `cqlEngineUrl`, `serviceToken`, `libraryId`, `clientPersonId`, `patientId`
-
-**Optional inputs:** `shouldCreateResources` (default `false`), `correlationId`
-
----
-
-### `util/identifier-validators.feature`
-
-Provides a reusable JavaScript function `validateIdentifier` for asserting FHIR identifier values.
-
-**Usage:**
-```gherkin
-* def identifierUtils = call read('classpath:util/identifier-validators.feature')
-* def validateIdentifier = identifierUtils.validateIdentifier
-* call validateIdentifier(identifierArray, 'some-id', 'https://system.url', 'expected-value')
-```
-
----
-
-### `util/task-constants.feature`
-
-Defines shared constants used by task-related tests.
-
-**Variables exposed:**
-
-```js
-TASK_STATUSES  = { READY, COMPLETED, CANCELLED }
-TASK_CODES     = { CARE_NEED, HEALTH_ACTIVITY }
-IDENTIFIERS    = { ELIGIBILITY_SOURCE, ACTIVITY_TITLE, WORKFLOW_EVENT, CQL_ENGINE }
-ACTIVITIES     = { ANNUAL_PHYSICAL }
-```
-
----
-
-### `util/task-setup.feature`
-
-Bootstraps the full task-test environment in a single call: loads constants, obtains a service token, loads identifier validators, and exposes helper functions (`sleep`, `timestamp`).
-
----
-
-### `util/task-search.feature` (GraphQL)
-
-Searches for Tasks via the HP Facade GraphQL endpoint with retry-until logic.
-
-**Input parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `userToken` | required | Bearer token |
-| `clientPatientId` | required | Patient ID |
-| `status` | — | Task status filter |
-| `payloadFile` | `payload/task/get-tasks-graphql.json` | GraphQL request payload |
-| `activityTitle` | — | Optional filter |
-| `activityType` | — | Optional filter |
-| `eligibilitySource` | — | Optional filter |
-| `expectedCount` | `1` | Minimum task count to satisfy retry |
-| `expectEmpty` | `false` | When `true`, retries until result is empty |
-
-**Returns:** `tasks` — array of task resources.
-
----
-
-### `util/task-search-rest.feature` (REST)
-
-Searches for Tasks via the FHIR REST endpoint with retry-until logic.
-
-**Input parameters:**
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `userToken` | required | Bearer token |
-| `clientPatientId` | required | Patient ID |
-| `status` | — | Task status filter |
-| `code` | — | Task code filter |
-| `identifier` | — | FHIR identifier filter |
-| `expectedCount` | `1` | Minimum entry count to satisfy retry |
-| `expectEmpty` | `false` | When `true`, retries until result is empty |
-
-**Returns:** `tasks` — array of FHIR Bundle entry objects.
-
----
-
-### `util/consent-creation.feature`
-
-Creates a Terms-of-Service consent via the consent GraphQL endpoint.
-
-**Requires:** `userToken`, `apiGatewayUrl`
-
----
-
-### `util/user-creation.feature`
-
-Standalone user/patient creation utility (alternative to `get-user-token.feature`). Uses `NewUserPayloadGenerator` Java helper.
-
-**Input parameters:** `patientAge`, `gender` (optional, default `'male'`)
-
-**Returns:** `userToken`, `accessToken`, `clientPersonId`, `clientPatientId`, `bwellPersonId`, `bwellPatientId`
-
----
-
-## Authoring CQL Evaluation Tests — Patterns & Conventions
-
-### 1. Feature-level tags
-
-Every CQL feature file carries two tags:
-
-```gherkin
-@e2e @cql
-Feature: Evaluate <LibraryName>
-```
-
-Use `@e2e` to run all end-to-end tests; use `@cql` to run only CQL measure tests.
-
----
-
-### 2. Standard Background block
-
-Every CQL feature `Background` follows this exact sequence:
-
-```gherkin
-Background:
-  # 1. Set the CQL library ID — must match the library name in the CQL Engine
-  * def libraryId = 'YourLibraryId'
-
-  # 2. Load date variables
-  * call read('classpath:util/get-dates.feature')
-
-  # 3. Get a service token
-  * def auth_service_token_response = call read('classpath:util/get-token.feature')
-  * def serviceToken = 'Bearer ' + auth_service_token_response.access_token
-
-  # 4. Create a synthetic patient; specify age and gender to satisfy cohort criteria
-  * def user_token_response = call read('classpath:util/get-user-token.feature') { patientAge: 45, gender: 'female' }
-
-  # 5. Extract patient identifiers
-  * def clientPersonId = user_token_response.clientPersonId
-  * def patientId = user_token_response.clientPatientId
-
-  # 6. (Optional) Load shared FHIR resources needed by all scenarios
-  * call read('classpath:util/load-resource.feature') { filename: 'condition-diabetes.json', resourceType: 'Condition', date: #(yesterdayDateTime) }
-  * def conditionId = resourceId
-```
-
-> **Note:** The `Background` runs before *every* scenario. Resources loaded here are shared across all scenarios. Use scenario-local `call load-resource` when a resource should only exist for that scenario.
-
----
-
-### 3. Correlation IDs for traceability
-
-Every scenario begins by generating a correlation ID and logging the start state:
-
-```gherkin
-Scenario: Care need is open
-  * def correlationId = generateCorrelationId('LIBRARY_PREFIX')
-  * print correlationId, '| Starting scenario: Care need is open | clientPersonId:', clientPersonId, '| patientId:', patientId
-```
-
-The `generateCorrelationId(prefix)` helper (defined in `karate-config.js`) returns `"PREFIX-<8-char-uuid>"`. Use a short, readable prefix (e.g., `'BCS1'`, `'KED1'`, `'STATIN_CVD1'`).
-
----
-
-### 4. Loading FHIR test data
-
-Use `load-resource.feature` to POST a FHIR resource and capture its ID:
-
-```gherkin
-* call read('classpath:util/load-resource.feature') { filename: 'observation-egfr.json', resourceType: 'Observation', date: #(yesterdayDateTime) }
-* def observationId = resourceId
-* print correlationId, '| Loaded Observation | observationId:', observationId, '| date:', yesterdayDateTime
-```
-
-- **`filename`** — relative to `src/test/java/payload/cql/`
-- **`date`** — use the `#(variable)` expression syntax to pass a pre-calculated date from `get-dates`
-- Always assign `resourceId` to a uniquely named variable immediately after the call so it can be cleaned up later
-
----
-
-### 5. Executing CQL and asserting results
-
-After loading all required FHIR resources, invoke the CQL engine and assert the response fields:
-
-```gherkin
-* call read('classpath:util/execute-cql.feature')
-And match results.InCohort_Out_Bool == true
-And match results.Numerator == false
-And match results.Completed_Out_Date == null
-* print correlationId, '| Results | InCohort:', results.InCohort_Out_Bool, '| Numerator:', results.Numerator
-```
-
-**Common result fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `InCohort_Out_Bool` | `Boolean` | Whether the patient is in the measure cohort |
-| `Numerator` | `Boolean` | Whether the numerator condition is met |
-| `Numerator_Output_MR` | `Integer` | Count of numerator-qualifying records |
-| `Completed_Out_Bool` | `Boolean` | Whether the care need is completed |
-| `Completed_Out_Date` | `String \| null` | Completion date (`yyyy-MM-dd`) or `null` |
-| `Exclusions` | `Boolean` | Whether an optional exclusion is present |
-| `RequiredExclusions_Output_MR` | `Integer` | Count of required exclusion records |
-| `HasHospice` | `Boolean` | Hospice exclusion flag (measure-specific) |
-| `HasExclusion` | `Boolean` | Generic exclusion flag (measure-specific) |
-| `TotalRiskFactor` | `Integer` | Count of risk factors (measure-specific) |
-| `InAgeCohort` | `Boolean` | Age-specific cohort flag (measure-specific) |
-
-Use `contains` for partial date matches when only the date portion (without timezone) needs to be asserted:
-
-```gherkin
-And match results.Completed_Out_Date contains threeDaysAgoNoTimezone
-```
-
----
-
-### 6. Scenario coverage pattern
-
-Every CQL feature covers three scenario types in order:
-
-| Scenario | Setup | Expected outcome |
-|----------|-------|-----------------|
-| **Care need is open** | Patient meets cohort criteria but no numerator data | `InCohort == true`, `Numerator == false`, `Completed_Out_Date == null` |
-| **Care need is closed** | All numerator-satisfying FHIR resources present | `InCohort == true`, `Numerator == true`, `Completed_Out_Date` set |
-| **Exclusion** | Exclusion-triggering resource present | `InCohort == false` or exclusion flag `== true` |
-
----
-
-### 7. Resource cleanup
-
-Clean up all FHIR resources created during a scenario immediately after assertions, and log each deletion:
-
-```gherkin
-* call read('classpath:util/delete-resource.feature') { resourceId: #(observationId), resourceType: 'Observation' }
-* print correlationId, '| Cleaned up | observationId:', observationId
-```
-
-**The last scenario in every feature file is responsible for final full cleanup:**
-
-```gherkin
-# Remove all shared Background resources and the patient itself
-* call read('classpath:util/delete-resource.feature') { resourceId: #(conditionId), resourceType: 'Condition' }
-* call read('classpath:util/delete-resource.feature') { resourceId: #(patientId), resourceType: 'Patient' }
-* print correlationId, '| ✅ Scenario completed with full cleanup'
-```
-
-Mark the final scenario's closing print with the `✅ Scenario completed with full cleanup` convention to make it easy to identify in logs.
-
----
-
-### 8. Scenario completion logging
-
-End every scenario with a completion log line:
-
-```gherkin
-* print correlationId, '| ✅ Scenario completed'
-```
-
-For the final scenario (with full patient cleanup):
-
-```gherkin
-* print correlationId, '| ✅ Scenario completed with full cleanup'
-```
-
----
-
-### 9. Overriding patient demographics mid-scenario
-
-When a scenario requires a different patient than the one created in `Background` (e.g., testing an age-based exclusion), override `clientPersonId` and `patientId` locally:
-
-```gherkin
-Scenario: Exclusion - under age 18
-  * def correlationId = generateCorrelationId('METAB_SYN')
-  * def user_token_response_minor = call read('classpath:util/get-user-token.feature') { patientAge: 16, gender: 'male' }
-  * def clientPersonId = user_token_response_minor.clientPersonId
-  * def patientId = user_token_response_minor.clientPatientId
-```
-
-This creates a second patient scoped to that scenario. Remember to delete this patient during cleanup.
-
----
-
-## Payload Files
-
-FHIR resource templates live in `src/test/java/payload/cql/`. Each file is a FHIR resource JSON with Karate expression placeholders:
-
-- **`subject.reference`** is automatically injected by `load-resource.feature` as `"Patient/<patientId>"`
-- The `date` field in the payload is replaced by the `date` argument passed to `load-resource.feature`
-
-Available payload files:
-
-| File | Resource Type | Description |
-|------|---------------|-------------|
-| `condition-diabetes.json` | Condition | Diabetes diagnosis |
-| `condition-esrd.json` | Condition | End-stage renal disease |
-| `condition-primary-htn.json` | Condition | Primary hypertension |
-| `condition-secondary-htn.json` | Condition | Secondary hypertension |
-| `encounter-er.json` | Encounter | Emergency room encounter |
-| `medicationrequest-statin.json` | MedicationRequest | Statin medication request |
-| `observation-a1c.json` | Observation | HbA1c lab result |
-| `observation-bp-controlled-code.json` | Observation | Controlled BP (code-based) |
-| `observation-bp-controlled-value.json` | Observation | Controlled BP (value-based) |
-| `observation-bp-uncontrolled.json` | Observation | Uncontrolled BP |
-| `observation-bp.json` | Observation | Generic BP |
-| `observation-cancer.json` | Observation | Cancer diagnosis |
-| `observation-cirrhosis.json` | Observation | Cirrhosis |
-| `observation-egfr.json` | Observation | eGFR kidney function |
-| `observation-fbg-high.json` | Observation | High fasting blood glucose |
-| `observation-hdl-low.json` | Observation | Low HDL cholesterol |
-| `observation-mammectomy.json` | Observation | Mastectomy (BCS exclusion) |
-| `observation-mammography.json` | Observation | Mammography screening |
-| `observation-mi.json` | Observation | Myocardial infarction |
-| `observation-obesity.json` | Observation | Obesity/BMI |
-| `observation-prostate-dysplasia.json` | Observation | Prostate dysplasia |
-| `observation-psa-abnormal.json` | Observation | Abnormal PSA |
-| `observation-psa-value.json` | Observation | PSA value |
-| `observation-qua.json` | Observation | QUA observation |
-| `observation-retinal-exam.json` | Observation | Retinal exam |
-| `observation-triglycerides.json` | Observation | Triglycerides |
-| `observation-uacr.json` | Observation | Urine albumin-to-creatinine ratio |
-| `observation-uc.json` | Observation | Ulcerative colitis |
-| `observation-waist-high.json` | Observation | High waist circumference |
-| `procedure-hospice.json` | Procedure | Hospice care (common exclusion) |
-| `procedure-prostectomy.json` | Procedure | Prostatectomy |
-
----
-
-## Executing Tests
-
-### Prerequisites
-
-- **Java 17** — the Gradle 8.0 wrapper does not support Java 21+ (fails with "Unsupported class file major version"). If your default JVM is newer, set `JAVA_HOME` explicitly:
-  ```bash
-  export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-  ```
-- Gradle (use the included `./gradlew` wrapper — do not use a system-installed Gradle)
-- Valid `client.id`, `client.secret`, and `client.key` (see [Required Credentials](#required-credentials))
-
----
-
-### Run all tests (default env: `dev`)
+Everything runs in Docker:
 
 ```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew test \
-  -Dkarate.env=dev \
-  -Dclient.id=YOUR_CLIENT_ID \
-  -Dclient.key=YOUR_CLIENT_KEY \
-  -Dclient.secret=YOUR_CLIENT_SECRET
+make init              # one-time local setup
+make up / make down    # start / stop the dev container
+make tests             # pytest tests + package
+make tests-integration # pytest tests_integration
+make run-pre-commit    # ruff, mypy (strict), bandit, detect-secrets, etc.
+make uv.lock           # re-lock dependencies (also: make update-fast)
+make build             # build sdist and wheel
 ```
 
-Tests run in parallel with 3 threads (configured in `KarateTestRunner.java`).
+The pre-commit hook runs in Docker and cannot see a git worktree's `.git` file, so it fails with
+`FatalError: git failed` inside a worktree. Run `make run-pre-commit` from the main checkout, or run ruff and
+pytest directly, and let CI run the full set.
 
----
+## Conventions
 
-### Run all tests against a specific environment
+- Line length is 120 (ruff). mypy runs in strict mode; the package ships `py.typed`.
+- Commit messages and PR titles must start with a JIRA key (for example `BAI-965 feat: ...`), or `Bump`, `Merge`,
+  `Revert`, or `Reapply`. Conventional-commit prefixes alone are rejected by `check-commit-message.yml`.
+- Every PR needs one `risk:*`, one `type:*`, and one `semver:*` label before it can merge.
+- A breaking change uses `feat!:` in the PR title and describes the consumer migration in the body.
+- Releases are published to PyPI when a GitHub release is created. The release tag becomes the package version
+  (`VERSION` in the repo is a placeholder).
+- Tests are plain async pytest (`asyncio_mode = "auto"`). Mongo is faked or mocked in unit tests; use the
+  `mock_mongo_database` fixture in `tests/conftest.py`.
 
-```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew test \
-  -Dkarate.env=staging \
-  -Dclient.id=YOUR_CLIENT_ID \
-  -Dclient.key=YOUR_CLIENT_KEY \
-  -Dclient.secret=YOUR_CLIENT_SECRET
-```
+## Version upgrades must be backwards compatible
 
-Supported values for `-Dkarate.env`: `dev`, `staging`, `client-sandbox`, `prod`
+A release must never make data or code written for the previous version stop working. Before opening a PR, check
+each of these:
 
----
+- **Schema bumps need a migration.** Any change to `MongoPluginSkillDocument.SCHEMA_VERSION` must register a step
+  for the previous version in `loaders/schema_migrations.py` (`tests/skills/test_schema_migrations.py` fails
+  otherwise). Reads filter by exact `schema_version`, so an unmigrated bump silently hides every user-authored
+  document. If the new fields can't be defaulted by the model, the step must compute them from stored data (the
+  v3→v4 step derives `digest` and `size` from `content`).
+- **Prefer additive changes.** New document fields get a default and the models keep `extra="ignore"`. Do not
+  rename, remove, or change the type or meaning of a stored field. If you must, add the new field, migrate, and keep
+  reading the old one for a release.
+- **Never leave old and new pods incompatible during a rolling deploy.** Old pods keep writing the previous
+  `schema_version` while new pods run. A change that makes either side's writes unreadable to the other needs a
+  staged release.
+- **Don't break public interfaces.** Adding a required method to `SkillLoaderProtocol`, `PluginSkillStore`, or
+  another protocol, or changing a public signature, breaks external implementers under `mypy --strict` (as #67
+  did). Add optional methods or defaulted parameters instead. If a break is unavoidable, make it a major version.
+- **Unique indexes include `schema_version`.** Changing index keys or names needs a rollout-safe path through
+  `_ensure_index`, and a migration must not violate them (see the conflict guard in
+  `MongoPluginSkillLoader.repair_stale_documents`).
+- **Test the upgrade, not just the new state.** Include a test that data stored under the previous version is still
+  readable or migrated after your change.
 
-### Run a single feature file
+## Schema-version repair
 
-```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew clean test \
-  -Dkarate.options="classpath:feature/cql/bcs1-evaluation.feature" \
-  -Dkarate.env=dev \
-  -Dclient.id=YOUR_CLIENT_ID \
-  -Dclient.key=YOUR_CLIENT_KEY \
-  -Dclient.secret=YOUR_CLIENT_SECRET
-```
-
----
-
-### Run by tag
-
-Filter by a Karate tag using `--tags`:
-
-```bash
-# Run all CQL measure tests
-JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew clean test \
-  -Dkarate.options="--tags @cql" \
-  -Dkarate.env=dev \
-  -Dclient.id=YOUR_CLIENT_ID \
-  -Dclient.key=YOUR_CLIENT_KEY \
-  -Dclient.secret=YOUR_CLIENT_SECRET
-
-# Run all end-to-end tests
-JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew clean test \
-  -Dkarate.options="--tags @e2e" \
-  -Dkarate.env=dev \
-  -Dclient.id=YOUR_CLIENT_ID \
-  -Dclient.key=YOUR_CLIENT_KEY \
-  -Dclient.secret=YOUR_CLIENT_SECRET
-```
-
----
-
-### Clean build before running
-
-Use `clean` to avoid Gradle's up-to-date checks (the `build.gradle` already sets `outputs.upToDateWhen { false }`, but `clean` is recommended for CI):
-
-```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew clean test ...
-```
-
----
-
-## Test Reports
-
-After a test run, HTML and JUnit XML reports are generated at:
-
-```
-build/reports/tests/test/         # Gradle HTML report
-build/karate-reports/             # Karate HTML report (karate-summary.html)
-build/surefire-reports/           # JUnit XML reports
-```
-
-Open the Karate summary report:
-
-```bash
-open build/karate-reports/karate-summary.html
+`MongoPluginSkillLoader` repairs documents left at an older `schema_version` itself: on first data access and at
+most every `repair_interval_seconds` (default 300) afterwards, so consumers need no startup hook. It never migrates
+a document over a same-identity document already at the current version; it logs that at ERROR and leaves both.
+Pass `auto_repair=False` to disable it.

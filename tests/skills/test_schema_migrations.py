@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import logging
 import time
 from collections.abc import Mapping
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from langchain_ai_skills_framework.loaders.mongo_plugin_skill_loader import MongoPluginSkillLoader
 from langchain_ai_skills_framework.loaders.schema_migrations import (
     MIN_MIGRATABLE_VERSION,
     MissingMigrationError,
+    content_digest_and_size,
     migrate_fields,
     registered_versions,
 )
@@ -43,7 +45,7 @@ def test_skill_migration_computes_manifest_fields_from_content() -> None:
 
 
 def test_multi_version_hop_is_chained() -> None:
-    fields = migrate_fields(kind="references", doc={"content": "x"}, from_version=2, to_version=4)
+    fields = migrate_fields(kind="resources", doc={"content": "x"}, from_version=2, to_version=4)
     assert fields["size"] == 1
 
 
@@ -237,3 +239,107 @@ async def test_known_conflict_is_logged_once_and_does_not_consume_batch(caplog: 
 
     assert sum("Resolve manually" in r.message for r in caplog.records) == 1
     assert next(d for d in db["plugin_skills"].docs if d["_id"] == "other")["schema_version"] == CURRENT
+
+
+def test_every_public_coroutine_repairs_first() -> None:
+    """A public coroutine added without ``@_repairs_first`` would read past stale documents."""
+    exempt = {"ensure_indexes", "repair_stale_documents"}
+    undecorated = [
+        name
+        for name, member in vars(MongoPluginSkillLoader).items()
+        if not name.startswith("_")
+        and name not in exempt
+        and inspect.iscoroutinefunction(member)
+        and not getattr(member, "__repairs_first__", False)
+    ]
+    assert undecorated == []
+
+
+def test_loader_and_migration_share_one_digest_definition() -> None:
+    assert MongoPluginSkillLoader._digest_and_size("café") == content_digest_and_size("café")
+
+
+async def test_repair_failure_is_logged_and_does_not_fail_the_read(caplog: pytest.LogCaptureFixture) -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.append(_skill(CURRENT, _id="current"))
+    collection = db["plugin_skills"]
+    real_count = collection.count_documents
+
+    async def count_documents(query: Mapping[str, Any], limit: int = 0) -> int:
+        if not isinstance(query.get("schema_version"), dict):
+            return await real_count(query, limit=limit)
+        raise RuntimeError("boom")  # the stale-document probe, not the read
+
+    collection.count_documents = count_documents  # type: ignore[method-assign]
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.ERROR):
+        assert await loader.skill_exists(author="u1", plugin_name="p", skill_name="s") is True
+
+    assert any("Schema-version repair failed" in r.message for r in caplog.records)
+
+
+async def test_unauthorized_repair_disables_itself_after_one_attempt(caplog: pytest.LogCaptureFixture) -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.append(_skill(3))
+    db["plugin_skills"].update_one = AsyncMock(side_effect=OperationFailure("not authorized", code=13))  # type: ignore[method-assign]
+    loader = MongoPluginSkillLoader(database=db, repair_interval_seconds=0)  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.WARNING):
+        await loader.skill_exists(author="u1", plugin_name="p", skill_name="s")
+        await loader.skill_exists(author="u1", plugin_name="p", skill_name="s")
+
+    assert db["plugin_skills"].update_one.await_count == 1
+    assert sum("repair disabled" in r.message for r in caplog.records) == 1
+
+
+async def test_other_operation_failure_is_retried_next_interval() -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.append(_skill(3))
+    db["plugin_skills"].update_one = AsyncMock(side_effect=OperationFailure("transient", code=91))  # type: ignore[method-assign]
+    loader = MongoPluginSkillLoader(database=db, repair_interval_seconds=0)  # type: ignore[arg-type]
+
+    await loader.skill_exists(author="u1", plugin_name="p", skill_name="s")
+    await loader.skill_exists(author="u1", plugin_name="p", skill_name="s")
+
+    assert db["plugin_skills"].update_one.await_count == 2
+
+
+async def test_unmigratable_document_is_logged_once_and_left_in_place(caplog: pytest.LogCaptureFixture) -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.append(_skill(CURRENT, _id="no-step"))
+    # A loader targeting CURRENT + 1 has no registered step for CURRENT -> CURRENT + 1.
+    loader = MongoPluginSkillLoader(database=db, schema_version=CURRENT + 1)  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.ERROR):
+        first = await loader.repair_stale_documents()
+        second = await loader.repair_stale_documents()
+
+    assert first["plugin_skills.migrated"] == 0
+    assert second["plugin_skills.migrated"] == 0
+    assert db["plugin_skills"].docs[0]["schema_version"] == CURRENT
+    assert sum("No migration registered" in r.message for r in caplog.records) == 1
+
+
+async def test_non_integer_schema_version_is_skipped_without_starving_the_batch() -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend([_skill(3, _id="float", skill_name="f"), _skill(3, _id="ok", skill_name="ok")])
+    db["plugin_skills"].docs[0]["schema_version"] = 3.5
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+
+    await loader.repair_stale_documents(batch_size=1)
+    await loader.repair_stale_documents(batch_size=1)
+
+    assert db["plugin_skills"].docs[0]["schema_version"] == 3.5
+    assert db["plugin_skills"].docs[1]["schema_version"] == CURRENT
+
+
+async def test_ensure_indexes_creates_schema_version_index_on_usage() -> None:
+    db = _FakeDatabase()
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+    loader._ensure_index = AsyncMock()  # type: ignore[method-assign]
+
+    await loader.ensure_indexes()
+
+    usage_calls = [c for c in loader._ensure_index.await_args_list if c.args[0] is db["plugin_skill_usage"]]
+    assert {c.kwargs["name"] for c in usage_calls} >= {MongoPluginSkillLoader.USAGE_SCHEMA_VERSION_INDEX_NAME}

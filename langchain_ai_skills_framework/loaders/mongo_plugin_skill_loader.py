@@ -80,6 +80,9 @@ DEFAULT_PLUGINS_COLLECTION = "plugins"
 DEFAULT_REPAIR_INTERVAL_SECONDS = 300.0
 DEFAULT_REPAIR_BATCH_SIZE = 500
 UNAUTHORIZED_ERROR_CODE = 13  # MongoDB "Unauthorized"
+# Documents that can never be migrated are excluded from each pass by id; past this many something is wrong with
+# the data or the migration registry, so stop rather than grow an unbounded ``$nin``.
+MAX_SKIPPED_IDS = 1000
 
 
 def _repairs_first[**P, R](
@@ -141,6 +144,7 @@ class MongoPluginSkillLoader:
         self._repair_batch_size = repair_batch_size
         self._last_repair_check: float | None = None
         self._repair_incomplete = False
+        self._repair_passes = 0
         self._skipped_ids: set[object] = set()
         self._skills_collection: AsyncIOMotorCollection[dict[str, object]] = database[skills_collection_name]
         self._resources_collection: AsyncIOMotorCollection[dict[str, object]] = database[references_collection_name]
@@ -245,13 +249,17 @@ class MongoPluginSkillLoader:
             time.monotonic() - self._last_repair_check < self._repair_interval_seconds
         ):
             return
+        passes_seen = self._repair_passes
         async with self._repair_lock:
+            if self._repair_passes != passes_seen:
+                # Another caller's pass finished while this one waited; it has already drained a batch for everyone.
+                return
             if self._last_repair_check is not None and (
                 time.monotonic() - self._last_repair_check < self._repair_interval_seconds
             ):
                 return
             try:
-                await self.repair_stale_documents(batch_size=self._repair_batch_size)
+                await self._repair_all(batch_size=self._repair_batch_size)
             except OperationFailure as exc:
                 self._repair_incomplete = False
                 if exc.code == UNAUTHORIZED_ERROR_CODE:
@@ -270,32 +278,48 @@ class MongoPluginSkillLoader:
                 self._repair_incomplete = False
                 logger.exception("Schema-version repair failed; stale documents may remain invisible until it succeeds")
             finally:
+                self._repair_passes += 1
                 # A truncated pass leaves the timestamp unset so the next call continues draining the backlog.
                 self._last_repair_check = None if self._repair_incomplete else time.monotonic()
 
     async def repair_stale_documents(self, *, batch_size: int | None = None) -> Mapping[str, int]:
         """Migrate every document with ``MIN_MIGRATABLE_VERSION <= schema_version < current`` in place.
 
-        Safe to run concurrently from several pods: each update is conditional on the document still being at the
-        old version, so a race is a no-op for the loser. A document is left untouched (and logged at ERROR) when a
-        document with the same identity already exists at the current version, because that one holds the user's
-        latest save and the unique index would reject the re-tag anyway.
+        Covers every document in the loader's collections, marketplace-synced ones included. Safe to run
+        concurrently from several pods: each update is conditional on the document still being at the old version,
+        so a race is a no-op for the loser, and calls on one loader are serialized with the automatic repair.
+
+        When a document with the same identity already exists at the current version, the two are reconciled
+        rather than left side by side (a leftover old-version document would reappear after a restart if the
+        current one were deleted): the one with the later ``date_modified`` is kept, the other is deleted, and the
+        current-version document wins when timestamps are missing or equal.
 
         ``batch_size`` caps the documents examined per collection in this call (``None`` = unbounded); when the cap
         is hit, the remainder is picked up by the next automatic pass.
 
-        Returns counts keyed ``"<collection>.migrated"`` / ``"<collection>.conflicts"``.
+        Returns counts keyed ``"<collection>.migrated"`` / ``"<collection>.conflicts"`` (conflicts reconciled).
         """
+        async with self._repair_lock:
+            return await self._repair_all(batch_size=batch_size)
+
+    async def _repair_all(self, *, batch_size: int | None) -> Mapping[str, int]:
+        """Repair every collection; the caller must hold ``_repair_lock``."""
         self._repair_incomplete = False
+        # Skills go last, and only once their references and scripts are fully migrated, so a skill never reads back
+        # as current while its children are still hidden at the old version.
         targets: tuple[tuple[CollectionKind, AsyncIOMotorCollection[dict[str, object]]], ...] = (
-            ("skills", self._skills_collection),
             ("resources", self._resources_collection),
             ("scripts", self._scripts_collection),
             ("plugins", self._plugins_collection),
             ("usage", self._usage_collection),
+            ("skills", self._skills_collection),
         )
         counts: dict[str, int] = {}
         for kind, collection in targets:
+            if kind == "skills" and self._repair_incomplete:
+                counts[f"{collection.name}.migrated"] = 0
+                counts[f"{collection.name}.conflicts"] = 0
+                continue
             migrated, conflicts = await self._repair_collection(kind=kind, collection=collection, batch_size=batch_size)
             counts[f"{collection.name}.migrated"] = migrated
             counts[f"{collection.name}.conflicts"] = conflicts
@@ -332,22 +356,17 @@ class MongoPluginSkillLoader:
                 self._skip(collection, doc, f"schema_version {old_version!r} is not an integer")
                 continue
             if identity_fields:
-                sibling = await collection.find_one(
-                    {sv: self._schema_version, **{f: doc.get(f) for f in identity_fields}}, {"_id": 1}
-                )
-                if sibling is not None:
-                    conflicts += 1
-                    self._skip(
-                        collection,
-                        doc,
-                        f"a document with the same identity already exists at schema_version {self._schema_version} "
-                        f"(_id={sibling.get('_id')}). Resolve manually",
-                    )
-                    continue
+                sibling = await self._find_current_sibling(collection, doc, identity_fields)
+            else:
+                sibling = None
             try:
                 fields = migrate_fields(kind=kind, doc=doc, from_version=old_version, to_version=self._schema_version)
             except MissingMigrationError as exc:
                 self._skip(collection, doc, str(exc))
+                continue
+            if sibling is not None:
+                conflicts += 1
+                await self._reconcile_conflict(collection, doc, sibling, fields, old_version)
                 continue
             try:
                 result = await collection.update_one(
@@ -355,12 +374,13 @@ class MongoPluginSkillLoader:
                     {"$set": {**fields, sv: self._schema_version}},
                 )
             except DuplicateKeyError:
+                # A same-identity document was created at the current version after the sibling check.
+                sibling = await self._find_current_sibling(collection, doc, identity_fields)
+                if sibling is None:
+                    self._skip(collection, doc, "a concurrent same-identity write blocked the update")
+                    continue
                 conflicts += 1
-                self._skip(
-                    collection,
-                    doc,
-                    f"a same-identity document was created at schema_version {self._schema_version} concurrently",
-                )
+                await self._reconcile_conflict(collection, doc, sibling, fields, old_version)
                 continue
             migrated += result.modified_count
         if batch_size is not None and examined >= batch_size:
@@ -375,6 +395,55 @@ class MongoPluginSkillLoader:
             )
         return migrated, conflicts
 
+    async def _find_current_sibling(
+        self,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        doc: Mapping[str, object],
+        identity_fields: tuple[str, ...],
+    ) -> dict[str, object] | None:
+        return await collection.find_one(
+            {self.SCHEMA_VERSION_FIELD: self._schema_version, **{f: doc.get(f) for f in identity_fields}},
+            {"_id": 1, "date_modified": 1},
+        )
+
+    async def _reconcile_conflict(
+        self,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        stale: Mapping[str, object],
+        sibling: Mapping[str, object],
+        fields: Mapping[str, object],
+        old_version: int,
+    ) -> None:
+        """Keep whichever of a stale document and its current-version twin was modified last; delete the other.
+
+        Leaving the stale one in place would let it reappear after a restart if the current one is later deleted.
+        When the stale document is newer (an old pod saved after the migration), its content replaces the
+        sibling's so the latest edit is not lost. A missing or equal timestamp keeps the current-version document.
+        """
+        sv = self.SCHEMA_VERSION_FIELD
+        stale_modified = stale.get("date_modified")
+        sibling_modified = sibling.get("date_modified")
+        stale_wins = (
+            isinstance(stale_modified, datetime)
+            and isinstance(sibling_modified, datetime)
+            and stale_modified > sibling_modified
+        )
+        if stale_wins:
+            replacement = {k: v for k, v in stale.items() if k != "_id"}
+            replacement.update(fields)
+            replacement[sv] = self._schema_version
+            await collection.replace_one({"_id": sibling["_id"], sv: self._schema_version}, replacement)
+        await collection.delete_one({"_id": stale["_id"], sv: old_version})
+        logger.warning(
+            "Reconciled %s _id=%s (schema_version %s) with same-identity _id=%s (schema_version %s): kept the %s.",
+            collection.name,
+            stale.get("_id"),
+            old_version,
+            sibling.get("_id"),
+            self._schema_version,
+            "older-version document, which was modified later" if stale_wins else "current-version document",
+        )
+
     def _skip(
         self, collection: AsyncIOMotorCollection[dict[str, object]], doc: Mapping[str, object], reason: str
     ) -> None:
@@ -385,6 +454,13 @@ class MongoPluginSkillLoader:
         """
         self._skipped_ids.add(doc["_id"])
         logger.error("Not migrating %s _id=%s: %s.", collection.name, doc.get("_id"), reason)
+        if len(self._skipped_ids) > MAX_SKIPPED_IDS:
+            self._auto_repair = False
+            logger.error(
+                "Schema-version repair disabled: more than %d documents cannot be migrated. Check the migration "
+                "registry and the stored data.",
+                MAX_SKIPPED_IDS,
+            )
 
     def _version_filter(self, query: dict[str, object]) -> dict[str, object]:
         """Add schema_version to a query filter."""

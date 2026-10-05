@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import inspect
 import logging
 import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
+from langchain_ai_skills_framework.loaders import mongo_plugin_skill_loader as loader_module
 from langchain_ai_skills_framework.loaders.mongo_plugin_skill_loader import MongoPluginSkillLoader
 from langchain_ai_skills_framework.loaders.schema_migrations import (
     MIN_MIGRATABLE_VERSION,
@@ -74,11 +77,13 @@ class _FakeCollection:
         self.name = name
         self.docs = docs or []
         self.raise_duplicate_on_update = False
+        self.find_calls = 0
 
     async def count_documents(self, query: Mapping[str, Any], limit: int = 0) -> int:
         return sum(1 for d in self.docs if _matches(d, query))
 
     def find(self, query: Mapping[str, Any]) -> Any:
+        self.find_calls += 1
         matched = [dict(d) for d in self.docs if _matches(d, query)]
 
         class _Cursor:
@@ -108,6 +113,25 @@ class _FakeCollection:
                 d.update(update["$set"])
                 return MagicMock(modified_count=1)
         return MagicMock(modified_count=0)
+
+    async def replace_one(self, query: Mapping[str, Any], replacement: Mapping[str, Any]) -> MagicMock:
+        for i, d in enumerate(self.docs):
+            if _matches(d, query):
+                self.docs[i] = {"_id": d["_id"], **replacement}
+                return MagicMock(modified_count=1)
+        return MagicMock(modified_count=0)
+
+    async def delete_many(self, query: Mapping[str, Any]) -> MagicMock:
+        before = len(self.docs)
+        self.docs[:] = [d for d in self.docs if not _matches(d, query)]
+        return MagicMock(deleted_count=before - len(self.docs))
+
+    async def delete_one(self, query: Mapping[str, Any]) -> MagicMock:
+        for i, d in enumerate(self.docs):
+            if _matches(d, query):
+                del self.docs[i]
+                return MagicMock(deleted_count=1)
+        return MagicMock(deleted_count=0)
 
 
 class _FakeDatabase:
@@ -154,21 +178,79 @@ async def test_skill_two_versions_behind_is_migrated() -> None:
     assert db["plugin_skills"].docs[0]["schema_version"] == CURRENT
 
 
-async def test_current_version_sibling_is_never_overwritten() -> None:
+T1 = datetime(2026, 1, 1, tzinfo=UTC)
+T2 = datetime(2026, 2, 1, tzinfo=UTC)
+
+
+async def test_stale_twin_is_deleted_and_current_version_document_kept() -> None:
     db = _FakeDatabase()
-    db["plugin_skills"].docs.extend([_skill(3), _skill(CURRENT, content="newer", _id="current")])
+    db["plugin_skills"].docs.extend(
+        [_skill(3, date_modified=T1), _skill(CURRENT, content="newer", _id="current", date_modified=T2)]
+    )
     loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
 
     counts = await loader.repair_stale_documents()
 
     assert counts["plugin_skills.conflicts"] == 1
     assert counts["plugin_skills.migrated"] == 0
-    stale, current = db["plugin_skills"].docs
-    assert stale["schema_version"] == 3
-    assert current["content"] == "newer"
+    (remaining,) = db["plugin_skills"].docs
+    assert remaining["_id"] == "current"
+    assert remaining["content"] == "newer"
 
 
-async def test_concurrent_duplicate_key_is_counted_as_conflict() -> None:
+async def test_stale_twin_modified_later_replaces_the_current_document() -> None:
+    """An old pod saved after the migration: its newer edit must not be lost."""
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend(
+        [
+            _skill(3, content="latest edit", date_modified=T2),
+            _skill(CURRENT, content="older", _id="current", date_modified=T1),
+        ]
+    )
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+
+    await loader.repair_stale_documents()
+
+    (remaining,) = db["plugin_skills"].docs
+    assert remaining["_id"] == "current"
+    assert remaining["content"] == "latest edit"
+    assert remaining["schema_version"] == CURRENT
+    assert remaining["digest"].startswith("sha256:")
+
+
+async def test_deleted_skill_does_not_reappear_after_restart() -> None:
+    """Re-save after a bump leaves v3 + v4 twins; deleting the v4 one must not let the v3 one resurface."""
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend([_skill(3, date_modified=T1), _skill(CURRENT, _id="current", date_modified=T2)])
+
+    first_pod = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+    assert await first_pod.skill_exists(author="u1", plugin_name="p", skill_name="s") is True
+    assert await first_pod.delete_skill(author="u1", plugin_name="p", skill_name="s") is True
+
+    restarted_pod = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]  # empty in-memory state
+    assert await restarted_pod.skill_exists(author="u1", plugin_name="p", skill_name="s") is False
+    assert db["plugin_skills"].docs == []
+
+
+async def test_duplicate_key_with_a_concurrently_created_twin_is_reconciled() -> None:
+    db = _FakeDatabase()
+    collection = db["plugin_skills"]
+    collection.docs.append(_skill(3, date_modified=T1))
+
+    async def create_twin_then_conflict(query: Mapping[str, Any], update: Mapping[str, Any]) -> MagicMock:
+        collection.docs.append(_skill(CURRENT, _id="twin", date_modified=T2))
+        raise DuplicateKeyError("dup")
+
+    collection.update_one = create_twin_then_conflict  # type: ignore[method-assign]
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+
+    counts = await loader.repair_stale_documents()
+
+    assert counts["plugin_skills.conflicts"] == 1
+    assert [d["_id"] for d in collection.docs] == ["twin"]
+
+
+async def test_duplicate_key_without_a_visible_twin_is_skipped_and_left_in_place() -> None:
     db = _FakeDatabase()
     db["plugin_skills"].docs.append(_skill(3))
     db["plugin_skills"].raise_duplicate_on_update = True
@@ -176,7 +258,9 @@ async def test_concurrent_duplicate_key_is_counted_as_conflict() -> None:
 
     counts = await loader.repair_stale_documents()
 
-    assert counts["plugin_skills.conflicts"] == 1
+    assert counts["plugin_skills.conflicts"] == 0
+    assert counts["plugin_skills.migrated"] == 0
+    assert db["plugin_skills"].docs[0]["schema_version"] == 3
 
 
 async def test_documents_without_schema_version_or_below_minimum_are_untouched() -> None:
@@ -226,18 +310,18 @@ async def test_repair_is_bounded_per_call_and_drains_across_calls() -> None:
     assert all(d["schema_version"] == CURRENT for d in db["plugin_skills"].docs)
 
 
-async def test_known_conflict_is_logged_once_and_does_not_consume_batch(caplog: pytest.LogCaptureFixture) -> None:
+async def test_reconciled_conflict_is_logged_once_and_does_not_consume_batch(caplog: pytest.LogCaptureFixture) -> None:
     db = _FakeDatabase()
     db["plugin_skills"].docs.extend([_skill(3, _id="stale"), _skill(CURRENT, _id="current")])
     db["plugin_skills"].docs.append(_skill(3, _id="other", skill_name="other"))
     loader = MongoPluginSkillLoader(database=db, repair_batch_size=1)  # type: ignore[arg-type]
 
-    with caplog.at_level(logging.ERROR):
-        await loader.repair_stale_documents(batch_size=1)
-        await loader.repair_stale_documents(batch_size=1)
-        await loader.repair_stale_documents(batch_size=1)
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            await loader.repair_stale_documents(batch_size=1)
 
-    assert sum("Resolve manually" in r.message for r in caplog.records) == 1
+    assert sum("Reconciled" in r.message for r in caplog.records) == 1
+    assert {d["_id"] for d in db["plugin_skills"].docs} == {"current", "other"}
     assert next(d for d in db["plugin_skills"].docs if d["_id"] == "other")["schema_version"] == CURRENT
 
 
@@ -343,3 +427,71 @@ async def test_ensure_indexes_creates_schema_version_index_on_usage() -> None:
 
     usage_calls = [c for c in loader._ensure_index.await_args_list if c.args[0] is db["plugin_skill_usage"]]
     assert {c.kwargs["name"] for c in usage_calls} >= {MongoPluginSkillLoader.USAGE_SCHEMA_VERSION_INDEX_NAME}
+
+
+async def test_concurrent_callers_share_one_repair_pass() -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend(_skill(3, _id=f"id{i}", skill_name=f"s{i}") for i in range(3))
+    loader = MongoPluginSkillLoader(database=db, repair_batch_size=1)  # type: ignore[arg-type]
+
+    await asyncio.gather(*(loader.skill_exists(author="u1", plugin_name="p", skill_name="s0") for _ in range(5)))
+
+    assert db["plugin_skills"].find_calls == 1
+
+
+async def test_skills_wait_until_references_are_fully_migrated() -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.append(_skill(3))
+    db["plugin_references"].docs.extend(
+        {
+            "_id": f"r{i}",
+            "author": "u1",
+            "plugin_name": "p",
+            "skill_name": "s",
+            "resource_name": f"r{i}",
+            "content": "x",
+            "schema_version": 3,
+        }
+        for i in range(2)
+    )
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+
+    await loader.repair_stale_documents(batch_size=1)
+    assert db["plugin_skills"].docs[0]["schema_version"] == 3  # a reference is still stale
+
+    for _ in range(3):
+        await loader.repair_stale_documents(batch_size=1)
+
+    assert db["plugin_skills"].docs[0]["schema_version"] == CURRENT
+    assert all(d["schema_version"] == CURRENT for d in db["plugin_references"].docs)
+
+
+async def test_direct_repair_call_waits_for_the_repair_lock() -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.append(_skill(3))
+    loader = MongoPluginSkillLoader(database=db)  # type: ignore[arg-type]
+
+    async with loader._repair_lock:
+        task = asyncio.create_task(loader.repair_stale_documents())
+        await asyncio.sleep(0.01)
+        assert not task.done()
+    await task
+
+    assert db["plugin_skills"].docs[0]["schema_version"] == CURRENT
+
+
+async def test_too_many_unmigratable_documents_disable_repair(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(loader_module, "MAX_SKIPPED_IDS", 1)
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend(
+        [_skill(CURRENT, _id="a", skill_name="a"), _skill(CURRENT, _id="b", skill_name="b")]
+    )
+    loader = MongoPluginSkillLoader(database=db, schema_version=CURRENT + 1)  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.ERROR):
+        await loader.repair_stale_documents()
+
+    assert loader._auto_repair is False
+    assert any("repair disabled" in r.message for r in caplog.records)

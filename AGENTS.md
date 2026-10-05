@@ -19,7 +19,7 @@ Skills come from two sources, merged by `CompositeSkillLoader` with precedence u
 
 | Path | Contents |
 |---|---|
-| `langchain_ai_skills_framework/loaders/` | Skill loaders, `PluginSkillStore` and `SkillLoaderProtocol`, `SkillSync`, `schema_migrations.py` |
+| `langchain_ai_skills_framework/loaders/` | Skill loaders, `PluginSkillStore` and `SkillLoaderProtocol`, `SkillSync` |
 | `.../models/` | Pydantic models, including the Mongo document models and `SCHEMA_VERSION` |
 | `.../services/` | One service per operation (save, load, list, delete, publish, run script, ...) |
 | `.../langchain/tools/` | LangChain tool wrappers over the services; `tool_factory.py` builds them |
@@ -65,11 +65,10 @@ pytest directly, and let CI run the full set.
 A release must never make data or code written for the previous version stop working. Before opening a PR, check
 each of these:
 
-- **Schema bumps need a migration.** Any change to `MongoPluginSkillDocument.SCHEMA_VERSION` must register a step
-  for the previous version in `loaders/schema_migrations.py` (`tests/skills/test_schema_migrations.py` fails
-  otherwise). Reads filter by exact `schema_version`, so an unmigrated bump silently hides every user-authored
-  document. If the new fields can't be defaulted by the model, the step must compute them from stored data (the
-  v3→v4 step derives `digest` and `size` from `content`).
+- **Schema bumps need a migration.** Reads filter by exact `schema_version`, so a bump to
+  `MongoPluginSkillDocument.SCHEMA_VERSION` silently hides every user-authored document saved under the old version
+  unless those documents are migrated. Ship the migration with the bump; if the new fields can't be defaulted by the
+  model, compute them from stored data (as v3→v4 does for `digest` and `size`, derived from `content`).
 - **Prefer additive changes.** New document fields get a default and the models keep `extra="ignore"`. Do not
   rename, remove, or change the type or meaning of a stored field. If you must, add the new field, migrate, and keep
   reading the old one for a release.
@@ -80,14 +79,7 @@ each of these:
   another protocol, or changing a public signature, breaks external implementers under `mypy --strict` (as #67
   did). Add optional methods or defaulted parameters instead. If a break is unavoidable, make it a major version.
 - **Unique indexes include `schema_version`.** Changing index keys or names needs a rollout-safe path through
-  `_ensure_index`, and a migration must not violate them (see the conflict guard in
-  `MongoPluginSkillLoader.repair_stale_documents`).
+  `_ensure_index`, and a migration must not violate them (never re-tag a document over a same-identity document
+  already at the current version).
 - **Test the upgrade, not just the new state.** Include a test that data stored under the previous version is still
   readable or migrated after your change.
-
-## Schema-version repair
-
-`MongoPluginSkillLoader` repairs documents left at an older `schema_version` itself: on first data access and at
-most every `repair_interval_seconds` (default 300) afterwards, so consumers need no startup hook. It never migrates
-a document over a same-identity document already at the current version; it logs that at ERROR and leaves both.
-Pass `auto_repair=False` to disable it.

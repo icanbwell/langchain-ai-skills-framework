@@ -10,26 +10,36 @@ Replaces the legacy ``MongoUserSkillLoader``.
 
 from __future__ import annotations
 
-import hashlib
+import asyncio
+import functools
 import logging
 import re
+import time
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Concatenate, Literal
 
 import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo import ReturnDocument
-from pymongo.errors import OperationFailure
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_loader_error import (
     SkillLoaderError,
 )
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
+)
+from langchain_ai_skills_framework.loaders.schema_migrations import (
+    IDENTITY_FIELDS,
+    MIN_MIGRATABLE_VERSION,
+    CollectionKind,
+    MissingMigrationError,
+    content_digest_and_size,
+    migrate_fields,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
@@ -65,6 +75,34 @@ DEFAULT_SCRIPTS_COLLECTION = "plugin_scripts"
 DEFAULT_USAGE_COLLECTION = "plugin_skill_usage"
 DEFAULT_PLUGINS_COLLECTION = "plugins"
 
+# How often a loader re-probes for documents left at an older schema_version (for example, written by a
+# not-yet-upgraded pod during a rolling deploy). The probe is a single indexed ``count_documents`` per collection.
+DEFAULT_REPAIR_INTERVAL_SECONDS = 300.0
+DEFAULT_REPAIR_BATCH_SIZE = 500
+UNAUTHORIZED_ERROR_CODE = 13  # MongoDB "Unauthorized"
+# Documents that can never be migrated are excluded from each pass by id; past this many something is wrong with
+# the data or the migration registry, so stop rather than grow an unbounded ``$nin``.
+MAX_SKIPPED_IDS = 1000
+
+
+def _repairs_first[**P, R](
+    method: Callable[Concatenate[MongoPluginSkillLoader, P], Awaitable[R]],
+) -> Callable[Concatenate[MongoPluginSkillLoader, P], Coroutine[Any, Any, R]]:
+    """Run the throttled stale-document repair before a public data-access coroutine.
+
+    Applied explicitly to every public coroutine except ``ensure_indexes`` and ``repair_stale_documents``, so any
+    caller (including consumers that never call ``ensure_indexes``) sees user-authored documents saved under an
+    older ``schema_version``. ``test_every_public_coroutine_repairs_first`` fails if a new one is left undecorated.
+    """
+
+    async def wrapper(self: MongoPluginSkillLoader, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        await self._ensure_current()
+        return await method(self, *args, **kwargs)
+
+    functools.update_wrapper(wrapper, method)
+    wrapper.__repairs_first__ = True  # type: ignore[attr-defined]
+    return wrapper
+
 
 class MongoPluginSkillLoader:
     """Reads and writes plugin-scoped skills in MongoDB.
@@ -79,6 +117,7 @@ class MongoPluginSkillLoader:
     SCRIPT_INDEX_NAME = "ux_plugin_skill_script"
     PATH_INDEX_NAME = "ix_plugin_path"
     USAGE_INDEX_NAME = "ix_plugin_skill_usage_lookup"
+    USAGE_SCHEMA_VERSION_INDEX_NAME = "ix_plugin_skill_usage_schema_version"
     PLUGIN_INDEX_NAME = "ux_plugin_name"
 
     SCHEMA_VERSION_FIELD = "schema_version"
@@ -93,9 +132,20 @@ class MongoPluginSkillLoader:
         scripts_collection_name: str = DEFAULT_SCRIPTS_COLLECTION,
         usage_collection_name: str = DEFAULT_USAGE_COLLECTION,
         plugins_collection_name: str = DEFAULT_PLUGINS_COLLECTION,
+        auto_repair: bool = True,
+        repair_interval_seconds: float = DEFAULT_REPAIR_INTERVAL_SECONDS,
+        repair_batch_size: int = DEFAULT_REPAIR_BATCH_SIZE,
     ) -> None:
         self._database = database
         self._schema_version = schema_version
+        self._auto_repair = auto_repair
+        self._repair_interval_seconds = repair_interval_seconds
+        self._repair_lock = asyncio.Lock()
+        self._repair_batch_size = repair_batch_size
+        self._last_repair_check: float | None = None
+        self._repair_incomplete = False
+        self._repair_passes = 0
+        self._skipped_ids: set[object] = set()
         self._skills_collection: AsyncIOMotorCollection[dict[str, object]] = database[skills_collection_name]
         self._resources_collection: AsyncIOMotorCollection[dict[str, object]] = database[references_collection_name]
         self._scripts_collection: AsyncIOMotorCollection[dict[str, object]] = database[scripts_collection_name]
@@ -141,6 +191,13 @@ class MongoPluginSkillLoader:
             unique=False,
             name=self.USAGE_INDEX_NAME,
         )
+        # Lets the periodic stale-document probe use an index instead of scanning the growing usage collection.
+        await self._ensure_index(
+            self._usage_collection,
+            keys=[(sv, 1)],
+            unique=False,
+            name=self.USAGE_SCHEMA_VERSION_INDEX_NAME,
+        )
         await self._ensure_index(
             self._plugins_collection,
             keys=[(sv, 1), ("plugin_name", 1)],
@@ -171,12 +228,247 @@ class MongoPluginSkillLoader:
             else:
                 raise
 
+    # --- Schema-version repair ------------------------------------------------
+
+    async def _ensure_current(self) -> None:
+        """Re-tag documents stored under an older ``schema_version`` so reads can see them.
+
+        Runs on first use and again at most every ``repair_interval_seconds``. Each pass handles at most
+        ``repair_batch_size`` documents per collection, so a large backlog is drained across successive calls
+        instead of blocking one caller. Failures are logged and never propagate: a repair problem must not take
+        reads down.
+
+        Rolling deploys: a document migrated to the new ``schema_version`` is invisible to pods still running the
+        old version until they are upgraded; the periodic re-check exists to pick up documents those old pods
+        write meanwhile. Repair writes to the collections, so a loader using read-only credentials disables itself
+        after the first authorization failure (see ``auto_repair``).
+        """
+        if not self._auto_repair:
+            return
+        if self._last_repair_check is not None and (
+            time.monotonic() - self._last_repair_check < self._repair_interval_seconds
+        ):
+            return
+        passes_seen = self._repair_passes
+        async with self._repair_lock:
+            if self._repair_passes != passes_seen:
+                # Another caller's pass finished while this one waited; it has already drained a batch for everyone.
+                return
+            if self._last_repair_check is not None and (
+                time.monotonic() - self._last_repair_check < self._repair_interval_seconds
+            ):
+                return
+            try:
+                await self._repair_all(batch_size=self._repair_batch_size)
+            except OperationFailure as exc:
+                self._repair_incomplete = False
+                if exc.code == UNAUTHORIZED_ERROR_CODE:
+                    self._auto_repair = False
+                    logger.warning(
+                        "Schema-version repair disabled: the database user cannot write. Documents saved under an "
+                        "older schema_version stay invisible to this loader until repaired by a writer (or "
+                        "repair_stale_documents is run with write access): %s",
+                        exc,
+                    )
+                else:
+                    logger.exception(
+                        "Schema-version repair failed; stale documents may remain invisible until it succeeds"
+                    )
+            except Exception:
+                self._repair_incomplete = False
+                logger.exception("Schema-version repair failed; stale documents may remain invisible until it succeeds")
+            finally:
+                self._repair_passes += 1
+                # A truncated pass leaves the timestamp unset so the next call continues draining the backlog.
+                self._last_repair_check = None if self._repair_incomplete else time.monotonic()
+
+    async def repair_stale_documents(self, *, batch_size: int | None = None) -> Mapping[str, int]:
+        """Migrate every document with ``MIN_MIGRATABLE_VERSION <= schema_version < current`` in place.
+
+        Covers every document in the loader's collections, marketplace-synced ones included. Safe to run
+        concurrently from several pods: each update is conditional on the document still being at the old version,
+        so a race is a no-op for the loser, and calls on one loader are serialized with the automatic repair.
+
+        When a document with the same identity already exists at the current version, the two are reconciled
+        rather than left side by side (a leftover old-version document would reappear after a restart if the
+        current one were deleted): the one with the later ``date_modified`` is kept, the other is deleted, and the
+        current-version document wins when timestamps are missing or equal.
+
+        ``batch_size`` caps the documents examined per collection in this call (``None`` = unbounded); when the cap
+        is hit, the remainder is picked up by the next automatic pass.
+
+        Returns counts keyed ``"<collection>.migrated"`` / ``"<collection>.conflicts"`` (conflicts reconciled).
+        """
+        async with self._repair_lock:
+            return await self._repair_all(batch_size=batch_size)
+
+    async def _repair_all(self, *, batch_size: int | None) -> Mapping[str, int]:
+        """Repair every collection; the caller must hold ``_repair_lock``."""
+        self._repair_incomplete = False
+        # Skills go last, and only once their references and scripts are fully migrated, so a skill never reads back
+        # as current while its children are still hidden at the old version.
+        targets: tuple[tuple[CollectionKind, AsyncIOMotorCollection[dict[str, object]]], ...] = (
+            ("resources", self._resources_collection),
+            ("scripts", self._scripts_collection),
+            ("plugins", self._plugins_collection),
+            ("usage", self._usage_collection),
+            ("skills", self._skills_collection),
+        )
+        counts: dict[str, int] = {}
+        for kind, collection in targets:
+            if kind == "skills" and self._repair_incomplete:
+                counts[f"{collection.name}.migrated"] = 0
+                counts[f"{collection.name}.conflicts"] = 0
+                continue
+            migrated, conflicts = await self._repair_collection(kind=kind, collection=collection, batch_size=batch_size)
+            counts[f"{collection.name}.migrated"] = migrated
+            counts[f"{collection.name}.conflicts"] = conflicts
+        return counts
+
+    async def _repair_collection(
+        self,
+        *,
+        kind: CollectionKind,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        batch_size: int | None,
+    ) -> tuple[int, int]:
+        sv = self.SCHEMA_VERSION_FIELD
+        stale_filter: dict[str, object] = {sv: {"$gte": MIN_MIGRATABLE_VERSION, "$lt": self._schema_version}}
+        if self._skipped_ids:
+            # Known unresolvable documents must not occupy batch slots forever.
+            stale_filter["_id"] = {"$nin": list(self._skipped_ids)}
+        if await collection.count_documents(stale_filter, limit=1) == 0:
+            return 0, 0
+
+        identity_fields = IDENTITY_FIELDS[kind]
+        migrated = 0
+        conflicts = 0
+        examined = 0
+        cursor = collection.find(stale_filter)
+        if batch_size is not None:
+            cursor = cursor.limit(batch_size)
+        async for doc in cursor:
+            examined += 1
+            # Digest computation is CPU-bound; yield so a large batch cannot starve other tasks on the event loop.
+            await asyncio.sleep(0)
+            old_version = doc.get(sv)
+            if not isinstance(old_version, int):
+                self._skip(collection, doc, f"schema_version {old_version!r} is not an integer")
+                continue
+            if identity_fields:
+                sibling = await self._find_current_sibling(collection, doc, identity_fields)
+            else:
+                sibling = None
+            try:
+                fields = migrate_fields(kind=kind, doc=doc, from_version=old_version, to_version=self._schema_version)
+            except MissingMigrationError as exc:
+                self._skip(collection, doc, str(exc))
+                continue
+            if sibling is not None:
+                conflicts += 1
+                await self._reconcile_conflict(collection, doc, sibling, fields, old_version)
+                continue
+            try:
+                result = await collection.update_one(
+                    {"_id": doc["_id"], sv: old_version},
+                    {"$set": {**fields, sv: self._schema_version}},
+                )
+            except DuplicateKeyError:
+                # A same-identity document was created at the current version after the sibling check.
+                sibling = await self._find_current_sibling(collection, doc, identity_fields)
+                if sibling is None:
+                    self._skip(collection, doc, "a concurrent same-identity write blocked the update")
+                    continue
+                conflicts += 1
+                await self._reconcile_conflict(collection, doc, sibling, fields, old_version)
+                continue
+            migrated += result.modified_count
+        if batch_size is not None and examined >= batch_size:
+            self._repair_incomplete = True
+        if migrated or conflicts:
+            logger.info(
+                "Schema-version repair on %s: migrated=%d conflicts=%d (target schema_version=%s)",
+                collection.name,
+                migrated,
+                conflicts,
+                self._schema_version,
+            )
+        return migrated, conflicts
+
+    async def _find_current_sibling(
+        self,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        doc: Mapping[str, object],
+        identity_fields: tuple[str, ...],
+    ) -> dict[str, object] | None:
+        return await collection.find_one(
+            {self.SCHEMA_VERSION_FIELD: self._schema_version, **{f: doc.get(f) for f in identity_fields}},
+            {"_id": 1, "date_modified": 1},
+        )
+
+    async def _reconcile_conflict(
+        self,
+        collection: AsyncIOMotorCollection[dict[str, object]],
+        stale: Mapping[str, object],
+        sibling: Mapping[str, object],
+        fields: Mapping[str, object],
+        old_version: int,
+    ) -> None:
+        """Keep whichever of a stale document and its current-version twin was modified last; delete the other.
+
+        Leaving the stale one in place would let it reappear after a restart if the current one is later deleted.
+        When the stale document is newer (an old pod saved after the migration), its content replaces the
+        sibling's so the latest edit is not lost. A missing or equal timestamp keeps the current-version document.
+        """
+        sv = self.SCHEMA_VERSION_FIELD
+        stale_modified = stale.get("date_modified")
+        sibling_modified = sibling.get("date_modified")
+        stale_wins = (
+            isinstance(stale_modified, datetime)
+            and isinstance(sibling_modified, datetime)
+            and stale_modified > sibling_modified
+        )
+        if stale_wins:
+            replacement = {k: v for k, v in stale.items() if k != "_id"}
+            replacement.update(fields)
+            replacement[sv] = self._schema_version
+            await collection.replace_one({"_id": sibling["_id"], sv: self._schema_version}, replacement)
+        await collection.delete_one({"_id": stale["_id"], sv: old_version})
+        logger.warning(
+            "Reconciled %s _id=%s (schema_version %s) with same-identity _id=%s (schema_version %s): kept the %s.",
+            collection.name,
+            stale.get("_id"),
+            old_version,
+            sibling.get("_id"),
+            self._schema_version,
+            "older-version document, which was modified later" if stale_wins else "current-version document",
+        )
+
+    def _skip(
+        self, collection: AsyncIOMotorCollection[dict[str, object]], doc: Mapping[str, object], reason: str
+    ) -> None:
+        """Log a document that cannot be migrated, once per process, and exclude it from later passes.
+
+        Excluding it keeps a permanently unmigratable document from repeating its log line every interval and from
+        occupying a batch slot forever.
+        """
+        self._skipped_ids.add(doc["_id"])
+        logger.error("Not migrating %s _id=%s: %s.", collection.name, doc.get("_id"), reason)
+        if len(self._skipped_ids) > MAX_SKIPPED_IDS:
+            self._auto_repair = False
+            logger.error(
+                "Schema-version repair disabled: more than %d documents cannot be migrated. Check the migration "
+                "registry and the stored data.",
+                MAX_SKIPPED_IDS,
+            )
+
     def _version_filter(self, query: dict[str, object]) -> dict[str, object]:
         """Add schema_version to a query filter."""
         return {**query, self.SCHEMA_VERSION_FIELD: self._schema_version}
 
     # --- Skill write operations ----------------------------------------------
 
+    @_repairs_first
     async def save_skill(
         self,
         *,
@@ -253,6 +545,7 @@ class MongoPluginSkillLoader:
 
         return MongoPluginSkillDocument.from_mongo_dict(raw)
 
+    @_repairs_first
     async def set_skill_state(
         self,
         *,
@@ -284,6 +577,7 @@ class MongoPluginSkillLoader:
             raise SkillNotFoundError(f"Skill '{skill_name}' not found in plugin '{plugin_name}' for author '{author}'")
         return MongoPluginSkillDocument.from_mongo_dict(raw)
 
+    @_repairs_first
     async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
@@ -298,6 +592,7 @@ class MongoPluginSkillLoader:
         result = await self._skills_collection.delete_one(filter_base)
         return result.deleted_count > 0
 
+    @_repairs_first
     async def skill_exists(self, *, author: str, plugin_name: str | None = None, skill_name: str) -> bool:
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
@@ -309,6 +604,7 @@ class MongoPluginSkillLoader:
 
     # --- Resource write operations -------------------------------------------
 
+    @_repairs_first
     async def save_resource(
         self,
         *,
@@ -372,6 +668,7 @@ class MongoPluginSkillLoader:
         )
         return MongoPluginResourceDocument.from_mongo_dict(raw)
 
+    @_repairs_first
     async def delete_resource(
         self,
         *,
@@ -394,6 +691,7 @@ class MongoPluginSkillLoader:
         )
         return result.deleted_count > 0
 
+    @_repairs_first
     async def read_resource(
         self,
         *,
@@ -419,6 +717,7 @@ class MongoPluginSkillLoader:
             )
         return str(raw["content"])
 
+    @_repairs_first
     async def list_resource_names(
         self,
         *,
@@ -436,6 +735,7 @@ class MongoPluginSkillLoader:
             names.append(raw["resource_name"])
         return sorted(names)
 
+    @_repairs_first
     async def list_resource_documents(
         self,
         *,
@@ -453,6 +753,7 @@ class MongoPluginSkillLoader:
             docs.append(MongoPluginResourceDocument.from_mongo_dict(raw))
         return sorted(docs, key=lambda d: d.resource_name)
 
+    @_repairs_first
     async def resource_exists(
         self,
         *,
@@ -475,6 +776,7 @@ class MongoPluginSkillLoader:
 
     # --- Script write operations ---------------------------------------------
 
+    @_repairs_first
     async def save_script(
         self,
         *,
@@ -538,6 +840,7 @@ class MongoPluginSkillLoader:
         )
         return MongoPluginScriptDocument.from_mongo_dict(raw)
 
+    @_repairs_first
     async def delete_script(
         self,
         *,
@@ -560,6 +863,7 @@ class MongoPluginSkillLoader:
         )
         return result.deleted_count > 0
 
+    @_repairs_first
     async def read_script(
         self,
         *,
@@ -585,6 +889,7 @@ class MongoPluginSkillLoader:
             )
         return str(raw["content"])
 
+    @_repairs_first
     async def list_script_names(
         self,
         *,
@@ -602,6 +907,7 @@ class MongoPluginSkillLoader:
             names.append(raw["script_name"])
         return sorted(names)
 
+    @_repairs_first
     async def list_script_documents(
         self,
         *,
@@ -619,6 +925,7 @@ class MongoPluginSkillLoader:
             docs.append(MongoPluginScriptDocument.from_mongo_dict(raw))
         return sorted(docs, key=lambda d: d.script_name)
 
+    @_repairs_first
     async def script_exists(
         self,
         *,
@@ -641,6 +948,7 @@ class MongoPluginSkillLoader:
 
     # --- Skill read operations -----------------------------------------------
 
+    @_repairs_first
     async def load_snapshot(
         self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
@@ -652,6 +960,7 @@ class MongoPluginSkillLoader:
             query["state"] = {"$ne": "staging"}
         return await self._build_snapshot(query=self._version_filter(query), owner_label=author)
 
+    @_repairs_first
     async def load_shared_snapshot(
         self, *, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
@@ -661,6 +970,7 @@ class MongoPluginSkillLoader:
             query["plugin_name"] = plugin_name
         return await self._build_snapshot(query=self._version_filter(query), owner_label="shared")
 
+    @_repairs_first
     async def get_skill_details(
         self,
         *,
@@ -708,6 +1018,7 @@ class MongoPluginSkillLoader:
 
     # --- Usage tracking -------------------------------------------------------
 
+    @_repairs_first
     async def record_skill_usage(
         self,
         *,
@@ -725,9 +1036,11 @@ class MongoPluginSkillLoader:
         await self._usage_collection.insert_one(data)
         return doc
 
+    @_repairs_first
     async def get_skill_usage_count(self, *, skill_name: str) -> int:
         return int(await self._usage_collection.count_documents(self._version_filter({"skill_name": skill_name})))
 
+    @_repairs_first
     async def get_skill_usage_counts(self, *, skill_names: Sequence[str]) -> Mapping[str, int]:
         if not skill_names:
             return {}
@@ -852,8 +1165,7 @@ class MongoPluginSkillLoader:
 
     @staticmethod
     def _digest_and_size(content: str) -> tuple[str, int]:
-        encoded = content.encode("utf-8")
-        return f"sha256:{hashlib.sha256(encoded).hexdigest()}", len(encoded)
+        return content_digest_and_size(content)
 
     @staticmethod
     def _build_manifest(
@@ -906,6 +1218,7 @@ class MongoPluginSkillLoader:
 
     # --- Plugin catalog -------------------------------------------------------
 
+    @_repairs_first
     async def save_plugin(
         self,
         *,
@@ -956,6 +1269,7 @@ class MongoPluginSkillLoader:
             raise SkillLoaderError(f"save_plugin: upsert returned no document for plugin '{plugin_name}'")
         return MongoPluginDefinitionDocument.from_mongo_dict(raw)
 
+    @_repairs_first
     async def plugin_exists(self, *, plugin_name: str) -> bool:
         """Return True if a plugin definition exists for the given name."""
         count = await self._plugins_collection.count_documents(
@@ -963,6 +1277,7 @@ class MongoPluginSkillLoader:
         )
         return count > 0
 
+    @_repairs_first
     async def list_plugins(self) -> Sequence[MongoPluginDefinitionDocument]:
         """Return all plugin definitions for the current schema version, skipping malformed documents."""
         cursor = self._plugins_collection.find(self._version_filter({})).sort("plugin_name", 1)
@@ -978,6 +1293,7 @@ class MongoPluginSkillLoader:
                 )
         return results
 
+    @_repairs_first
     async def has_plugins(self) -> bool:
         """Return True if the plugins collection has at least one document for the current schema version."""
         count = await self._plugins_collection.count_documents(self._version_filter({}), limit=1)

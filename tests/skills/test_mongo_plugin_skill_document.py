@@ -51,4 +51,38 @@ class TestRequiredExternalServers:
         """Per this repo's convention, adding a stored field must bump
         SCHEMA_VERSION so existing cached documents are ignored on read and
         re-synced rather than partially matching the new shape."""
-        assert MongoPluginSkillDocument.SCHEMA_VERSION == 3
+        assert MongoPluginSkillDocument.SCHEMA_VERSION == 4
+
+
+class TestManifestFields:
+    """Backward-compatibility coverage for digest/size/is_dynamic."""
+
+    def test_skill_document_defaults(self) -> None:
+        doc = _make_document()
+
+        assert doc.digest is None
+        assert doc.size is None
+        assert doc.is_dynamic is False
+
+    def test_skill_document_explicit_values_round_trip(self) -> None:
+        doc = _make_document(digest="sha256:" + "a" * 64, size=42, is_dynamic=True)
+
+        mongo_dict = doc.to_mongo_dict()
+        restored = MongoPluginSkillDocument.from_mongo_dict(mongo_dict)
+
+        assert restored.digest == "sha256:" + "a" * 64
+        assert restored.size == 42
+        assert restored.is_dynamic is True
+
+    def test_from_mongo_dict_without_manifest_keys_defaults(self) -> None:
+        """A document persisted before this field existed must still load."""
+        legacy_raw = {"plugin_name": "test-plugin", "skill_name": "test_skill", "author": "system"}
+
+        restored = MongoPluginSkillDocument.from_mongo_dict(legacy_raw)
+
+        assert restored.digest is None
+        assert restored.size is None
+        assert restored.is_dynamic is False
+
+    def test_schema_version_bumped_for_manifest_fields(self) -> None:
+        assert MongoPluginSkillDocument.SCHEMA_VERSION == 4

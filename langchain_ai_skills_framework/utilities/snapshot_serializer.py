@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import (
@@ -20,6 +20,7 @@ from langchain_ai_skills_framework.models.plugin_mcp_config import (
     coerce_mcp_visibility,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
@@ -65,7 +66,24 @@ def _serialize_summary(*, summary: SkillSummary) -> dict[str, Any]:
         "metadata": dict(summary.metadata),
         "allowed_tools": list(summary.allowed_tools),
         "required_external_servers": list(summary.required_external_servers),
+        "manifest": _serialize_manifest(manifest=summary.manifest),
     }
+
+
+def _serialize_manifest(
+    *, manifest: tuple[ManifestFileEntry, ...] | Literal["dynamic"] | None
+) -> list[dict[str, Any]] | Literal["dynamic"] | None:
+    if manifest is None or isinstance(manifest, str):
+        return manifest
+    return [{"path": entry.path, "digest": entry.digest, "size": entry.size} for entry in manifest]
+
+
+def _deserialize_manifest(
+    *, data: list[dict[str, Any]] | Literal["dynamic"] | None
+) -> tuple[ManifestFileEntry, ...] | Literal["dynamic"] | None:
+    if data is None or isinstance(data, str):
+        return data
+    return tuple(ManifestFileEntry(path=entry["path"], digest=entry["digest"], size=entry["size"]) for entry in data)
 
 
 def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
@@ -82,6 +100,7 @@ def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
         metadata=metadata,
         allowed_tools=tuple(data.get("allowed_tools", [])),
         required_external_servers=tuple(data.get("required_external_servers", [])),
+        manifest=_deserialize_manifest(data=data.get("manifest")),
     )
 
 

@@ -48,7 +48,7 @@ type_keywords:
   migration: ["migration", "migrate"]
   dependency: ["bump", "dependabot", "deps:"]
   upgrade: ["upgrade"]
-  docs: ["docs"]
+  docs: ["docs:", "docs("]  # conventional-commit prefix only, so "fix: update docs link" stays type:bug
   bug: ["fix", "bug"]
   feature: ["feat", "add "]
 

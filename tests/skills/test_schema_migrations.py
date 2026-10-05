@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import time
 from collections.abc import Mapping
 from typing import Any
 from unittest.mock import MagicMock
@@ -58,6 +60,8 @@ def _matches(doc: Mapping[str, Any], query: Mapping[str, Any]) -> bool:
                 return False
             if "$lt" in cond and not (value is not None and value < cond["$lt"]):
                 return False
+            if "$nin" in cond and value in cond["$nin"]:
+                return False
         elif value != cond:
             return False
     return True
@@ -75,11 +79,21 @@ class _FakeCollection:
     def find(self, query: Mapping[str, Any]) -> Any:
         matched = [dict(d) for d in self.docs if _matches(d, query)]
 
-        async def gen() -> Any:
-            for d in matched:
-                yield d
+        class _Cursor:
+            def __init__(self, items: list[dict[str, Any]]) -> None:
+                self._items = items
 
-        return gen()
+            def limit(self, n: int) -> _Cursor:
+                return _Cursor(self._items[:n])
+
+            def __aiter__(self) -> Any:
+                async def gen() -> Any:
+                    for d in self._items:
+                        yield d
+
+                return gen()
+
+        return _Cursor(matched)
 
     async def find_one(self, query: Mapping[str, Any], projection: object = None) -> dict[str, Any] | None:
         return next((dict(d) for d in self.docs if _matches(d, query)), None)
@@ -184,7 +198,9 @@ async def test_public_read_repairs_before_querying_and_rechecks_only_after_inter
     # A straggler written by an old pod after the first check is not picked up until the interval elapses.
     db["plugin_skills"].docs.append(_skill(3, _id="late", skill_name="late"))
     assert await loader.skill_exists(author="u1", plugin_name="p", skill_name="late") is False
-    loader._last_repair_check = 0.0
+    loader._last_repair_check = (
+        time.monotonic() - 3601
+    )  # monotonic is boot-relative; never assume it exceeds the interval
     assert await loader.skill_exists(author="u1", plugin_name="p", skill_name="late") is True
 
 
@@ -194,3 +210,30 @@ async def test_auto_repair_can_be_disabled() -> None:
     loader = MongoPluginSkillLoader(database=db, auto_repair=False)  # type: ignore[arg-type]
 
     assert await loader.skill_exists(author="u1", plugin_name="p", skill_name="s") is False
+
+
+async def test_repair_is_bounded_per_call_and_drains_across_calls() -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend(_skill(3, _id=f"id{i}", skill_name=f"s{i}") for i in range(3))
+    loader = MongoPluginSkillLoader(database=db, repair_batch_size=2)  # type: ignore[arg-type]
+
+    await loader.skill_exists(author="u1", plugin_name="p", skill_name="s0")
+    assert sum(d["schema_version"] == CURRENT for d in db["plugin_skills"].docs) == 2
+
+    await loader.skill_exists(author="u1", plugin_name="p", skill_name="s0")
+    assert all(d["schema_version"] == CURRENT for d in db["plugin_skills"].docs)
+
+
+async def test_known_conflict_is_logged_once_and_does_not_consume_batch(caplog: pytest.LogCaptureFixture) -> None:
+    db = _FakeDatabase()
+    db["plugin_skills"].docs.extend([_skill(3, _id="stale"), _skill(CURRENT, _id="current")])
+    db["plugin_skills"].docs.append(_skill(3, _id="other", skill_name="other"))
+    loader = MongoPluginSkillLoader(database=db, repair_batch_size=1)  # type: ignore[arg-type]
+
+    with caplog.at_level(logging.ERROR):
+        await loader.repair_stale_documents(batch_size=1)
+        await loader.repair_stale_documents(batch_size=1)
+        await loader.repair_stale_documents(batch_size=1)
+
+    assert sum("Resolve manually" in r.message for r in caplog.records) == 1
+    assert next(d for d in db["plugin_skills"].docs if d["_id"] == "other")["schema_version"] == CURRENT

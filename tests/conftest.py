@@ -18,6 +18,7 @@ def mock_mongo_database() -> MagicMock:
             col = AsyncMock()
             col.create_index = AsyncMock()
             col.insert_one = AsyncMock()
+            col.count_documents = AsyncMock(return_value=0)
             cursor = MagicMock()
             cursor.sort = MagicMock(return_value=cursor)
             cursor.skip = MagicMock(return_value=cursor)

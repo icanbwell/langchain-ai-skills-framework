@@ -65,6 +65,21 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return os.environ.get("PLUGIN_SCRIPTS_COLLECTION") or "plugin_scripts"
 
     @property
+    def plugin_scripts_gridfs_enabled(self) -> bool:
+        """Whether new script content is written to GridFS instead of inline (default: false).
+
+        Reads always accept both layouts, so enable this only after every pod runs a version that can read GridFS
+        content (an older pod reads ``content`` inline and fails on a script saved without it).
+        """
+        raw = os.environ.get("PLUGIN_SCRIPTS_GRIDFS_ENABLED", "false")
+        return raw.strip().lower() in ("true", "1", "yes")
+
+    @property
+    def plugin_scripts_content_bucket(self) -> str:
+        """GridFS bucket holding script content (default: plugin_scripts_content)."""
+        return os.environ.get("PLUGIN_SCRIPTS_CONTENT_BUCKET") or "plugin_scripts_content"
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated github:// skill loading.
 

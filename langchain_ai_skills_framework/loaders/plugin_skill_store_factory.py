@@ -20,6 +20,7 @@ from langchain_ai_skills_framework.persistence.history_writer import HistoryWrit
 from langchain_ai_skills_framework.persistence.mongo_database_factory import (
     MongoDatabaseFactory,
 )
+from langchain_ai_skills_framework.persistence.script_content_store import GridFSScriptContentStore
 
 
 class PluginSkillStoreFactory:
@@ -46,8 +47,14 @@ class PluginSkillStoreFactory:
             return NullPluginSkillStore()
 
         database = self._mongo_database_factory.create_database()
+        # Always wired so reads can rehydrate GridFS content; the flag only controls where new writes go.
+        script_content_store = GridFSScriptContentStore(
+            database=database, bucket_name=self._environment_variables.plugin_scripts_content_bucket
+        )
         inner_store = MongoPluginSkillLoader(
             database=database,
+            script_content_store=script_content_store,
+            write_scripts_to_gridfs=self._environment_variables.plugin_scripts_gridfs_enabled,
             skills_collection_name=self._environment_variables.plugin_skills_collection or "plugin_skills",
             references_collection_name=self._environment_variables.plugin_references_collection or "plugin_references",
             scripts_collection_name=self._environment_variables.plugin_scripts_collection or "plugin_scripts",

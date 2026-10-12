@@ -17,7 +17,7 @@ import re
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Concatenate, Literal
@@ -58,10 +58,19 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSnapshot,
     SkillSummary,
 )
+from langchain_ai_skills_framework.persistence.script_content_store import (
+    ScriptContentStore,
+    build_script_content_key,
+    build_script_content_ref,
+    build_skill_content_prefix,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
+
+SCRIPT_CONTENT_FETCH_CONCURRENCY = 8
+SCRIPT_BLOB_GC_GRACE_SECONDS = 300
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -135,7 +144,15 @@ class MongoPluginSkillLoader:
         auto_repair: bool = True,
         repair_interval_seconds: float = DEFAULT_REPAIR_INTERVAL_SECONDS,
         repair_batch_size: int = DEFAULT_REPAIR_BATCH_SIZE,
+        script_content_store: ScriptContentStore | None = None,
+        write_scripts_to_gridfs: bool = True,
     ) -> None:
+        # With a content store, script content is read from it (falling back to inline ``content`` for documents not
+        # yet migrated). New writes go to it too unless ``write_scripts_to_gridfs`` is False, which keeps the
+        # inline layout so a rolling deploy never leaves a document an older pod cannot read. Without a store the
+        # loader behaves exactly as before.
+        self._script_content_store = script_content_store
+        self._write_scripts_to_gridfs = write_scripts_to_gridfs
         self._database = database
         self._schema_version = schema_version
         self._auto_repair = auto_repair
@@ -588,6 +605,10 @@ class MongoPluginSkillLoader:
         )
         await self._resources_collection.delete_many(filter_base)
         await self._scripts_collection.delete_many(filter_base)
+        if self._script_content_store is not None:
+            await self._script_content_store.delete_prefix(
+                prefix=build_skill_content_prefix(author=author, plugin_name=plugin_name, skill_name=normalized_name)
+            )
 
         result = await self._skills_collection.delete_one(filter_base)
         return result.deleted_count > 0
@@ -808,6 +829,35 @@ class MongoPluginSkillLoader:
         now = datetime.now(UTC)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
+        digest, size = self._digest_and_size(content)
+
+        set_fields: dict[str, object] = {
+            "path": path,
+            "modified_by": effective_modified_by,
+            "date_modified": now,
+            "digest": digest,
+            "size": size,
+        }
+        update_ops: dict[str, dict[str, object]] = {"$set": set_fields}
+        script_key = build_script_content_key(
+            author=author, plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip()
+        )
+        content_ref: str | None = None
+        if self._script_content_store is not None and self._write_scripts_to_gridfs:
+            content_ref = build_script_content_ref(script_key=script_key, digest=digest)
+            # Blobs are content-addressed and never overwritten, so this cannot disturb the content the current
+            # metadata points at; the pointer flips atomically with digest/size in the upsert below.
+            await self._script_content_store.put(
+                ref=content_ref,
+                content=content,
+                metadata={"digest": digest, "size": size, "schema_version": self._schema_version},
+            )
+            set_fields["content_ref"] = content_ref
+            update_ops["$unset"] = {"content": ""}
+        else:
+            set_fields["content"] = content
+            if self._script_content_store is not None:
+                update_ops["$unset"] = {"content_ref": ""}
 
         raw = await self._scripts_collection.find_one_and_update(
             self._version_filter(
@@ -819,13 +869,7 @@ class MongoPluginSkillLoader:
                 }
             ),
             {
-                "$set": {
-                    "content": content,
-                    "path": path,
-                    "modified_by": effective_modified_by,
-                    "date_modified": now,
-                    **dict(zip(("digest", "size"), self._digest_and_size(content), strict=True)),
-                },
+                **update_ops,
                 "$setOnInsert": {
                     "author": author,
                     "plugin_name": plugin_name,
@@ -838,7 +882,10 @@ class MongoPluginSkillLoader:
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
-        return MongoPluginScriptDocument.from_mongo_dict(raw)
+        if self._script_content_store is not None and content_ref is not None:
+            await self._collect_stale_script_blobs(script_key=script_key, document_id=raw.get("_id"))
+        # In GridFS mode the stored document carries no content; the caller already has it.
+        return MongoPluginScriptDocument.from_mongo_dict({**raw, "content": content})
 
     @_repairs_first
     async def delete_script(
@@ -861,6 +908,12 @@ class MongoPluginSkillLoader:
                 }
             )
         )
+        if self._script_content_store is not None:
+            await self._script_content_store.delete_versions(
+                script_key=build_script_content_key(
+                    author=author, plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip()
+                )
+            )
         return result.deleted_count > 0
 
     @_repairs_first
@@ -887,7 +940,7 @@ class MongoPluginSkillLoader:
                 f"Script '{script_name}' not found in skill '{skill_name}' "
                 f"of plugin '{plugin_name}' for author '{author}'"
             )
-        return str(raw["content"])
+        return str((await self._hydrate_script_content(raw))["content"])
 
     @_repairs_first
     async def list_script_names(
@@ -920,9 +973,19 @@ class MongoPluginSkillLoader:
         query: dict[str, object] = {"author": author, "skill_name": normalized_skill}
         if plugin_name:
             query["plugin_name"] = plugin_name
-        docs: list[MongoPluginScriptDocument] = []
-        async for raw in self._scripts_collection.find(self._version_filter(query)):
-            docs.append(MongoPluginScriptDocument.from_mongo_dict(raw))
+        raws = [raw async for raw in self._scripts_collection.find(self._version_filter(query))]
+        docs = [MongoPluginScriptDocument.from_mongo_dict(h) for h in await self._hydrate_script_contents(raws)]
+        return sorted(docs, key=lambda d: d.script_name)
+
+    async def _list_script_documents_without_content(
+        self, *, author: str, plugin_name: str, skill_name: str
+    ) -> list[MongoPluginScriptDocument]:
+        """Script metadata only (``content`` stays empty); for manifests, which use just digest and size."""
+        query: dict[str, object] = {"author": author, "plugin_name": plugin_name, "skill_name": skill_name}
+        docs = [
+            MongoPluginScriptDocument.from_mongo_dict(raw)
+            async for raw in self._scripts_collection.find(self._version_filter(query))
+        ]
         return sorted(docs, key=lambda d: d.script_name)
 
     @_repairs_first
@@ -945,6 +1008,103 @@ class MongoPluginSkillLoader:
             query["plugin_name"] = plugin_name
         count = await self._scripts_collection.count_documents(self._version_filter(query), limit=1)
         return count > 0
+
+    # --- Script content (GridFS) -------------------------------------------------
+
+    @staticmethod
+    def _script_key(raw: Mapping[str, Any]) -> str:
+        return build_script_content_key(
+            author=str(raw["author"]),
+            plugin_name=str(raw["plugin_name"]),
+            skill_name=str(raw["skill_name"]),
+            script_name=str(raw["script_name"]),
+        )
+
+    async def _collect_stale_script_blobs(self, *, script_key: str, document_id: object) -> None:
+        """Delete this script's blobs that its metadata no longer points at, after a successful upsert.
+
+        The ref to keep is re-read from the stored document (a concurrent save may have moved it since our upsert),
+        and only blobs older than ``SCRIPT_BLOB_GC_GRACE_SECONDS`` go, so a blob uploaded by a concurrent save whose
+        upsert has not landed yet is never removed. The newest superseded blob can therefore outlive a save until
+        the next save or delete of the script. Failures are logged only: leftovers are unreferenced.
+        """
+        assert self._script_content_store is not None
+        if document_id is None:
+            return
+        try:
+            current = await self._scripts_collection.find_one({"_id": document_id}, {"content_ref": 1})
+            current_ref = current.get("content_ref") if current else None
+            if not isinstance(current_ref, str):
+                return
+            await self._script_content_store.delete_versions(
+                script_key=script_key,
+                keep_ref=current_ref,
+                older_than=datetime.now(UTC) - timedelta(seconds=SCRIPT_BLOB_GC_GRACE_SECONDS),
+            )
+        except Exception:  # best-effort cleanup must never fail a save that already succeeded
+            logger.warning("Could not garbage-collect stale content blobs of %s", script_key, exc_info=True)
+
+    async def _hydrate_script_content(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Return ``raw`` with ``content`` filled in, or raise when it cannot be.
+
+        Inline ``content`` wins when present: it is either a document not yet migrated or a write from a pod that
+        still stores inline, and in both cases it is at least as new as any blob. Otherwise the content comes from
+        the blob named by ``content_ref``. Neither (or a ref whose blob is gone) is an error rather than an empty
+        string: callers execute or publish this content, and an empty script must never stand in for a lost one.
+        """
+        if raw.get("content") is not None:
+            return raw
+        ref = raw.get("content_ref")
+        if not isinstance(ref, str) or self._script_content_store is None:
+            raise SkillLoaderError(
+                f"Script content missing for {self._script_key(raw)}: no inline content and no usable content_ref"
+            )
+        content = await self._script_content_store.get(ref=ref)
+        if content is None:
+            raise SkillLoaderError(f"Script content missing from the content store for {ref}")
+        return {**raw, "content": content}
+
+    async def _hydrate_script_contents(self, raws: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Hydrate many script documents. GridFS has no multi-file read, so fetches run concurrently (bounded)."""
+        semaphore = asyncio.Semaphore(SCRIPT_CONTENT_FETCH_CONCURRENCY)
+
+        async def one(raw: dict[str, Any]) -> dict[str, Any]:
+            async with semaphore:
+                return await self._hydrate_script_content(raw)
+
+        return list(await asyncio.gather(*(one(raw) for raw in raws)))
+
+    @_repairs_first
+    async def migrate_inline_script_content(self, *, batch_size: int = DEFAULT_REPAIR_BATCH_SIZE) -> int:
+        """Move up to ``batch_size`` scripts' inline ``content`` into the content store; return how many moved.
+
+        Idempotent and safe to run from several pods: the blob is written first, then ``content`` is unset only if
+        it still holds the value that was copied, so a concurrent edit is never discarded. Call repeatedly until it
+        returns 0. Not invoked automatically.
+        """
+        store = self._script_content_store
+        if store is None:
+            return 0
+        migrated = 0
+        cursor = self._scripts_collection.find(self._version_filter({"content": {"$exists": True}})).limit(batch_size)
+        async for raw in cursor:
+            content = raw.get("content")
+            if not isinstance(content, str):
+                continue
+            digest, size = self._digest_and_size(content)
+            script_key = self._script_key(raw)
+            ref = build_script_content_ref(script_key=script_key, digest=digest)
+            await store.put(
+                ref=ref,
+                content=content,
+                metadata={"digest": digest, "size": size, "schema_version": self._schema_version},
+            )
+            result = await self._scripts_collection.update_one(
+                {"_id": raw["_id"], "content": content},
+                {"$set": {"content_ref": ref}, "$unset": {"content": ""}},
+            )
+            migrated += result.modified_count
+        return migrated
 
     # --- Skill read operations -----------------------------------------------
 
@@ -990,7 +1150,7 @@ class MongoPluginSkillLoader:
         resources = await self.list_resource_documents(
             author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
         )
-        scripts = await self.list_script_documents(
+        scripts = await self._list_script_documents_without_content(
             author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
         )
         manifest = self._build_manifest(doc=doc, resources=resources, scripts=scripts)
@@ -1071,6 +1231,7 @@ class MongoPluginSkillLoader:
             resources_by_key[(rdoc.author, rdoc.plugin_name, rdoc.skill_name)].append(rdoc)
 
         scripts_by_key: dict[tuple[str, str, str], list[MongoPluginScriptDocument]] = defaultdict(list)
+        # Manifests need only digest and size, so script content is deliberately not fetched here.
         async for raw in self._scripts_collection.find(
             self._version_filter({"author": {"$in": authors}, "skill_name": {"$in": skill_names}})
         ):

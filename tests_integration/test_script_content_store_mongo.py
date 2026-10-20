@@ -51,6 +51,7 @@ class Env:
     loader: MongoPluginSkillLoader
     inline_loader: MongoPluginSkillLoader  # same collections, flag off: writes inline like an older pod
 
+    kv_store: MongoDBStore  # the py-key-value store behind ``store``, for wrapping it in a test double
     kv_database: Any  # the content store's own Mongo database, for listing what is physically stored
 
     @property
@@ -97,7 +98,12 @@ async def env() -> AsyncIterator[Env]:
     )
     await loader.ensure_indexes()
     environment = Env(
-        database=database, store=store, loader=loader, inline_loader=inline_loader, kv_database=kv_client[kv_db_name]
+        database=database,
+        store=store,
+        loader=loader,
+        inline_loader=inline_loader,
+        kv_store=kv_store,
+        kv_database=kv_client[kv_db_name],
     )
     try:
         yield environment
@@ -252,7 +258,7 @@ async def test_migrate_keeps_a_concurrent_newer_edit_and_leaves_no_orphan(env: E
 
     migrating = MongoPluginSkillLoader(
         database=env.database,
-        script_content_store=EditDuringMigration(key_value=env.store._key_value),
+        script_content_store=EditDuringMigration(key_value=env.kv_store),
         write_scripts_to_content_store=False,
         auto_repair=False,
     )

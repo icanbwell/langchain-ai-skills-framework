@@ -941,7 +941,7 @@ dev = [
     { name = "mypy" },
     { name = "packaging" },
     { name = "pre-commit" },
-    { name = "py-key-value-aio", extra = ["memory"] },
+    { name = "py-key-value-aio", extra = ["memory", "mongodb"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -985,7 +985,7 @@ dev = [
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "packaging", specifier = ">=26.0" },
     { name = "pre-commit", specifier = ">=3.6.1" },
-    { name = "py-key-value-aio", extras = ["memory"], specifier = ">=0.4.4" },
+    { name = "py-key-value-aio", extras = ["memory", "mongodb"], specifier = ">=0.4.4" },
     { name = "pytest", specifier = ">=8.1.1" },
     { name = "pytest-asyncio", specifier = ">=0.23.6" },
     { name = "pytest-cov", specifier = ">=6.1.1" },
@@ -1522,6 +1522,9 @@ wheels = [
 [package.optional-dependencies]
 memory = [
     { name = "cachetools" },
+]
+mongodb = [
+    { name = "pymongo" },
 ]
 
 [[package]]

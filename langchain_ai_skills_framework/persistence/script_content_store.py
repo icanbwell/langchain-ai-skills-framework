@@ -13,6 +13,10 @@ Refs are ``<script key>@<digest>#<save id>``. The digest part makes a ref self-d
 means no two saves ever share a ref, so the save that retires a ref (by replacing the pointer to it) is the only one
 that can delete it, and nobody can re-reference it afterwards. That is what makes deleting superseded content safe
 without listing keys, grace windows or compare-and-delete support from the store.
+
+Script history snapshots use the same store but their own refs (``<script key>@<digest>#history-<save id>``, see
+``build_script_history_content_ref``). Each history record owns a private copy of the content, so retiring the live
+script's ref (a newer save, or deleting the script) can never remove content a history record still points at.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 DEFAULT_SCRIPT_CONTENT_COLLECTION = "plugin_scripts_content"
 _CONTENT_FIELD = "content"
+HISTORY_REF_MARKER = "history-"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -43,6 +48,15 @@ def build_script_content_ref(*, script_key: str, digest: str) -> str:
     ``<script key>@<digest>#<save id>``: every call returns a different ref, even for identical content.
     """
     return f"{script_key}@{digest}#{uuid.uuid4().hex}"
+
+
+def build_script_history_content_ref(*, script_key: str, digest: str) -> str:
+    """New unique key for the content copy owned by one script history record.
+
+    ``<script key>@<digest>#history-<save id>``: distinct from every live ref (``build_script_content_ref``), so the
+    code that retires live content never touches it.
+    """
+    return f"{script_key}@{digest}#{HISTORY_REF_MARKER}{uuid.uuid4().hex}"
 
 
 @runtime_checkable

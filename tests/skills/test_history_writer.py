@@ -108,3 +108,12 @@ async def test_write_skill_history_logs_warning_on_failure(
         await history_writer.write_skill_history(record=record)
 
     assert "Failed to write skill history" in caplog.text
+
+
+async def test_write_script_history_reports_whether_the_record_was_stored(
+    history_writer: HistoryWriter, mock_mongo_database: MagicMock
+) -> None:
+    collection = mock_mongo_database["plugin_scripts_history"]
+    assert await history_writer.write_script_history(record=_make_record()) is True
+    collection.insert_one.side_effect = Exception("too large")
+    assert await history_writer.write_script_history(record=_make_record()) is False

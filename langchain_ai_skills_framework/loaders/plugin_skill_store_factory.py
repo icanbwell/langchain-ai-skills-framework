@@ -81,4 +81,7 @@ class PluginSkillStoreFactory:
             inner_store=inner_store,
             history_writer=history_writer,
             error_writer=error_writer,
+            # Same gate as the live scripts: history only goes through the store when new content does.
+            script_content_store=self._script_content_store,
+            write_script_history_to_content_store=self._environment_variables.plugin_scripts_external_content_enabled,
         )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import traceback as tb
 from collections.abc import Mapping, Sequence
@@ -9,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.loaders.schema_migrations import content_digest_and_size
 from langchain_ai_skills_framework.models.error_record import ErrorRecord
 from langchain_ai_skills_framework.models.history_record import HistoryRecord
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
@@ -24,15 +26,32 @@ from langchain_ai_skills_framework.models.skills_model import (
 )
 from langchain_ai_skills_framework.persistence.error_writer import ErrorWriter
 from langchain_ai_skills_framework.persistence.history_writer import HistoryWriter
+from langchain_ai_skills_framework.persistence.script_content_store import (
+    ScriptContentStore,
+    build_script_content_key,
+    build_script_history_content_ref,
+)
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
 
 logger = logging.getLogger(__name__)
 
+_CONTENT_FIELD = "content"
+_CONTENT_REF_FIELD = "content_ref"
+
 
 class HistoryTrackingPluginSkillStore:
-    """Wraps a PluginSkillStore, recording mutation history via HistoryWriter."""
+    """Wraps a PluginSkillStore, recording mutation history via HistoryWriter.
+
+    Script history and the external content store: when ``script_content_store`` is given **and**
+    ``write_script_history_to_content_store`` is true, a script history snapshot does not carry the script text.
+    Its content is written to the store under a ref of its own (``content_ref`` in the snapshot), so a script near
+    the 16 MB document limit still gets a history record and the live script's ref can be retired freely. With the
+    flag off the records are exactly what they were before. Reads (``get_script_history``) resolve ``content_ref``
+    whenever a store is configured, regardless of the flag, and still accept old records with inline ``content``, so
+    ``document_snapshot`` always looks the same to callers.
+    """
 
     def __init__(
         self,
@@ -40,10 +59,14 @@ class HistoryTrackingPluginSkillStore:
         inner_store: PluginSkillStore,
         history_writer: HistoryWriter,
         error_writer: ErrorWriter | None = None,
+        script_content_store: ScriptContentStore | None = None,
+        write_script_history_to_content_store: bool = False,
     ) -> None:
         self._inner = inner_store
         self._history = history_writer
         self._errors = error_writer
+        self._script_content_store = script_content_store
+        self._write_script_history_to_content_store = write_script_history_to_content_store
 
     # ------------------------------------------------------------------
     # Index management
@@ -374,9 +397,12 @@ class HistoryTrackingPluginSkillStore:
             )
             raise
 
+        snapshot, history_ref = await self._externalize_script_snapshot(
+            snapshot=doc.to_mongo_dict(), author=author, plugin_name=doc.plugin_name
+        )
         record = HistoryRecord(
             action=action,
-            document_snapshot=doc.to_mongo_dict(),
+            document_snapshot=snapshot,
             changed_by=modified_by or author,
             timestamp=datetime.now(UTC),
             source_collection="plugin_scripts",
@@ -385,7 +411,7 @@ class HistoryTrackingPluginSkillStore:
             skill_name=doc.skill_name,
             script_name=doc.script_name,
         )
-        await self._history.write_script_history(record=record)
+        await self._write_script_history(record=record, history_ref=history_ref)
         return doc
 
     async def delete_script(
@@ -424,6 +450,10 @@ class HistoryTrackingPluginSkillStore:
         )
 
         if deleted:
+            # Only after the delete succeeded, so a failed delete leaves no stray content copy behind.
+            snapshot, history_ref = await self._externalize_script_snapshot(
+                snapshot=snapshot, author=author, plugin_name=plugin_name
+            )
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
@@ -435,7 +465,7 @@ class HistoryTrackingPluginSkillStore:
                 skill_name=normalized_skill,
                 script_name=normalized_script,
             )
-            await self._history.write_script_history(record=record)
+            await self._write_script_history(record=record, history_ref=history_ref)
 
         return deleted
 
@@ -667,7 +697,7 @@ class HistoryTrackingPluginSkillStore:
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[HistoryRecord]:
-        return await self._history.get_script_history(
+        records = await self._history.get_script_history(
             user_id=user_id,
             plugin_name=plugin_name,
             skill_name=normalize_skill_name(value=skill_name),
@@ -675,6 +705,7 @@ class HistoryTrackingPluginSkillStore:
             limit=limit,
             offset=offset,
         )
+        return await asyncio.gather(*(self._resolve_script_history_content(record=record) for record in records))
 
     async def get_plugin_history(
         self,
@@ -710,6 +741,86 @@ class HistoryTrackingPluginSkillStore:
             limit=limit,
             offset=offset,
         )
+
+    # ------------------------------------------------------------------
+    # Script history content (external store)
+    # ------------------------------------------------------------------
+
+    async def _externalize_script_snapshot(
+        self, *, snapshot: dict[str, object], author: str, plugin_name: str
+    ) -> tuple[dict[str, object], str | None]:
+        """Move a script snapshot's content into the store; return ``(snapshot, ref written or None)``.
+
+        Does nothing (returns ``snapshot`` unchanged) unless a store is configured and history writes to it are on,
+        or when the snapshot has no text content (e.g. a pre-delete read that failed). If the store put fails, the
+        snapshot keeps its inline content and the failure is logged: the record is then written exactly as it was
+        before this feature, so a small script still gets its history and an oversized one hits the existing
+        "failed to write script history" warning. The user's save or delete is never failed by history.
+        """
+        store = self._script_content_store
+        content = snapshot.get(_CONTENT_FIELD)
+        if store is None or not self._write_script_history_to_content_store or not isinstance(content, str):
+            return snapshot, None
+        script_key = build_script_content_key(
+            author=author,
+            plugin_name=plugin_name,
+            skill_name=str(snapshot.get("skill_name", "")),
+            script_name=str(snapshot.get("script_name", "")),
+        )
+        digest = snapshot.get("digest")
+        if not isinstance(digest, str) or not digest:
+            digest, _ = content_digest_and_size(content)
+        ref = build_script_history_content_ref(script_key=script_key, digest=digest)
+        try:
+            await store.put(ref=ref, content=content)
+        except Exception:  # history must never fail the user's save/delete; fall back to the inline record
+            logger.warning(
+                "Could not store script history content %s; recording the snapshot with inline content",
+                ref,
+                exc_info=True,
+            )
+            return snapshot, None
+        externalized = {key: value for key, value in snapshot.items() if key != _CONTENT_FIELD}
+        externalized[_CONTENT_REF_FIELD] = ref
+        return externalized, ref
+
+    async def _write_script_history(self, *, record: HistoryRecord, history_ref: str | None) -> None:
+        """Write a script history record; if it was not stored, drop the content copy made for it."""
+        written = await self._history.write_script_history(record=record)
+        if written is False and history_ref is not None and self._script_content_store is not None:
+            try:
+                await self._script_content_store.delete(ref=history_ref)
+            except Exception:  # best-effort cleanup of an unreferenced leftover
+                logger.warning("Could not delete script history content %s", history_ref, exc_info=True)
+
+    async def _resolve_script_history_content(self, *, record: HistoryRecord) -> HistoryRecord:
+        """Return ``record`` with ``content`` restored from the store when its snapshot holds a ``content_ref``.
+
+        Records with inline ``content`` (everything written before this feature, or with the flag off) are returned
+        untouched. A resolved snapshot has ``content`` and no ``content_ref``, the shape callers always saw. If the
+        content cannot be fetched (no store configured, the entry is gone, or the store raises) the record is still
+        returned, with ``content`` left absent and ``content_ref`` kept, and a warning is logged: never an empty
+        string standing in for lost content, and one unreadable entry does not fail the whole history listing.
+        """
+        snapshot = record.document_snapshot
+        ref = snapshot.get(_CONTENT_REF_FIELD)
+        if snapshot.get(_CONTENT_FIELD) is not None or not isinstance(ref, str):
+            return record
+        store = self._script_content_store
+        if store is None:
+            logger.warning("Script history content %s is in an external store but none is configured", ref)
+            return record
+        try:
+            content = await store.get(ref=ref)
+        except Exception:
+            logger.warning("Could not read script history content %s", ref, exc_info=True)
+            return record
+        if content is None:
+            logger.warning("Script history content %s is missing from the content store", ref)
+            return record
+        resolved = {key: value for key, value in snapshot.items() if key != _CONTENT_REF_FIELD}
+        resolved[_CONTENT_FIELD] = content
+        return record.model_copy(update={"document_snapshot": resolved})
 
     # ------------------------------------------------------------------
     # Internal helpers

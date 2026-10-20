@@ -67,9 +67,8 @@ class HistoryWriter:
     async def write_skill_history(self, *, record: HistoryRecord) -> None:
         await self._write(collection=self._skills_history, record=record, entity_type="skill")
 
-    async def write_script_history(self, *, record: HistoryRecord) -> bool:
-        """Insert a script history record; return whether it was stored (failures are logged, never raised)."""
-        return await self._write(collection=self._scripts_history, record=record, entity_type="script")
+    async def write_script_history(self, *, record: HistoryRecord) -> None:
+        await self._write(collection=self._scripts_history, record=record, entity_type="script")
 
     async def write_reference_history(self, *, record: HistoryRecord) -> None:
         await self._write(collection=self._references_history, record=record, entity_type="reference")
@@ -165,10 +164,9 @@ class HistoryWriter:
         collection: AsyncIOMotorCollection[dict[str, object]],
         record: HistoryRecord,
         entity_type: str,
-    ) -> bool:
+    ) -> None:
         try:
             await collection.insert_one(record.to_mongo_dict())
-            return True
         except Exception:
             logger.warning(
                 "Failed to write %s history for %s/%s (action=%s)",
@@ -178,7 +176,6 @@ class HistoryWriter:
                 record.action,
                 exc_info=True,
             )
-            return False
 
     @staticmethod
     async def _query(

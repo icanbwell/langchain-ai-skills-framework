@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 _CONTENT_FIELD = "content"
 _CONTENT_REF_FIELD = "content_ref"
+# Script history content lives in the store; bound parallel reads so a page of large scripts is not fetched all at once.
+_HISTORY_CONTENT_READ_CONCURRENCY = 8
 
 
 class HistoryTrackingPluginSkillStore:
@@ -397,7 +399,7 @@ class HistoryTrackingPluginSkillStore:
             )
             raise
 
-        snapshot, history_ref = await self._externalize_script_snapshot(
+        snapshot = await self._externalize_script_snapshot(
             snapshot=doc.to_mongo_dict(), author=author, plugin_name=doc.plugin_name
         )
         record = HistoryRecord(
@@ -411,7 +413,7 @@ class HistoryTrackingPluginSkillStore:
             skill_name=doc.skill_name,
             script_name=doc.script_name,
         )
-        await self._write_script_history(record=record, history_ref=history_ref)
+        await self._history.write_script_history(record=record)
         return doc
 
     async def delete_script(
@@ -451,7 +453,7 @@ class HistoryTrackingPluginSkillStore:
 
         if deleted:
             # Only after the delete succeeded, so a failed delete leaves no stray content copy behind.
-            snapshot, history_ref = await self._externalize_script_snapshot(
+            snapshot = await self._externalize_script_snapshot(
                 snapshot=snapshot, author=author, plugin_name=plugin_name
             )
             record = HistoryRecord(
@@ -465,7 +467,7 @@ class HistoryTrackingPluginSkillStore:
                 skill_name=normalized_skill,
                 script_name=normalized_script,
             )
-            await self._write_script_history(record=record, history_ref=history_ref)
+            await self._history.write_script_history(record=record)
 
         return deleted
 
@@ -705,7 +707,14 @@ class HistoryTrackingPluginSkillStore:
             limit=limit,
             offset=offset,
         )
-        return await asyncio.gather(*(self._resolve_script_history_content(record=record) for record in records))
+        semaphore = asyncio.Semaphore(_HISTORY_CONTENT_READ_CONCURRENCY)
+
+        async def resolve(record: HistoryRecord) -> HistoryRecord:
+            async with semaphore:
+                return await self._resolve_script_history_content(record=record)
+
+        # gather keeps the order of ``records``
+        return await asyncio.gather(*(resolve(record) for record in records))
 
     async def get_plugin_history(
         self,
@@ -748,8 +757,13 @@ class HistoryTrackingPluginSkillStore:
 
     async def _externalize_script_snapshot(
         self, *, snapshot: dict[str, object], author: str, plugin_name: str
-    ) -> tuple[dict[str, object], str | None]:
-        """Move a script snapshot's content into the store; return ``(snapshot, ref written or None)``.
+    ) -> dict[str, object]:
+        """Move a script snapshot's content into the store and return the snapshot to record.
+
+        The copy is never deleted afterwards, even if the history insert then fails: ``HistoryWriter`` reports any
+        failure (including a timeout or reconnect that happens after the server committed the insert) only by logging
+        it, so a failed write may still have stored a record pointing at the copy. A leaked, unreferenced copy is
+        rare and harmless; deleting a copy a stored record points at would lose that history.
 
         Does nothing (returns ``snapshot`` unchanged) unless a store is configured and history writes to it are on,
         or when the snapshot has no text content (e.g. a pre-delete read that failed). If the store put fails, the
@@ -760,7 +774,7 @@ class HistoryTrackingPluginSkillStore:
         store = self._script_content_store
         content = snapshot.get(_CONTENT_FIELD)
         if store is None or not self._write_script_history_to_content_store or not isinstance(content, str):
-            return snapshot, None
+            return snapshot
         script_key = build_script_content_key(
             author=author,
             plugin_name=plugin_name,
@@ -779,19 +793,10 @@ class HistoryTrackingPluginSkillStore:
                 ref,
                 exc_info=True,
             )
-            return snapshot, None
+            return snapshot
         externalized = {key: value for key, value in snapshot.items() if key != _CONTENT_FIELD}
         externalized[_CONTENT_REF_FIELD] = ref
-        return externalized, ref
-
-    async def _write_script_history(self, *, record: HistoryRecord, history_ref: str | None) -> None:
-        """Write a script history record; if it was not stored, drop the content copy made for it."""
-        written = await self._history.write_script_history(record=record)
-        if written is False and history_ref is not None and self._script_content_store is not None:
-            try:
-                await self._script_content_store.delete(ref=history_ref)
-            except Exception:  # best-effort cleanup of an unreferenced leftover
-                logger.warning("Could not delete script history content %s", history_ref, exc_info=True)
+        return externalized
 
     async def _resolve_script_history_content(self, *, record: HistoryRecord) -> HistoryRecord:
         """Return ``record`` with ``content`` restored from the store when its snapshot holds a ``content_ref``.

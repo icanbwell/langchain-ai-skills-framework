@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -10,7 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from key_value.aio.stores.memory import MemoryStore
 
-from langchain_ai_skills_framework.loaders.history_tracking_plugin_skill_store import HistoryTrackingPluginSkillStore
+from langchain_ai_skills_framework.loaders.history_tracking_plugin_skill_store import (
+    _HISTORY_CONTENT_READ_CONCURRENCY,
+    HistoryTrackingPluginSkillStore,
+)
 from langchain_ai_skills_framework.models.history_record import HistoryRecord
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import MongoPluginScriptDocument
 from langchain_ai_skills_framework.persistence.script_content_store import (
@@ -36,13 +40,12 @@ class _FakeHistoryWriter:
     async def ensure_indexes(self) -> None:
         return None
 
-    async def write_script_history(self, *, record: HistoryRecord) -> bool:
+    async def write_script_history(self, *, record: HistoryRecord) -> None:
         too_big = len(json.dumps(record.to_mongo_dict(), default=str)) > MAX_BSON_BYTES
         if too_big or self.fail_writes:
             self.rejected.append(record)  # HistoryWriter logs a warning and swallows the error here
-            return False
+            return
         self.script_records.append(record)
-        return True
 
     async def get_script_history(self, *, limit: int = 50, offset: int = 0, **_: Any) -> list[HistoryRecord]:
         return list(reversed(self.script_records))[offset : offset + limit]
@@ -303,12 +306,54 @@ async def test_store_put_failure_falls_back_to_the_inline_record_and_does_not_fa
     assert "Could not store script history content" in caplog.text
 
 
-async def test_content_copy_is_removed_when_the_history_record_is_not_stored(
+async def test_content_copy_is_kept_when_the_history_record_insert_reports_failure(
     kv: MemoryStore, store: KeyValueScriptContentStore, writer: _FakeHistoryWriter
 ) -> None:
+    # An ambiguous failure (timeout, reconnect) can happen after the server committed the insert, so a stored record
+    # may still point at the copy. Deleting it could leave a dangling ref; a leaked copy is harmless.
     writer.fail_writes = True
     await _save(_tracking(inner=_inner(), writer=writer, store=store))
-    assert _stored_refs(kv) == []
+    assert writer.script_records == []
+    assert len(_stored_refs(kv)) == 1
+
+
+async def test_history_content_reads_are_bounded_and_keep_record_order(writer: _FakeHistoryWriter) -> None:
+    limit = _HISTORY_CONTENT_READ_CONCURRENCY
+    total = limit * 3
+    in_flight = 0
+    peak = 0
+
+    class _SlowStore:
+        async def get(self, *, ref: str) -> str:
+            nonlocal in_flight, peak
+            in_flight += 1
+            peak = max(peak, in_flight)
+            await asyncio.sleep(0.01)  # yield so every task the semaphore admits is in flight together
+            in_flight -= 1
+            return f"content of {ref}"
+
+    for index in range(total):
+        writer.script_records.append(
+            HistoryRecord(
+                action="updated",
+                document_snapshot={"content_ref": f"ref-{index}"},
+                source_collection="plugin_scripts",
+                user_id="user-1",
+                plugin_name="my-plugin",
+                skill_name="my-skill",
+                script_name="run.py",
+            )
+        )
+    tracking = _tracking(inner=_inner(), writer=writer, store=_SlowStore())  # type: ignore[arg-type]
+
+    records = list(
+        await tracking.get_script_history(
+            user_id="user-1", plugin_name="my-plugin", skill_name="my-skill", script_name="run.py", limit=total
+        )
+    )
+
+    assert peak == limit  # concurrency reaches the cap but never exceeds it
+    assert [r.document_snapshot["content"] for r in records] == [f"content of ref-{i}" for i in reversed(range(total))]
 
 
 # --- the 16 MiB case --------------------------------------------------------------

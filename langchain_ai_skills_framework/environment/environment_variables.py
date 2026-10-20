@@ -65,6 +65,17 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return os.environ.get("PLUGIN_SCRIPTS_COLLECTION") or "plugin_scripts"
 
     @property
+    def plugin_scripts_external_content_enabled(self) -> bool:
+        """Whether new script content is written to the injected ``ScriptContentStore`` instead of inline.
+
+        Default: false. Has no effect unless the consuming service registers a ``ScriptContentStore``. Reads always
+        accept both layouts, so enable this only after every pod runs a version that can read external content (an
+        older pod expects inline ``content`` and would see a script saved without it as empty).
+        """
+        raw = os.environ.get("PLUGIN_SCRIPTS_EXTERNAL_CONTENT_ENABLED", "false")
+        return raw.strip().lower() in ("true", "1", "yes")
+
+    @property
     def skills_github_token(self) -> str | None:
         """Optional token used for authenticated github:// skill loading.
 

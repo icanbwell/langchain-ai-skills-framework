@@ -44,6 +44,9 @@ from langchain_ai_skills_framework.persistence.mongo_database_factory_impl impor
 from langchain_ai_skills_framework.persistence.mongo_url_helpers import (
     MongoUrlHelpers,
 )
+from langchain_ai_skills_framework.persistence.script_content_store import (
+    ScriptContentStore,
+)
 from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
     GitHubMarketplacePublisher,
 )
@@ -115,6 +118,24 @@ def _resolve_script_executor(*, c: IContainer) -> ScriptExecutorProtocol | None:
             "No ScriptExecutorProtocol registered by consumer — "
             "CompositeSkillLoader will use its default MyScriptExecutor."
         )
+        return None
+
+
+def _resolve_script_content_store(*, c: IContainer) -> ScriptContentStore | None:
+    """Resolve a consumer-provided script content store, if one is registered.
+
+    Consuming services opt in by registering ``ScriptContentStore`` themselves (typically a
+    ``KeyValueScriptContentStore`` over their own key-value store) before calling
+    ``register_services_in_container``. This is deliberately a different key from ``BaseStore``, which keeps
+    resolving to the framework's own key-value store. Absent a registration, script content stays inline in
+    ``plugin_scripts`` exactly as before.
+    """
+    try:
+        store: ScriptContentStore = c.resolve(ScriptContentStore)
+        logger.info("Using consumer-registered ScriptContentStore: %s", type(store).__name__)
+        return store
+    except ContainerError:
+        logger.debug("No ScriptContentStore registered by consumer — script content stays inline.")
         return None
 
 
@@ -197,6 +218,7 @@ class LangchainAISkillsFrameworkContainerFactory:
             lambda c: PluginSkillStoreFactory(
                 mongo_database_factory=c.resolve(MongoDatabaseFactory),
                 environment_variables=c.resolve(EnvironmentVariables),  # type: ignore[arg-type]
+                script_content_store=_resolve_script_content_store(c=c),
             ),
         )
 

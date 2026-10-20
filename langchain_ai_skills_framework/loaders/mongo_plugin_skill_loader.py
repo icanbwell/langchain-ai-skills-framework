@@ -58,10 +58,17 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSnapshot,
     SkillSummary,
 )
+from langchain_ai_skills_framework.persistence.script_content_store import (
+    ScriptContentStore,
+    build_script_content_key,
+    build_script_content_ref,
+)
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
+
+SCRIPT_CONTENT_FETCH_CONCURRENCY = 8
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
@@ -135,7 +142,15 @@ class MongoPluginSkillLoader:
         auto_repair: bool = True,
         repair_interval_seconds: float = DEFAULT_REPAIR_INTERVAL_SECONDS,
         repair_batch_size: int = DEFAULT_REPAIR_BATCH_SIZE,
+        script_content_store: ScriptContentStore | None = None,
+        write_scripts_to_content_store: bool = True,
     ) -> None:
+        # With a content store, script content is read from it (falling back to inline ``content`` for documents not
+        # yet migrated). New writes go to it too unless ``write_scripts_to_content_store`` is False, which keeps the
+        # inline layout so a rolling deploy never leaves a document an older pod cannot read. Without a store the
+        # loader behaves exactly as before.
+        self._script_content_store = script_content_store
+        self._write_scripts_to_content_store = write_scripts_to_content_store
         self._database = database
         self._schema_version = schema_version
         self._auto_repair = auto_repair
@@ -587,7 +602,14 @@ class MongoPluginSkillLoader:
             {"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}
         )
         await self._resources_collection.delete_many(filter_base)
-        await self._scripts_collection.delete_many(filter_base)
+        if self._script_content_store is None:
+            await self._scripts_collection.delete_many(filter_base)
+        else:
+            # Delete one document at a time so each ref is collected exactly as its document goes: a save that
+            # lands mid-delete either replaces the ref before we take the document (and retires the old one itself)
+            # or after (and recreates the script), never in between.
+            while (removed := await self._scripts_collection.find_one_and_delete(filter_base)) is not None:
+                await self._delete_content_best_effort(ref=removed.get("content_ref"))
 
         result = await self._skills_collection.delete_one(filter_base)
         return result.deleted_count > 0
@@ -808,37 +830,72 @@ class MongoPluginSkillLoader:
         now = datetime.now(UTC)
         effective_modified_by = modified_by or author
         sv = self.SCHEMA_VERSION_FIELD
+        digest, size = self._digest_and_size(content)
 
-        raw = await self._scripts_collection.find_one_and_update(
-            self._version_filter(
-                {
-                    "author": author,
-                    "plugin_name": plugin_name,
-                    "skill_name": normalized_skill,
-                    "script_name": script_name.strip(),
-                }
-            ),
-            {
-                "$set": {
-                    "content": content,
-                    "path": path,
-                    "modified_by": effective_modified_by,
-                    "date_modified": now,
-                    **dict(zip(("digest", "size"), self._digest_and_size(content), strict=True)),
-                },
-                "$setOnInsert": {
-                    "author": author,
-                    "plugin_name": plugin_name,
-                    "skill_name": normalized_skill,
-                    "script_name": script_name.strip(),
-                    sv: self._schema_version,
-                    "date_created": now,
-                },
-            },
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
-        )
-        return MongoPluginScriptDocument.from_mongo_dict(raw)
+        set_fields: dict[str, object] = {
+            "path": path,
+            "modified_by": effective_modified_by,
+            "date_modified": now,
+            "digest": digest,
+            "size": size,
+        }
+        update_ops: dict[str, dict[str, object]] = {"$set": set_fields}
+        store = self._script_content_store
+        new_ref: str | None = None
+        if store is not None and self._write_scripts_to_content_store:
+            script_key = build_script_content_key(
+                author=author, plugin_name=plugin_name, skill_name=normalized_skill, script_name=script_name.strip()
+            )
+            # A fresh ref per save: nothing else can point at it, so it cannot disturb the content the current
+            # metadata references, and the pointer flips atomically with digest/size in the upsert below.
+            new_ref = build_script_content_ref(script_key=script_key, digest=digest)
+            await store.put(ref=new_ref, content=content)
+            set_fields["content_ref"] = new_ref
+            update_ops["$unset"] = {"content": ""}
+        else:
+            set_fields["content"] = content
+            if store is not None:
+                update_ops["$unset"] = {"content_ref": ""}
+
+        insert_fields: dict[str, object] = {
+            "author": author,
+            "plugin_name": plugin_name,
+            "skill_name": normalized_skill,
+            "script_name": script_name.strip(),
+            sv: self._schema_version,
+            "date_created": now,
+        }
+        try:
+            raw = await self._scripts_collection.find_one_and_update(
+                self._version_filter(
+                    {
+                        "author": author,
+                        "plugin_name": plugin_name,
+                        "skill_name": normalized_skill,
+                        "script_name": script_name.strip(),
+                    }
+                ),
+                {**update_ops, "$setOnInsert": insert_fields},
+                upsert=True,
+                # With a store the *previous* document is needed: the ref it held is the one this save retires.
+                return_document=ReturnDocument.AFTER if store is None else ReturnDocument.BEFORE,
+            )
+        except Exception:
+            if new_ref is not None:  # the metadata never pointed at it, so it is unreferenced
+                await self._delete_content_best_effort(ref=new_ref)
+            raise
+        if store is None:
+            return MongoPluginScriptDocument.from_mongo_dict(raw)
+
+        previous = raw  # None when this save created the document
+        stored: dict[str, Any] = {**(previous if previous is not None else insert_fields), **set_fields}
+        for field in update_ops.get("$unset", {}):
+            stored.pop(field, None)
+        if previous is not None:
+            # This save atomically replaced the pointer, so it alone may delete the content it pointed at.
+            await self._delete_content_best_effort(ref=previous.get("content_ref"))
+        # With external content the stored document carries no ``content``; the caller already has it.
+        return MongoPluginScriptDocument.from_mongo_dict({**stored, "content": content})
 
     @_repairs_first
     async def delete_script(
@@ -851,17 +908,21 @@ class MongoPluginSkillLoader:
     ) -> bool:
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
-        result = await self._scripts_collection.delete_one(
-            self._version_filter(
-                {
-                    "author": author,
-                    "plugin_name": plugin_name,
-                    "skill_name": normalized_skill,
-                    "script_name": script_name.strip(),
-                }
-            )
+        filter_ = self._version_filter(
+            {
+                "author": author,
+                "plugin_name": plugin_name,
+                "skill_name": normalized_skill,
+                "script_name": script_name.strip(),
+            }
         )
-        return result.deleted_count > 0
+        if self._script_content_store is None:
+            return (await self._scripts_collection.delete_one(filter_)).deleted_count > 0
+        removed = await self._scripts_collection.find_one_and_delete(filter_)
+        if removed is None:
+            return False
+        await self._delete_content_best_effort(ref=removed.get("content_ref"))
+        return True
 
     @_repairs_first
     async def read_script(
@@ -887,7 +948,7 @@ class MongoPluginSkillLoader:
                 f"Script '{script_name}' not found in skill '{skill_name}' "
                 f"of plugin '{plugin_name}' for author '{author}'"
             )
-        return str(raw["content"])
+        return str((await self._hydrate_script_content(raw))["content"])
 
     @_repairs_first
     async def list_script_names(
@@ -920,9 +981,19 @@ class MongoPluginSkillLoader:
         query: dict[str, object] = {"author": author, "skill_name": normalized_skill}
         if plugin_name:
             query["plugin_name"] = plugin_name
-        docs: list[MongoPluginScriptDocument] = []
-        async for raw in self._scripts_collection.find(self._version_filter(query)):
-            docs.append(MongoPluginScriptDocument.from_mongo_dict(raw))
+        raws = [raw async for raw in self._scripts_collection.find(self._version_filter(query))]
+        docs = [MongoPluginScriptDocument.from_mongo_dict(h) for h in await self._hydrate_script_contents(raws)]
+        return sorted(docs, key=lambda d: d.script_name)
+
+    async def _list_script_documents_without_content(
+        self, *, author: str, plugin_name: str, skill_name: str
+    ) -> list[MongoPluginScriptDocument]:
+        """Script metadata only (``content`` stays empty); for manifests, which use just digest and size."""
+        query: dict[str, object] = {"author": author, "plugin_name": plugin_name, "skill_name": skill_name}
+        docs = [
+            MongoPluginScriptDocument.from_mongo_dict(raw)
+            async for raw in self._scripts_collection.find(self._version_filter(query))
+        ]
         return sorted(docs, key=lambda d: d.script_name)
 
     @_repairs_first
@@ -945,6 +1016,114 @@ class MongoPluginSkillLoader:
             query["plugin_name"] = plugin_name
         count = await self._scripts_collection.count_documents(self._version_filter(query), limit=1)
         return count > 0
+
+    # --- Script content (external store) -------------------------------------------------
+
+    @staticmethod
+    def _script_key(raw: Mapping[str, Any]) -> str:
+        return build_script_content_key(
+            author=str(raw["author"]),
+            plugin_name=str(raw["plugin_name"]),
+            skill_name=str(raw["skill_name"]),
+            script_name=str(raw["script_name"]),
+        )
+
+    async def _delete_content_best_effort(self, *, ref: object) -> None:
+        """Delete the stored content a ``content_ref`` names; failures are logged only.
+
+        Callers have already made ``ref`` unreachable (replaced or removed the pointer to it), so a failure here
+        leaves an unreferenced leftover and must never fail an operation that already succeeded.
+        """
+        if self._script_content_store is None or not isinstance(ref, str):
+            return
+        try:
+            await self._script_content_store.delete(ref=ref)
+        except Exception:  # best-effort cleanup must never fail a save or delete that already succeeded
+            logger.warning("Could not delete script content %s", ref, exc_info=True)
+
+    async def _hydrate_script_content(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Return ``raw`` with ``content`` filled in, or raise when it cannot be.
+
+        Inline ``content`` wins when present: it is either a document not yet migrated or a write from a pod that
+        still stores inline, and in both cases it is at least as new as any stored content. Otherwise the content
+        comes from the store entry named by ``content_ref``. Neither (or a ref whose entry is gone) is an error
+        rather than an empty string: callers execute or publish this content, and an empty script must never stand
+        in for a lost one.
+        """
+        if raw.get("content") is not None:
+            return raw
+        ref = raw.get("content_ref")
+        if not isinstance(ref, str):
+            raise SkillLoaderError(
+                f"Script content missing for {self._script_key(raw)}: no inline content and no usable content_ref"
+            )
+        store = self._script_content_store
+        if store is None:
+            raise SkillLoaderError(
+                f"Script {self._script_key(raw)} keeps its content in an external store (content_ref {ref}) but no "
+                "ScriptContentStore is configured"
+            )
+        content = await store.get(ref=ref)
+        if content is not None:
+            return {**raw, "content": content}
+        # A concurrent save may have replaced the pointer and deleted the old content between our read of the
+        # document and this fetch. Re-read the document once and follow it before declaring the content lost.
+        current = await self._scripts_collection.find_one({"_id": raw["_id"]}) if "_id" in raw else None
+        if current is not None:
+            if current.get("content") is not None:
+                return dict(current)
+            current_ref = current.get("content_ref")
+            if isinstance(current_ref, str) and current_ref != ref:
+                content = await store.get(ref=current_ref)
+                if content is not None:
+                    return {**current, "content": content}
+        raise SkillLoaderError(f"Script content missing from the content store for {ref}")
+
+    async def _hydrate_script_contents(self, raws: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Hydrate many script documents. Fetches are one key at a time, so they run concurrently (bounded)."""
+        semaphore = asyncio.Semaphore(SCRIPT_CONTENT_FETCH_CONCURRENCY)
+
+        async def one(raw: dict[str, Any]) -> dict[str, Any]:
+            async with semaphore:
+                return await self._hydrate_script_content(raw)
+
+        return list(await asyncio.gather(*(one(raw) for raw in raws)))
+
+    @_repairs_first
+    async def migrate_inline_script_content(self, *, batch_size: int = DEFAULT_REPAIR_BATCH_SIZE) -> int:
+        """Move up to ``batch_size`` scripts' inline ``content`` into the content store; return how many moved.
+
+        Idempotent and safe to run from several pods: the content is stored first, then ``content`` is unset only if
+        the document is still the save that was copied (same ``date_modified`` and ``digest``), so a concurrent edit is
+        never discarded. Call repeatedly until it
+        returns 0. Not invoked automatically.
+        """
+        store = self._script_content_store
+        if store is None:
+            return 0
+        migrated = 0
+        cursor = self._scripts_collection.find(self._version_filter({"content": {"$exists": True}})).limit(batch_size)
+        async for raw in cursor:
+            content = raw.get("content")
+            if not isinstance(content, str):
+                continue
+            digest, _ = self._digest_and_size(content)
+            ref = build_script_content_ref(script_key=self._script_key(raw), digest=digest)
+            await store.put(ref=ref, content=content)
+            # Match on the save's own markers rather than on ``content``: a near-16 MB script would make a filter
+            # that repeats the content too large to send. Every save rewrites date_modified (and digest), so a
+            # concurrent edit still makes this a no-op. Missing fields match missing fields (pre-digest documents).
+            result = await self._scripts_collection.update_one(
+                {"_id": raw["_id"], "date_modified": raw.get("date_modified"), "digest": raw.get("digest")},
+                {"$set": {"content_ref": ref}, "$unset": {"content": ""}},
+            )
+            if result.modified_count:
+                migrated += 1
+                # A pod that stores inline can leave an older ref beside ``content``; this update replaced it.
+                await self._delete_content_best_effort(ref=raw.get("content_ref"))
+            else:  # the script changed or vanished meanwhile: our copy was never referenced
+                await self._delete_content_best_effort(ref=ref)
+        return migrated
 
     # --- Skill read operations -----------------------------------------------
 
@@ -990,7 +1169,7 @@ class MongoPluginSkillLoader:
         resources = await self.list_resource_documents(
             author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
         )
-        scripts = await self.list_script_documents(
+        scripts = await self._list_script_documents_without_content(
             author=author, plugin_name=doc.plugin_name, skill_name=normalized_name
         )
         manifest = self._build_manifest(doc=doc, resources=resources, scripts=scripts)
@@ -1071,6 +1250,7 @@ class MongoPluginSkillLoader:
             resources_by_key[(rdoc.author, rdoc.plugin_name, rdoc.skill_name)].append(rdoc)
 
         scripts_by_key: dict[tuple[str, str, str], list[MongoPluginScriptDocument]] = defaultdict(list)
+        # Manifests need only digest and size, so script content is deliberately not fetched here.
         async for raw in self._scripts_collection.find(
             self._version_filter({"author": {"$in": authors}, "skill_name": {"$in": skill_names}})
         ):

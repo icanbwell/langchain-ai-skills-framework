@@ -20,6 +20,7 @@ from langchain_ai_skills_framework.persistence.history_writer import HistoryWrit
 from langchain_ai_skills_framework.persistence.mongo_database_factory import (
     MongoDatabaseFactory,
 )
+from langchain_ai_skills_framework.persistence.script_content_store import ScriptContentStore
 
 
 class PluginSkillStoreFactory:
@@ -30,9 +31,11 @@ class PluginSkillStoreFactory:
         *,
         mongo_database_factory: MongoDatabaseFactory,
         environment_variables: LangchainAISkillsFrameworkEnvironmentVariables,
+        script_content_store: ScriptContentStore | None = None,
     ) -> None:
         self._mongo_database_factory = mongo_database_factory
         self._environment_variables = environment_variables
+        self._script_content_store = script_content_store
 
     def create(self) -> PluginSkillStore:
         """Return a MongoDB-backed store when configured, otherwise a null store.
@@ -48,6 +51,10 @@ class PluginSkillStoreFactory:
         database = self._mongo_database_factory.create_database()
         inner_store = MongoPluginSkillLoader(
             database=database,
+            # Always wired when the consumer provides one so reads can rehydrate external content; the flag only
+            # controls where new writes go.
+            script_content_store=self._script_content_store,
+            write_scripts_to_content_store=self._environment_variables.plugin_scripts_external_content_enabled,
             skills_collection_name=self._environment_variables.plugin_skills_collection or "plugin_skills",
             references_collection_name=self._environment_variables.plugin_references_collection or "plugin_references",
             scripts_collection_name=self._environment_variables.plugin_scripts_collection or "plugin_scripts",

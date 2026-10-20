@@ -1,0 +1,22 @@
+# Overlay for the integration tests that need a real MongoDB (`make tests-integration`).
+# Same image and credentials as baileyai-skills-service/docker-compose-mongo.yml. Kept out of docker-compose.yml so
+# `make tests` / `make up` neither start MongoDB nor need it.
+services:
+  dev:
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      - MONGO_URL=mongodb://root:test123@mongo:27017/?directConnection=true # pragma: allowlist secret
+
+  mongo:
+    image: mongodb/mongodb-atlas-local:8.2.1
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: root
+      MONGODB_INITDB_ROOT_PASSWORD: "test123" # pragma: allowlist secret
+    healthcheck:
+      test: mongosh --host 127.0.0.1 --port 27017 --quiet --eval 'db.runCommand("ping").ok'
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 6

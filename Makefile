@@ -52,7 +52,8 @@ tests: up
 
 .PHONY:tests-integration
 tests-integration: up
-	docker compose run --rm --name langchain_ai_skills_framework dev pytest tests_integration langchain_ai_skills_framework
+	docker compose -f docker-compose.yml -f docker-compose-mongo.yml run --rm --name langchain_ai_skills_framework dev pytest tests_integration langchain_ai_skills_framework; \
+	status=$$?; docker compose -f docker-compose.yml -f docker-compose-mongo.yml stop mongo; exit $$status
 
 .PHONY:shell
 shell:devdocker ## Brings up the bash shell in dev docker

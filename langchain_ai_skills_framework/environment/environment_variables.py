@@ -71,6 +71,10 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         Default: false. Has no effect unless the consuming service registers a ``ScriptContentStore``. Reads always
         accept both layouts, so enable this only after every pod runs a version that can read external content (an
         older pod expects inline ``content`` and would see a script saved without it as empty).
+
+        Keep it off in every environment until script history also goes through the store (BAI-1200). Today
+        ``HistoryTrackingPluginSkillStore`` snapshots content inline, so a script near the 16 MB document limit loses
+        its history record. It also stays off until there is an integration test against real MongoDB.
         """
         raw = os.environ.get("PLUGIN_SCRIPTS_EXTERNAL_CONTENT_ENABLED", "false")
         return raw.strip().lower() in ("true", "1", "yes")

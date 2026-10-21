@@ -57,6 +57,26 @@ jobs:
         run: |
           docker compose run --rm -v ${{ github.workspace }}/reports:/reports dev pytest tests --tb=auto --junitxml=/reports/test-results.xml
 
+      # Integration tests need a real MongoDB (docker-compose-mongo.yml overlay, which also sets MONGO_URL).
+      # They need no secrets or external network. The module skips itself when MONGO_URL is unset, so the
+      # guard below fails the job if anything was skipped or nothing ran, rather than passing silently.
+      - name: integration tests
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose-mongo.yml run --rm -v ${{ github.workspace }}/reports:/reports dev pytest tests_integration --tb=auto --junitxml=/reports/integration-test-results.xml
+          python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          suite = ET.parse("reports/integration-test-results.xml").getroot()
+          if suite.tag == "testsuites":
+              suite = suite[0]
+          ran = int(suite.get("tests", 0))
+          skipped = int(suite.get("skipped", 0))
+          print(f"integration tests: {ran} collected, {skipped} skipped")
+          if ran == 0 or skipped:
+              sys.exit("integration tests must run, not skip: is MONGO_URL set and MongoDB up?")
+          PY
+
       - name: Upload pytest test results
         uses: actions/upload-artifact@v7
         with:

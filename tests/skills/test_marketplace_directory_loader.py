@@ -4,11 +4,14 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import yaml
 
+from langchain_ai_skills_framework.executors.my_script_execution_result import MyScriptExecutionResult
+from langchain_ai_skills_framework.executors.my_script_executor import MyScriptExecutor
 from langchain_ai_skills_framework.executors.my_shell_executor import MyShellExecutor
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
@@ -954,3 +957,35 @@ class TestSkippedMcpServersSurfaced:
                 "missing_env_vars": ["MCP_SERVER_GATEWAY_URL"],
             }
         ]
+
+
+class TestRunSkillScriptForUserTimeout:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("kwargs", "expected"), [({"timeout": 120}, 120), ({}, 30)])
+    async def test_timeout_forwarded_to_python_executor(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any], expected: int
+    ) -> None:
+        skill_file = _write_marketplace_skill(tmp_path, "plugin-a", "skill-one")
+        scripts_dir = skill_file.parent / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "run.py").write_text("print('hi')\n", encoding="utf-8")
+
+        captured: list[int] = []
+
+        async def _fake_execute_inline_script(
+            self: MyScriptExecutor, *, script_name: str, script: str, arguments: dict[str, Any], timeout: int = 30
+        ) -> MyScriptExecutionResult:
+            captured.append(timeout)
+            return MyScriptExecutionResult(stdout="", stderr=None, exit_code=0, execution_time_ms=0.0, success=True)
+
+        monkeypatch.setattr(MyScriptExecutor, "execute_inline_script", _fake_execute_inline_script)
+
+        loader = MarketplaceDirectoryLoader(
+            environment_variables=FakeEnvVars(plugins_marketplace=str(tmp_path)),
+            github_directory_downloader=MagicMock(),
+        )
+        await loader.run_skill_script_for_user(
+            user_id="u", skill_name="skill-one", script_name="run", arguments=None, **kwargs
+        )
+
+        assert captured == [expected]

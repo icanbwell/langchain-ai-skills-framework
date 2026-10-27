@@ -53,6 +53,7 @@ class SkillLoaderProtocol(Protocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult: ...
 
     def list_skill_script_names(self, *, skill_name: str, plugin_name: str | None = None) -> Sequence[str]: ...

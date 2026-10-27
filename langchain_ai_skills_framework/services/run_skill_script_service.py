@@ -56,6 +56,9 @@ class RunSkillScriptService:
         if not normalized_script_name:
             raise SkillOperationError("No script name provided.")
 
+        if timeout < 1:
+            raise SkillOperationError(f"Invalid timeout {timeout}: must be at least 1 second.")
+
         logger.debug(
             "RunSkillScriptService: Running script_name=%s skill_name=%s argument_keys=%s",
             normalized_script_name,
@@ -70,6 +73,7 @@ class RunSkillScriptService:
                 arguments=arguments,
                 plugin_name=plugin_name,
                 user_id=user_id,
+                timeout=timeout,
             )
             logger.debug(
                 "RunSkillScriptService: Script completed script_name=%s skill_name=%s",
@@ -122,6 +126,7 @@ class RunSkillScriptService:
         arguments: dict[str, Any] | None,
         plugin_name: str | None,
         user_id: str,
+        timeout: int,
     ) -> MyScriptExecutionResult:
         try:
             if user_id:
@@ -131,8 +136,11 @@ class RunSkillScriptService:
                     skill_name=skill_name,
                     script_name=script_name,
                     arguments=arguments,
+                    timeout=timeout,
                 )
             else:
+                # run_skill_script has no timeout parameter (see the shared-loader
+                # fallback in CompositeSkillLoader), so the executor default applies.
                 result = await self._loader.run_skill_script(
                     skill_name=skill_name,
                     script_name=script_name,

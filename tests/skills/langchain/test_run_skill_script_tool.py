@@ -6,12 +6,14 @@ from typing import Any
 
 import pytest
 from langchain_core.tools import ToolException
+from pydantic import ValidationError
 from skillkit import ScriptNotFoundError
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
 from langchain_ai_skills_framework.langchain.tools.run_skill_script_tool import (
+    RunSkillScriptInput,
     RunSkillScriptTool,
 )
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -106,6 +108,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name=skill_name, script_name=script_name, arguments=arguments)
 
@@ -293,3 +296,10 @@ def test_get_friendly_name_casts_inputs_to_string() -> None:
     friendly_name = RunSkillScriptTool.get_friendly_name(tool_input={"skill_name": None, "script_name": 123})
 
     assert friendly_name == "None (123)"
+
+
+def test_input_rejects_non_positive_timeout() -> None:
+    with pytest.raises(ValidationError, match="timeout"):
+        RunSkillScriptInput(
+            plugin_name="test-plugin", skill_name="alpha", script_name="analyze.py", timeout=0, runtime=make_runtime()
+        )

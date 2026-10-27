@@ -119,6 +119,7 @@ class _StubSharedLoader(SkillLoaderProtocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name=skill_name, script_name=script_name, arguments=arguments)
 
@@ -447,6 +448,64 @@ class TestScriptExecutorInjection:
         cast(AsyncMock, user_loader.load_shared_snapshot).assert_awaited_once_with(
             plugin_name="test-plugin", include_staging=True
         )
+
+
+class TestScriptTimeoutForwarding:
+    """The caller's timeout must reach the executor; omitting it keeps the legacy 30s default."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("kwargs", "expected"), [({"timeout": 120}, 120), ({}, 30)])
+    async def test_timeout_reaches_executor_for_users_own_script(self, kwargs: dict[str, Any], expected: int) -> None:
+        fake_executor = _FakeScriptExecutor(result=_make_execution_result())
+        user_loader = cast(AsyncMock, _make_user_loader_mock())
+        user_loader.read_script.return_value = "print('hi')"
+        composite = CompositeSkillLoader(
+            shared_loader=_StubSharedLoader({}), user_loader=user_loader, script_executor=fake_executor
+        )
+
+        await composite.run_skill_script_for_user(
+            user_id="user-1",
+            plugin_name="test-plugin",
+            skill_name="my-skill",
+            script_name="run.py",
+            arguments=None,
+            **kwargs,
+        )
+
+        assert [c["timeout"] for c in fake_executor.calls] == [expected]
+
+    @pytest.mark.asyncio
+    async def test_timeout_reaches_executor_for_shared_db_script(self) -> None:
+        fake_executor = _FakeScriptExecutor(result=_make_execution_result())
+        shared_db_skill = SkillDetails(
+            summary=SkillSummary(
+                name="health-news-monitor",
+                description="Description for health-news-monitor",
+                source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+                metadata={"source": "mongodb", "user_id": "owner-user"},
+            ),
+            content="shared db version",
+            source_path=Path("/mongodb/health-news-monitor/SKILL.md"),
+        )
+        user_loader = cast(
+            AsyncMock,
+            _make_user_loader_mock(user_skills={}, shared_skills={"health-news-monitor": shared_db_skill}),
+        )
+        user_loader.read_script.side_effect = [SkillNotFoundError("not yours"), "print('hi')"]
+        composite = CompositeSkillLoader(
+            shared_loader=_StubSharedLoader({}), user_loader=user_loader, script_executor=fake_executor
+        )
+
+        await composite.run_skill_script_for_user(
+            user_id="different-user",
+            plugin_name="test-plugin",
+            skill_name="health-news-monitor",
+            script_name="notify.py",
+            arguments=None,
+            timeout=120,
+        )
+
+        assert [c["timeout"] for c in fake_executor.calls] == [120]
 
 
 class TestReadSkillResourceForUser:

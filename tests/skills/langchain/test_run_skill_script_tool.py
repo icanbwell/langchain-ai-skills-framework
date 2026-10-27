@@ -106,6 +106,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         return await self.run_skill_script(skill_name=skill_name, script_name=script_name, arguments=arguments)
 

@@ -44,7 +44,7 @@ class RunSkillScriptInput(BaseModel):
             For example, if the script is designed to take parameters like {"input_file": "data.csv", "threshold": 0.5}, you would provide those here."""
         ),
     )
-    timeout: int = Field(description="Timeout for the script execution in seconds.", default=30)
+    timeout: int = Field(description="Timeout for the script execution in seconds.", default=30, ge=1)
     runtime: ToolRuntime
 
 

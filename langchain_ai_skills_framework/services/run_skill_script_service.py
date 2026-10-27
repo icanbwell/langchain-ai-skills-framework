@@ -56,6 +56,9 @@ class RunSkillScriptService:
         if not normalized_script_name:
             raise SkillOperationError("No script name provided.")
 
+        if timeout < 1:
+            raise SkillOperationError(f"Invalid timeout {timeout}: must be at least 1 second.")
+
         logger.debug(
             "RunSkillScriptService: Running script_name=%s skill_name=%s argument_keys=%s",
             normalized_script_name,

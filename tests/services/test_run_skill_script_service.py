@@ -13,6 +13,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
 from langchain_ai_skills_framework.services.run_skill_script_service import (
     RunSkillScriptService,
 )
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 
 def _make_loader() -> AsyncMock:
@@ -46,3 +47,15 @@ async def test_default_timeout_is_30() -> None:
     await service.execute(user_id="user-1", plugin_name="p", skill_name="s", script_name="run.py")
 
     assert loader.run_skill_script_for_user.await_args.kwargs["timeout"] == 30
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeout", [0, -5])
+async def test_non_positive_timeout_is_rejected_before_running(timeout: int) -> None:
+    loader = _make_loader()
+    service = RunSkillScriptService(skill_loader=loader)
+
+    with pytest.raises(SkillOperationError, match="timeout"):
+        await service.execute(user_id="user-1", plugin_name="p", skill_name="s", script_name="run.py", timeout=timeout)
+
+    loader.run_skill_script_for_user.assert_not_awaited()

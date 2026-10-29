@@ -11,7 +11,7 @@ from typing import Any
 import anyio
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ReadTimeoutError
 
 from langchain_ai_skills_framework.executors.base_script_executor import (
     BaseScriptExecutor,
@@ -23,6 +23,9 @@ from langchain_ai_skills_framework.executors.my_script_execution_result import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_CODE_INTERPRETER_IDENTIFIER = "aws.codeinterpreter.v1"
+# The botocore read timeout is the real backstop for a blocking invoke call, so
+# the effective script timeout is kept this many seconds below it.
+READ_TIMEOUT_MARGIN_SECONDS = 5
 
 
 class AgentCoreScriptExecutor(BaseScriptExecutor):
@@ -65,6 +68,7 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
         super().__init__(max_timeout=max_timeout, max_output_size=max_output_size)
         self._identifier = code_interpreter_identifier
         self._session_timeout_seconds = session_timeout_seconds
+        self._read_timeout_seconds = read_timeout_seconds
         for key in sandbox_env or {}:
             if not self._ARGUMENT_KEY_PATTERN.fullmatch(key):
                 raise ValueError(f"Invalid sandbox_env key: {key!r}")
@@ -110,7 +114,15 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
 
         self._validate_argument_keys(arguments=arguments)
 
-        effective_timeout = min(timeout, self.max_timeout)
+        read_timeout_bound = max(1, int(self._read_timeout_seconds) - READ_TIMEOUT_MARGIN_SECONDS)
+        effective_timeout = min(timeout, self.max_timeout, read_timeout_bound)
+        if effective_timeout < min(timeout, self.max_timeout):
+            logger.info(
+                "AgentCore timeout reduced below client read timeout: script=%s, requested=%ss, effective=%ss",
+                script_name,
+                timeout,
+                effective_timeout,
+            )
         start_time = time.perf_counter()
 
         session_id: str | None = None
@@ -122,7 +134,7 @@ class AgentCoreScriptExecutor(BaseScriptExecutor):
                     script=script,
                     arguments=arguments,
                 )
-        except TimeoutError:
+        except (TimeoutError, ReadTimeoutError):
             execution_time_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
                 "AgentCore execution timed out: script=%s, identifier=%s, timeout=%ds",

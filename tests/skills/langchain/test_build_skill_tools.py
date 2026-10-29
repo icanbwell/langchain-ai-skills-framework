@@ -88,6 +88,7 @@ class _StubSharedLoader(SkillLoaderProtocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         raise NotImplementedError
 

@@ -316,6 +316,11 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
     async def run_skill_script(
         self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, plugin_name: str | None = None
     ) -> MyScriptExecutionResult:
+        return await self._run_script(skill_name=skill_name, script_name=script_name, arguments=arguments)
+
+    async def _run_script(
+        self, *, skill_name: str, script_name: str, arguments: dict[str, Any] | None, timeout: int = 30
+    ) -> MyScriptExecutionResult:
         details = self.get_skill_details(skill_name=skill_name)
         script_path = self._resolve_script_path(details, script_name)
         if script_path is None:
@@ -329,6 +334,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                 script_name=script_name,
                 script=script_content,
                 arguments=normalized_arguments,
+                timeout=timeout,
             )
         else:
             shell_executor = MyShellExecutor()
@@ -336,6 +342,7 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
                 script_path=script_path,
                 skill_base_dir=script_path.parent,
                 arguments=arguments,
+                timeout=timeout,
             )
 
     async def run_skill_script_for_user(
@@ -346,9 +353,10 @@ class MarketplaceDirectoryLoader(SnapshotCacheMixin, SkillLoaderProtocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
-        return await self.run_skill_script(
-            skill_name=skill_name, script_name=script_name, arguments=arguments, plugin_name=plugin_name
+        return await self._run_script(
+            skill_name=skill_name, script_name=script_name, arguments=arguments, timeout=timeout
         )
 
     _SNAPSHOT_CACHE_KEY: str = "marketplace_snapshot"

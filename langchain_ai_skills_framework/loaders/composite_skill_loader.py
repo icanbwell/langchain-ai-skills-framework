@@ -288,6 +288,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         skill_name: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         """Run a script, checking user's MongoDB skills first, then shared loader.
 
@@ -305,6 +306,7 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 script_content=script_content,
                 script_name=script_name,
                 arguments=arguments,
+                timeout=timeout,
             )
         except SkillNotFoundError:
             pass
@@ -329,11 +331,14 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                         script_content=script_content,
                         script_name=script_name,
                         arguments=arguments,
+                        timeout=timeout,
                     )
                 except SkillNotFoundError:
                     pass
 
-        # Fall back to shared filesystem loader
+        # Fall back to shared filesystem loader. timeout is not forwarded here:
+        # run_skill_script has no timeout parameter, so existing shared loaders
+        # outside this repo would raise TypeError on the extra kwarg.
         return await self._shared_loader.run_skill_script(
             skill_name=normalized, script_name=script_name, arguments=arguments, plugin_name=plugin_name
         )
@@ -519,10 +524,12 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         script_content: str,
         script_name: str,
         arguments: dict[str, Any] | None,
+        timeout: int = 30,
     ) -> MyScriptExecutionResult:
         """Execute a script stored as content in MongoDB."""
         return await self._script_executor.execute_inline_script(
             script_name=script_name,
             script=script_content,
             arguments=arguments or {},
+            timeout=timeout,
         )

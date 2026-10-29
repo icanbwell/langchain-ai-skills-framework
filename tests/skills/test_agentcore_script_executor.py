@@ -6,9 +6,10 @@ import time
 from typing import Any
 from unittest.mock import MagicMock
 
+import anyio
 import pytest
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ReadTimeoutError
 
 from langchain_ai_skills_framework.executors.agentcore_script_executor import (
     AgentCoreScriptExecutor,
@@ -310,3 +311,36 @@ def test_executor_does_not_override_an_injected_client(monkeypatch: pytest.Monke
     executor = AgentCoreScriptExecutor(client=injected_client)
 
     assert executor._client is injected_client
+
+
+@pytest.mark.asyncio
+async def test_execute_inline_script_bounds_timeout_below_client_read_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[float] = []
+    real_fail_after = anyio.fail_after
+
+    def _spy_fail_after(delay: float, *args: Any, **kwargs: Any) -> Any:
+        captured.append(delay)
+        return real_fail_after(delay, *args, **kwargs)
+
+    monkeypatch.setattr(anyio, "fail_after", _spy_fail_after)
+    executor = AgentCoreScriptExecutor(client=_fake_client(), read_timeout_seconds=60.0)
+
+    await executor.execute_inline_script(script_name="slow.py", script="print(1)", arguments={}, timeout=120)
+
+    assert captured == [55]
+
+
+@pytest.mark.asyncio
+async def test_execute_inline_script_maps_read_timeout_to_timeout_result() -> None:
+    client = _fake_client()
+    client.invoke_code_interpreter.side_effect = ReadTimeoutError(endpoint_url="https://example.invalid")
+    executor = AgentCoreScriptExecutor(client=client)
+
+    result = await executor.execute_inline_script(script_name="slow.py", script="print(1)", arguments={})
+
+    assert result.success is False
+    assert result.exit_code == 124
+    assert "timed out" in (result.stderr or "")
+    client.stop_code_interpreter_session.assert_called_once()

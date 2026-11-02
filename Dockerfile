@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Stage 1: Base image to install common dependencies and lock Python dependencies
-FROM public.ecr.aws/docker/library/python:3.12-alpine3.20 AS python_packages
+FROM 856965016623.dkr.ecr.us-east-1.amazonaws.com/root-mirror/python:3.12-alpine3.20 AS python_packages
 
 # Set terminal width (COLUMNS) and height (LINES)
 ENV COLUMNS=300
@@ -45,7 +45,7 @@ RUN python -c "import platform; print(platform.platform()); print(platform.archi
 RUN python -c "import sys; print(sys.platform, sys.version, sys.maxsize > 2**32)"
 
 # Stage 2: Final runtime image for the application
-FROM public.ecr.aws/docker/library/python:3.12-alpine3.20
+FROM 856965016623.dkr.ecr.us-east-1.amazonaws.com/root-mirror/python:3.12-alpine3.20
 
 # Set terminal width (COLUMNS) and height (LINES)
 ENV COLUMNS=300

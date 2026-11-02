@@ -13,28 +13,16 @@ concurrency:
   group: build-and-test-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
   build_and_test:
     # The type of runner that the job will run on
-    runs-on: main
+    runs-on: ubuntu-latest
 
     steps:
       # Checks-out your repository
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-region: us-east-1
-
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'

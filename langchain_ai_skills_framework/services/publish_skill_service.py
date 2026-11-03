@@ -11,9 +11,7 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkill
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
-from langchain_ai_skills_framework.publishing.github_marketplace_publisher import (
-    GitHubMarketplacePublisher,
-)
+from langchain_ai_skills_framework.publishing.marketplace_publisher import MarketplacePublisher
 from langchain_ai_skills_framework.services.save_skill_service import SaveSkillService
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
@@ -59,7 +57,7 @@ class PublishSkillService:
         self,
         *,
         mongo_skill_loader: PluginSkillStore | None,
-        marketplace_publisher: GitHubMarketplacePublisher | None = None,
+        marketplace_publisher: MarketplacePublisher | None = None,
         skill_loader: SkillLoaderProtocol | None = None,
     ) -> None:
         self._store = mongo_skill_loader
@@ -83,14 +81,12 @@ class PublishSkillService:
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the ``content`` frontmatter.
 
-        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
-        history and the marketplace PR. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
-        ``SkillOperationError``. This service performs no authorization: a caller passing an
-        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
+        ``author``/``modified_by`` semantics: see ``resolve_owner_and_actor``; the actor is also named in the
+        marketplace PR.
         """
         require_user_id(user_id=user_id, operation="publish_skill")
-        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
-        owner, actor = who.owner, who.actor
+        owner_and_actor = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner, actor = owner_and_actor.owner, owner_and_actor.actor
 
         if not skill_name:
             if content:
@@ -115,14 +111,14 @@ class PublishSkillService:
             if published:
                 await self._ensure_exists_in_staging(
                     store=store,
-                    user_id=owner,
-                    modified_by=actor,
+                    owner_id=owner,
+                    acting_user_id=actor,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                 )
                 await self._validate_staging_state(
                     store=store,
-                    user_id=owner,
+                    owner_id=owner,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                 )
@@ -146,7 +142,7 @@ class PublishSkillService:
                 skill_name=skill_name,
                 state=target_state,
                 published_branch=branch,
-                **who.modified_by_kwargs(),
+                **({"modified_by": owner_and_actor.actor} if owner_and_actor.acts_for_another_user else {}),
             )
 
             message = (
@@ -165,8 +161,8 @@ class PublishSkillService:
 
                 task = asyncio.create_task(
                     self._try_publish(
-                        user_id=owner,
-                        acting_user_id=actor if who.acts_for_another_user else None,
+                        owner_id=owner,
+                        acting_user_id=actor if owner_and_actor.acts_for_another_user else None,
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,
@@ -202,14 +198,14 @@ class PublishSkillService:
         self,
         *,
         store: PluginSkillStore,
-        user_id: str,
+        owner_id: str,
         plugin_name: str,
         skill_name: str,
-        modified_by: str,
+        acting_user_id: str,
     ) -> None:
         """Ensure skill exists in MongoDB. Auto-save from skill_loader if missing."""
         exists = await store.skill_exists(
-            author=user_id,
+            author=owner_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
@@ -224,7 +220,7 @@ class PublishSkillService:
 
         try:
             details = await self._skill_loader.get_skill_details_for_user(
-                user_id=user_id,
+                user_id=owner_id,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )
@@ -233,31 +229,31 @@ class PublishSkillService:
 
         # Save with state="staging"
         await store.save_skill(
-            author=user_id,
+            author=owner_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
             content=details.content,
             state="staging",
-            modified_by=modified_by,
+            modified_by=acting_user_id,
         )
         logger.info(
-            "Auto-saved skill '%s/%s' with state='staging' (user=%s)",
+            "Auto-saved skill '%s/%s' with state='staging' (owner=%s)",
             plugin_name,
             skill_name,
-            user_id,
+            owner_id,
         )
 
     async def _validate_staging_state(
         self,
         *,
         store: PluginSkillStore,
-        user_id: str,
+        owner_id: str,
         plugin_name: str,
         skill_name: str,
     ) -> None:
         """Validate that the skill is in 'staging' state before publishing."""
         details = await store.get_skill_details(
-            author=user_id,
+            author=owner_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
@@ -271,15 +267,10 @@ class PublishSkillService:
     # Background publish logic
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _acting_kwargs(acting_user_id: str | None) -> dict[str, str]:
-        """``acting_user_id`` only when set, so the publisher call is unchanged when owner publishes."""
-        return {"acting_user_id": acting_user_id} if acting_user_id else {}
-
     async def _try_publish(
         self,
         *,
-        user_id: str,
+        owner_id: str,
         plugin_name: str,
         skill_name: str,
         published: bool,
@@ -292,7 +283,7 @@ class PublishSkillService:
         try:
             if published:
                 await self._publish_skill(
-                    user_id=user_id,
+                    owner_id=owner_id,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     branch_name=branch_name,
@@ -300,14 +291,14 @@ class PublishSkillService:
                 )
             else:
                 skill_dir = await self._resolve_skill_dir(
-                    user_id=user_id, plugin_name=plugin_name, skill_name=skill_name
+                    owner_id=owner_id, plugin_name=plugin_name, skill_name=skill_name
                 )
                 result = await self._publisher.unpublish_skill(
                     plugin_name=plugin_name,
                     skill_name=skill_name,
-                    user_id=user_id,
+                    user_id=owner_id,
                     skill_dir=skill_dir,
-                    **self._acting_kwargs(acting_user_id),
+                    **({"acting_user_id": acting_user_id} if acting_user_id else {}),
                 )
                 logger.info(
                     "Skill '%s/%s' removal result: %s",
@@ -326,7 +317,7 @@ class PublishSkillService:
     async def _publish_skill(
         self,
         *,
-        user_id: str,
+        owner_id: str,
         plugin_name: str,
         skill_name: str,
         branch_name: str | None = None,
@@ -336,19 +327,19 @@ class PublishSkillService:
             return
 
         logger.info(
-            "Gathering skill content for '%s/%s' (user=%s)",
+            "Gathering skill content for '%s/%s' (owner=%s)",
             plugin_name,
             skill_name,
-            user_id,
+            owner_id,
         )
         details = await self._store.get_skill_details(
-            author=user_id,
+            author=owner_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
 
         resource_docs = await self._store.list_resource_documents(
-            author=user_id,
+            author=owner_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
@@ -358,7 +349,7 @@ class PublishSkillService:
         }
 
         script_docs = await self._store.list_script_documents(
-            author=user_id,
+            author=owner_id,
             plugin_name=plugin_name,
             skill_name=skill_name,
         )
@@ -383,12 +374,12 @@ class PublishSkillService:
             skill_content=details.content,
             resources=resources,
             scripts=scripts,
-            user_id=user_id,
+            user_id=owner_id,
             branch_name=effective_branch,
             skill_path=skill_path,
             resource_paths=resource_paths or None,
             script_paths=script_paths or None,
-            **self._acting_kwargs(acting_user_id),
+            **({"acting_user_id": acting_user_id} if acting_user_id else {}),
         )
         logger.info(
             "Skill '%s/%s' publish result: %s",
@@ -400,7 +391,7 @@ class PublishSkillService:
     async def _resolve_skill_dir(
         self,
         *,
-        user_id: str,
+        owner_id: str,
         plugin_name: str,
         skill_name: str,
     ) -> str | None:
@@ -414,7 +405,7 @@ class PublishSkillService:
             return None
         try:
             details = await self._store.get_skill_details(
-                author=user_id, plugin_name=plugin_name, skill_name=skill_name
+                author=owner_id, plugin_name=plugin_name, skill_name=skill_name
             )
         except SkillNotFoundError:
             return None

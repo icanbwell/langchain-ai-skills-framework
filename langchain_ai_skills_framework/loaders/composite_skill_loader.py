@@ -499,12 +499,19 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             )
         all_snapshot = await self._user_loader.load_all_snapshot(include_staging=include_staging)
         db_keys = {(s.plugin_name, s.name) for s in all_snapshot.ordered_summaries}
-        base = [
-            s
-            for s in self._shared_loader.list_skill_summaries(allowed_skills=set())
-            if (s.plugin_name, s.name) not in db_keys
-        ]
+        # The marketplace snapshot can rebuild (a GitHub download) under a thread lock: keep it off the event loop.
+        shared_summaries = await asyncio.to_thread(self._shared_loader.list_skill_summaries, allowed_skills=set())
+        base = [s for s in shared_summaries if (s.plugin_name, s.name) not in db_keys]
         return tuple(sorted([*base, *all_snapshot.ordered_summaries], key=lambda s: s.name))
+
+    def _shared_details_by_name(self) -> dict[str, SkillDetails]:
+        """Blocking: details of every shared (GitHub / filesystem) skill, keyed by skill name."""
+        return {
+            summary.name: self._shared_loader.get_skill_details(
+                skill_name=summary.name, plugin_name=summary.plugin_name
+            )
+            for summary in self._shared_loader.list_skill_summaries(allowed_skills=set())
+        }
 
     async def _merged_snapshot(self, *, user_id: str, include_staging: bool = False) -> SkillSnapshot:
         """Build a merged snapshot with precedence: GitHub -> shared DB -> user DB.
@@ -515,10 +522,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         """
         details: dict[str, SkillDetails] = {}
 
-        # 1. GitHub / filesystem skills (lowest precedence, sync + cached)
-        for summary in self._shared_loader.list_skill_summaries(allowed_skills=set()):
-            detail = self._shared_loader.get_skill_details(skill_name=summary.name, plugin_name=summary.plugin_name)
-            details[summary.name] = detail
+        # 1. GitHub / filesystem skills (lowest precedence, sync + cached). The first read can rebuild the
+        # snapshot (a GitHub download) under a thread lock, so run it off the event loop.
+        details.update(await asyncio.to_thread(self._shared_details_by_name))
 
         # 2+3. Load shared and user snapshots concurrently
         shared_snapshot, user_snapshot = await asyncio.gather(

@@ -46,10 +46,10 @@ async def _unpublish_body(publisher: GitHubMarketplacePublisher, acting: str | N
     return str(remove_pr.call_args.kwargs["pr_body"])
 
 
-BODY_FNS = [
+BODY_FNS = (
     pytest.param(_publish_body, "Published by", id="publish"),
     pytest.param(_unpublish_body, "Unpublished by", id="unpublish"),
-]
+)
 
 
 @pytest.mark.parametrize(("body_fn", "label"), BODY_FNS)

@@ -48,6 +48,7 @@ class OwnerAndActor:
 
     @property
     def acts_for_another_user(self) -> bool:
+        """True when the acting user is not the skill's owner."""
         return self.actor != self.owner
 
     def modified_by_kwargs(self) -> dict[str, str]:

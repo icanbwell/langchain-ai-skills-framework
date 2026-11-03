@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -136,11 +137,11 @@ async def test_composite_all_authors_passes_include_staging_through(include_stag
     store.load_all_snapshot.assert_awaited_once_with(include_staging=include_staging)
 
 
-@pytest.mark.parametrize("user_id", ["", None])
+@pytest.mark.parametrize("user_id", ["", "   ", None])
 async def test_service_all_authors_without_user_id_raises(user_id: str | None) -> None:
     loader = AsyncMock(spec=SkillLoaderProtocol)
 
-    with pytest.raises(SkillOperationError, match="user_id is required"):
-        await ListSkillsService(skill_loader=loader).execute(user_id=user_id or "", all_authors=True)
+    with pytest.raises(SkillOperationError, match="user_id"):
+        await ListSkillsService(skill_loader=loader).execute(user_id=cast(str, user_id), all_authors=True)
 
     loader.list_all_summaries.assert_not_awaited()

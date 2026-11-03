@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,6 +17,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginScriptDocument,
     MongoPluginSkillDocument,
 )
+from langchain_ai_skills_framework.publishing.github_marketplace_publisher import GitHubMarketplacePublisher
 from langchain_ai_skills_framework.services.delete_skill_resource_service import DeleteSkillResourceService
 from langchain_ai_skills_framework.services.delete_skill_script_service import DeleteSkillScriptService
 from langchain_ai_skills_framework.services.delete_skill_service import DeleteSkillService
@@ -110,7 +113,7 @@ async def _unpublish(store: AsyncMock, **kw: Any) -> None:
 
 
 # (runner, store method that receives author=/modified_by=)
-CASES = [
+CASES = (
     pytest.param(_save_skill, "save_skill", id="save_skill"),
     pytest.param(_save_resource, "save_resource", id="save_resource"),
     pytest.param(_save_script, "save_script", id="save_script"),
@@ -119,7 +122,7 @@ CASES = [
     pytest.param(_delete_script, "delete_script", id="delete_script"),
     pytest.param(_publish, "set_skill_state", id="publish"),
     pytest.param(_unpublish, "set_skill_state", id="unpublish"),
-]
+)
 
 
 @pytest.mark.parametrize(("runner", "method"), CASES)
@@ -134,10 +137,10 @@ async def test_modified_by_is_recorded_separately_from_author(runner: Any, metho
 
 
 # Methods whose call shape must stay exactly as before BAI-1500 when the owner acts for themself.
-LEGACY_SHAPE_CASES = [
+LEGACY_SHAPE_CASES = tuple(
     c for c in CASES if c.values[1] in {"delete_skill", "delete_resource", "delete_script", "set_skill_state"}
-]
-SAVE_CASES = [c for c in CASES if c not in LEGACY_SHAPE_CASES]
+)
+SAVE_CASES = tuple(c for c in CASES if c not in LEGACY_SHAPE_CASES)
 
 
 @pytest.mark.parametrize(("runner", "method"), SAVE_CASES)
@@ -151,18 +154,138 @@ async def test_save_defaults_author_and_modified_by_to_user_id(runner: Any, meth
     assert kwargs["modified_by"] == OWNER
 
 
-@pytest.mark.parametrize(("runner", "method"), LEGACY_SHAPE_CASES)
-@pytest.mark.parametrize("explicit", [False, True])
-async def test_old_call_shape_when_actor_is_owner(runner: Any, method: str, explicit: bool) -> None:
-    """External stores/mocks with pre-BAI-1500 signatures must keep working for non-admin calls."""
-    store = _store()
-    extra = {"author": OWNER, "modified_by": OWNER} if explicit else {}
+ABSENT = object()
 
-    await runner(store, user_id=OWNER, **extra)
+
+@pytest.mark.parametrize(("runner", "method"), LEGACY_SHAPE_CASES)
+@pytest.mark.parametrize(
+    ("user_id", "author", "modified_by", "expected_author", "expected_modified_by"),
+    [
+        pytest.param(OWNER, None, None, OWNER, ABSENT, id="owner-defaults"),
+        pytest.param(OWNER, OWNER, None, OWNER, ABSENT, id="owner-explicit-author"),
+        pytest.param(OWNER, OWNER, OWNER, OWNER, ABSENT, id="owner-all-same"),
+        pytest.param(ADMIN, OWNER, OWNER, OWNER, ABSENT, id="admin-token-actor-is-owner"),
+        pytest.param(ADMIN, OWNER, None, OWNER, ADMIN, id="admin-for-owner-actor-defaults-to-user"),
+        pytest.param(ADMIN, OWNER, ADMIN, OWNER, ADMIN, id="admin-for-owner-explicit"),
+        pytest.param(ADMIN, ADMIN, OWNER, ADMIN, OWNER, id="actor-differs-from-author"),
+        pytest.param(ADMIN, None, None, ADMIN, ABSENT, id="admin-on-own-skill"),
+    ],
+)
+async def test_owner_actor_matrix_for_store_calls(
+    runner: Any,
+    method: str,
+    user_id: str,
+    author: str | None,
+    modified_by: str | None,
+    expected_author: str,
+    expected_modified_by: object,
+) -> None:
+    """``modified_by`` is passed only when the actor differs from the owner; otherwise the pre-BAI-1500 shape."""
+    store = _store()
+    extra = {k: v for k, v in (("author", author), ("modified_by", modified_by)) if v is not None}
+
+    await runner(store, user_id=user_id, **extra)
 
     kwargs = getattr(store, method).call_args.kwargs
-    assert kwargs["author"] == OWNER
-    assert "modified_by" not in kwargs
+    assert kwargs["author"] == expected_author
+    if expected_modified_by is ABSENT:
+        assert "modified_by" not in kwargs
+    else:
+        assert kwargs["modified_by"] == expected_modified_by
+
+
+class _LegacyStore:
+    """Store written against the pre-BAI-1500 protocol: no ``modified_by`` on delete or set_skill_state."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def skill_exists(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
+        return True
+
+    async def get_skill_details(self, *, author: str, plugin_name: str | None = None, skill_name: str) -> Any:
+        return SimpleNamespace(summary=SimpleNamespace(state="staging"))
+
+    async def set_skill_state(
+        self,
+        *,
+        author: str,
+        plugin_name: str,
+        skill_name: str,
+        state: str,
+        published_branch: str | None = None,
+    ) -> MongoPluginSkillDocument:
+        self.calls.append("set_skill_state")
+        return _skill_doc()
+
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
+        self.calls.append("delete_skill")
+        return True
+
+    async def delete_resource(self, *, author: str, plugin_name: str, skill_name: str, resource_name: str) -> bool:
+        self.calls.append("delete_resource")
+        return True
+
+    async def delete_script(self, *, author: str, plugin_name: str, skill_name: str, script_name: str) -> bool:
+        self.calls.append("delete_script")
+        return True
+
+
+class _LegacyPublisher:
+    """Publisher written against the pre-BAI-1500 signatures: no ``acting_user_id``."""
+
+    use_branch = False
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def publish_skill(
+        self,
+        *,
+        plugin_name: str,
+        skill_name: str,
+        skill_content: str,
+        resources: dict[str, str],
+        scripts: dict[str, str],
+        user_id: str,
+        branch_name: str | None = None,
+        skill_path: str | None = None,
+        resource_paths: dict[str, str] | None = None,
+        script_paths: dict[str, str] | None = None,
+    ) -> str:
+        self.calls.append("publish_skill")
+        return "sha"
+
+    async def unpublish_skill(
+        self, *, plugin_name: str, skill_name: str, user_id: str, skill_dir: str | None = None
+    ) -> str | None:
+        self.calls.append("unpublish_skill")
+        return "sha"
+
+
+@pytest.mark.parametrize(
+    ("runner", "method"),
+    tuple(c for c in LEGACY_SHAPE_CASES),
+)
+async def test_legacy_store_signatures_still_work_for_owner_calls(runner: Any, method: str) -> None:
+    store = _LegacyStore()
+
+    await runner(cast(PluginSkillStore, store), user_id=OWNER)
+
+    assert store.calls == [method]
+
+
+@pytest.mark.parametrize(("published", "method"), [(True, "publish_skill"), (False, "unpublish_skill")])
+async def test_legacy_publisher_signatures_still_work_for_owner_calls(published: bool, method: str) -> None:
+    publisher = _LegacyPublisher()
+    service = PublishSkillService(
+        mongo_skill_loader=_publish_store(), marketplace_publisher=cast(GitHubMarketplacePublisher, publisher)
+    )
+
+    await service.execute(user_id=OWNER, plugin_name="p", skill_name="my-skill", published=published)
+    await _drain_pending()
+
+    assert publisher.calls == [method]
 
 
 @pytest.mark.parametrize(("runner", "method"), CASES)
@@ -196,10 +319,16 @@ def _publisher() -> MagicMock:
     return publisher
 
 
-async def _drain_pending() -> None:
-    tasks = list(PublishSkillService._pending_tasks.values())
-    await asyncio.gather(*tasks)
+@pytest.fixture(autouse=True)
+def _clear_pending_publish_tasks() -> Iterator[None]:
+    """``_pending_tasks`` is class-level state; keep it from leaking between tests."""
     PublishSkillService._pending_tasks.clear()
+    yield
+    PublishSkillService._pending_tasks.clear()
+
+
+async def _drain_pending() -> None:
+    await asyncio.gather(*PublishSkillService._pending_tasks.values())
 
 
 def _publish_store() -> AsyncMock:

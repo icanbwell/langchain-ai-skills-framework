@@ -59,4 +59,3 @@ async def test_shared_loader_is_read_off_the_event_loop_thread(all_authors: bool
     assert [s.name for s in result] == ["market"]
     assert shared.call_threads
     assert threading.get_ident() not in shared.call_threads
-

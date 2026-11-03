@@ -32,16 +32,10 @@ class DeleteSkillResourceService:
         author: str | None = None,
         modified_by: str | None = None,
     ) -> str:
-        """Execute the operation.
-
-        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
-        history. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
-        ``SkillOperationError``. This service performs no authorization: a caller passing an
-        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
-        """
+        """Execute the operation; ``author``/``modified_by`` semantics: see ``resolve_owner_and_actor``."""
         require_user_id(user_id=user_id, operation="delete_skill_resource")
-        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
-        owner = who.owner
+        owner_and_actor = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner = owner_and_actor.owner
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=resource_name, label="resource_name")
         store = require_store(store=self._store)
@@ -52,7 +46,7 @@ class DeleteSkillResourceService:
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
-                **who.modified_by_kwargs(),
+                **({"modified_by": owner_and_actor.actor} if owner_and_actor.acts_for_another_user else {}),
             )
             if not deleted:
                 raise SkillOperationError(f"Resource '{resource_name}' not found for skill '{skill_name}'.")

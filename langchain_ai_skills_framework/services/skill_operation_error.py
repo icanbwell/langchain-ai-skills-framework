@@ -38,6 +38,9 @@ def require_store(*, store: PluginSkillStore | None) -> PluginSkillStore:
 class OwnerAndActor:
     """Whose skill is acted on (``owner``) and who is acting (``actor``).
 
+    A pure value object. Services pass ``actor`` to the store as ``modified_by`` and to the
+    marketplace publisher as ``acting_user_id``; those names exist only at those boundaries.
+
     The framework performs no authorization: callers (the consuming service) must
     verify that ``actor`` may act on ``owner``'s skills before passing a different
     ``author`` or ``modified_by``.
@@ -51,13 +54,14 @@ class OwnerAndActor:
         """True when the acting user is not the skill's owner."""
         return self.actor != self.owner
 
-    def modified_by_kwargs(self) -> dict[str, str]:
-        """``modified_by`` only when acting for another user, so the call shape is unchanged otherwise."""
-        return {"modified_by": self.actor} if self.acts_for_another_user else {}
-
 
 def resolve_owner_and_actor(*, user_id: str, author: str | None, modified_by: str | None) -> OwnerAndActor:
     """Resolve ``author``/``modified_by`` (default ``user_id`` only when omitted, never when empty).
+
+    ``author`` is whose skill is acted on (the owner) and ``modified_by`` is the acting user recorded in
+    history (and, for publish, the marketplace PR). This function and the services performing the operations
+    do no authorization: a caller passing an ``author`` or ``modified_by`` different from ``user_id`` must
+    first verify that user may do so.
 
     Raises:
         SkillOperationError: If an explicitly supplied ``author`` or ``modified_by`` is blank.

@@ -5,6 +5,7 @@ import logging
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
+    acting_kwargs,
     require_non_empty,
     require_store,
     require_user_id,
@@ -46,7 +47,7 @@ class DeleteSkillResourceService:
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
-                **({"modified_by": owner_and_actor.actor} if owner_and_actor.acts_for_another_user else {}),
+                **acting_kwargs(owner_and_actor, key="modified_by"),
             )
             if not deleted:
                 raise SkillOperationError(f"Resource '{resource_name}' not found for skill '{skill_name}'.")

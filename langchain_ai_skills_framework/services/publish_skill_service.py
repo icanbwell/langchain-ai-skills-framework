@@ -15,6 +15,7 @@ from langchain_ai_skills_framework.publishing.marketplace_publisher import Marke
 from langchain_ai_skills_framework.services.save_skill_service import SaveSkillService
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
+    acting_kwargs,
     require_non_empty,
     require_store,
     require_user_id,
@@ -142,7 +143,7 @@ class PublishSkillService:
                 skill_name=skill_name,
                 state=target_state,
                 published_branch=branch,
-                **({"modified_by": owner_and_actor.actor} if owner_and_actor.acts_for_another_user else {}),
+                **acting_kwargs(owner_and_actor, key="modified_by"),
             )
 
             message = (
@@ -162,7 +163,7 @@ class PublishSkillService:
                 task = asyncio.create_task(
                     self._try_publish(
                         owner_id=owner,
-                        acting_user_id=actor if owner_and_actor.acts_for_another_user else None,
+                        **acting_kwargs(owner_and_actor, key="acting_user_id"),
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,

@@ -71,3 +71,12 @@ def resolve_owner_and_actor(*, user_id: str, author: str | None, modified_by: st
     require_non_empty(value=owner, label="author")
     require_non_empty(value=actor, label="modified_by")
     return OwnerAndActor(owner=owner, actor=actor)
+
+
+def acting_kwargs(owner_and_actor: OwnerAndActor, *, key: str) -> dict[str, str]:
+    """``{key: actor}`` only when acting for another user, else empty.
+
+    The single place for the rule "pass ``modified_by`` / ``acting_user_id`` only when the actor differs from the
+    owner", so stores and publishers that predate acting-user support keep receiving their original call shape.
+    """
+    return {key: owner_and_actor.actor} if owner_and_actor.acts_for_another_user else {}

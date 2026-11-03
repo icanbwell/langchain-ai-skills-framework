@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import ClassVar
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -134,8 +135,9 @@ class PublishSkillService:
                 if branch_name:
                     branch = branch_name
                 else:
+                    # Author-scoped so two authors' same-named skills never share (and force-update) one branch.
                     branch = (
-                        f"skill-publish/{plugin_name}/{skill_name}"
+                        f"skill-publish/{self._branch_segment(value=owner)}/{plugin_name}/{skill_name}"
                         if published
                         else f"skill-unpublish/{plugin_name}/{skill_name}"
                     )
@@ -177,7 +179,8 @@ class PublishSkillService:
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,
-                        branch_name=branch_name,
+                        # Publish uses the resolved (author-scoped) branch; unpublish keeps the caller's value.
+                        branch_name=branch if published else branch_name,
                     ),
                     name=f"marketplace-{'publish' if published else 'unpublish'}-{skill_ref}",
                 )
@@ -331,6 +334,11 @@ class PublishSkillService:
                 plugin_name,
                 skill_name,
             )
+
+    @staticmethod
+    def _branch_segment(*, value: str) -> str:
+        """Make an author id safe to embed as a single git ref path segment."""
+        return re.sub(r"[^A-Za-z0-9._-]", "-", value).strip(".-") or "author"
 
     async def _publish_skill(
         self,

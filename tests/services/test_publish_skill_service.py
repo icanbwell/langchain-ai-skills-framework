@@ -518,3 +518,24 @@ class TestPublishSkillServiceTaskIsolation:
         await asyncio.gather(first, second, return_exceptions=True)
 
         assert any(r.levelno == logging.WARNING and "test-plugin/test-skill" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        ("author", "expected_branch"),
+        [
+            ("author-a", "skill-publish/author-a/test-plugin/test-skill"),
+            ("author-b", "skill-publish/author-b/test-plugin/test-skill"),
+            ("a.b+c@example.org", "skill-publish/a.b-c-example.org/test-plugin/test-skill"),
+            ("@@", "skill-publish/author/test-plugin/test-skill"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_default_publish_branch_is_scoped_to_author(self, author: str, expected_branch: str) -> None:
+        service, publisher, release = self._build_service()
+        publisher.use_branch = True
+
+        task = await self._publish(service, author=author)
+        await asyncio.sleep(0)
+        release.set()
+        await task
+
+        assert publisher.publish_skill.await_args.kwargs["branch_name"] == expected_branch

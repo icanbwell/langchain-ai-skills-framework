@@ -85,3 +85,15 @@ class AllAuthorsSkillSnapshot:
 
     details_by_key: Mapping[tuple[str, str, str], SkillDetails]
     ordered_summaries: tuple[SkillSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AllAuthorsSummaryPage:
+    """One page of every author's skill summaries, in stable ``(plugin_name, skill_name, author)`` order.
+
+    Summaries carry no ``manifest`` (``None``): resource and script documents are not read to build a listing page.
+    ``next_cursor`` is opaque; pass it back unchanged to fetch the following page. ``None`` means this is the last page.
+    """
+
+    summaries: tuple[SkillSummary, ...]
+    next_cursor: str | None = None

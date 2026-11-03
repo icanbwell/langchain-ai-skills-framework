@@ -9,8 +9,13 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Literal
 
-from langchain_ai_skills_framework.loaders.plugin_skill_store import AllAuthorsSnapshotStore, PluginSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import (
+    AllAuthorsSnapshotStore,
+    AllAuthorsSummaryPageStore,
+    PluginSkillStore,
+)
 from langchain_ai_skills_framework.loaders.schema_migrations import content_digest_and_size
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT
 from langchain_ai_skills_framework.models.error_record import ErrorRecord
 from langchain_ai_skills_framework.models.history_record import HistoryRecord
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
@@ -22,6 +27,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
 )
 from langchain_ai_skills_framework.models.skills_model import (
     AllAuthorsSkillSnapshot,
+    AllAuthorsSummaryPage,
     SkillDetails,
     SkillSnapshot,
 )
@@ -562,6 +568,21 @@ class HistoryTrackingPluginSkillStore:
         if not isinstance(self._inner, AllAuthorsSnapshotStore):
             raise TypeError(f"{type(self._inner).__name__} does not implement load_all_snapshot")
         return await self._inner.load_all_snapshot(include_staging=include_staging)
+
+    async def list_all_summaries_page(
+        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+    ) -> AllAuthorsSummaryPage:
+        """Delegate to the wrapped store's paged all-authors summaries (no history is written for reads).
+
+        Raises:
+            TypeError: If the wrapped store does not implement ``list_all_summaries_page``.
+
+        No authorization is performed here: the caller must verify the requesting user may
+        see other users' skills.
+        """
+        if not isinstance(self._inner, AllAuthorsSummaryPageStore):
+            raise TypeError(f"{type(self._inner).__name__} does not implement list_all_summaries_page")
+        return await self._inner.list_all_summaries_page(include_staging=include_staging, limit=limit, cursor=cursor)
 
     async def get_skill_details(
         self,

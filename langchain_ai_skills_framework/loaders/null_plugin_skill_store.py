@@ -11,6 +11,7 @@ from types import MappingProxyType
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
     SkillNotFoundError,
 )
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT, validate_page_limit
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
@@ -20,6 +21,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
 )
 from langchain_ai_skills_framework.models.skills_model import (
     AllAuthorsSkillSnapshot,
+    AllAuthorsSummaryPage,
     SkillDetails,
     SkillSnapshot,
 )
@@ -88,6 +90,12 @@ class NullPluginSkillStore:
 
     async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
         return _EMPTY_ALL_AUTHORS_SNAPSHOT
+
+    async def list_all_summaries_page(
+        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+    ) -> AllAuthorsSummaryPage:
+        validate_page_limit(limit=limit)
+        return AllAuthorsSummaryPage(summaries=(), next_cursor=None)
 
     async def get_skill_details(
         self,

@@ -21,17 +21,20 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 )
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     AllAuthorsSnapshotStore,
+    AllAuthorsSummaryPageStore,
     PluginSkillStore,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import (
     PluginMcpServerEntry,
     coerce_mcp_visibility,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSummaryPage,
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
@@ -104,6 +107,31 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             return await self._all_authors_summaries(include_staging=include_staging)
         snapshot = await self._merged_snapshot(user_id=user_id, include_staging=include_staging)
         return snapshot.ordered_summaries
+
+    async def list_all_authors_summaries_page(
+        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+    ) -> AllAuthorsSummaryPage:
+        """Return one bounded, summaries-only page of every author's database skills (BAI-1509).
+
+        The bounded alternative to ``list_all_summaries(all_authors=True)``: pages are ordered by
+        ``(plugin_name, skill_name, author)``, carry no ``manifest``, and never load resources or scripts. Unlike the
+        unpaged call it lists the user store only. Marketplace skills are synced into that store as ``system``
+        entries at startup, so they appear here as database rows; a marketplace skill not yet synced does not.
+        The caller must authorize this.
+
+        Raises:
+            TypeError: If the user store does not implement ``list_all_summaries_page``.
+            ValueError: If ``limit`` is below 1.
+            InvalidPageCursorError: If ``cursor`` is malformed or from an incompatible version.
+        """
+        if not isinstance(self._user_loader, AllAuthorsSummaryPageStore):
+            raise TypeError(
+                f"{type(self._user_loader).__name__} does not implement list_all_summaries_page; "
+                "paged all_authors listing is unavailable."
+            )
+        return await self._user_loader.list_all_summaries_page(
+            include_staging=include_staging, limit=limit, cursor=cursor
+        )
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
         """Get skill details from shared loader only (sync)."""

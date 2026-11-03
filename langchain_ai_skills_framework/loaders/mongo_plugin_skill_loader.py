@@ -41,6 +41,13 @@ from langchain_ai_skills_framework.loaders.schema_migrations import (
     content_digest_and_size,
     migrate_fields,
 )
+from langchain_ai_skills_framework.loaders.summary_page_cursor import (
+    DEFAULT_PAGE_LIMIT,
+    SummaryPageKey,
+    decode_cursor,
+    encode_cursor,
+    validate_page_limit,
+)
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
@@ -54,6 +61,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
 )
 from langchain_ai_skills_framework.models.skills_model import (
     AllAuthorsSkillSnapshot,
+    AllAuthorsSummaryPage,
     ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
@@ -1160,6 +1168,9 @@ class MongoPluginSkillLoader:
         """Return every author's skills in every state (drafts included), keyed by (author, plugin, name).
 
         Callers must authorize this themselves; it deliberately has no author filter.
+
+        Unbounded: loads every skill document plus all resources and scripts of those skills. For listing, prefer
+        ``list_all_summaries_page``.
         """
         query: dict[str, object] = {}
         if not include_staging:
@@ -1173,6 +1184,68 @@ class MongoPluginSkillLoader:
             detail.summary for _key, detail in sorted(by_key.items(), key=lambda kv: (kv[0][1], kv[0][2], kv[0][0]))
         )
         return AllAuthorsSkillSnapshot(details_by_key=MappingProxyType(by_key), ordered_summaries=ordered)
+
+    @_repairs_first
+    async def list_all_summaries_page(
+        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+    ) -> AllAuthorsSummaryPage:
+        """Return one bounded page of every author's skill summaries, without resources or scripts.
+
+        Keyset-paged in ``(plugin_name, skill_name, author)`` order, the same order as ``load_all_snapshot``. Reads at
+        most ``limit + 1`` skill documents with ``content`` excluded and never touches the resource or script
+        collections, so summaries have ``manifest=None``. Callers must authorize this themselves.
+
+        Raises:
+            ValueError: If ``limit`` is below 1.
+            InvalidPageCursorError: If ``cursor`` is malformed or from an incompatible version.
+        """
+        page_limit = validate_page_limit(limit=limit)
+        query: dict[str, object] = {}
+        if not include_staging:
+            query["state"] = {"$ne": "staging"}
+        if cursor is not None:
+            after = decode_cursor(cursor=cursor)
+            query["$or"] = [
+                {"plugin_name": {"$gt": after.plugin_name}},
+                {"plugin_name": after.plugin_name, "skill_name": {"$gt": after.skill_name}},
+                {"plugin_name": after.plugin_name, "skill_name": after.skill_name, "author": {"$gt": after.author}},
+            ]
+        docs: list[MongoPluginSkillDocument] = []
+        skill_cursor = (
+            self._skills_collection.find(self._version_filter(query), {"content": 0})
+            .sort([("plugin_name", 1), ("skill_name", 1), ("author", 1)])
+            .limit(page_limit + 1)
+        )
+        async for raw in skill_cursor:
+            docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
+        has_more = len(docs) > page_limit
+        docs = docs[:page_limit]
+        summaries = tuple(self._summary_without_manifest(doc=doc) for doc in docs)
+        next_cursor = (
+            encode_cursor(key=SummaryPageKey(docs[-1].plugin_name, docs[-1].skill_name, docs[-1].author))
+            if has_more
+            else None
+        )
+        return AllAuthorsSummaryPage(summaries=summaries, next_cursor=next_cursor)
+
+    @staticmethod
+    def _summary_without_manifest(*, doc: MongoPluginSkillDocument) -> SkillSummary:
+        return SkillSummary(
+            name=doc.skill_name,
+            description=doc.description,
+            plugin_name=doc.plugin_name,
+            folder=doc.folder,
+            path=doc.path,
+            state=doc.state,
+            source_path=Path(f"mongodb://all/{doc.plugin_name}/{doc.skill_name}"),
+            license=None,
+            compatibility=None,
+            metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+            allowed_tools=doc.allowed_tools,
+            date_modified=doc.date_modified,
+            required_external_servers=doc.required_external_servers,
+            manifest=None,
+        )
 
     @_repairs_first
     async def get_skill_details(

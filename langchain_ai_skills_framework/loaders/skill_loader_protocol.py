@@ -4,9 +4,22 @@ from typing import Any, Protocol, runtime_checkable
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
     MyScriptExecutionResult,
 )
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import PluginMcpServerEntry
-from langchain_ai_skills_framework.models.skills_model import SkillDetails, SkillSummary
+from langchain_ai_skills_framework.models.skills_model import AllAuthorsSummaryPage, SkillDetails, SkillSummary
+
+
+@runtime_checkable
+class AllAuthorsSummaryPageLoader(Protocol):
+    """Optional capability of a skill loader: bounded, summaries-only all-authors listing (BAI-1509).
+
+    Separate from ``SkillLoaderProtocol`` so existing external loaders keep satisfying it; probe with ``isinstance``.
+    """
+
+    async def list_all_authors_summaries_page(
+        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+    ) -> AllAuthorsSummaryPage: ...
 
 
 @runtime_checkable

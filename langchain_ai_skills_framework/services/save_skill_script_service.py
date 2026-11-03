@@ -43,16 +43,10 @@ class SaveSkillScriptService:
         author: str | None = None,
         modified_by: str | None = None,
     ) -> MutationResult:
-        """Execute the operation.
-
-        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
-        history. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
-        ``SkillOperationError``. This service performs no authorization: a caller passing an
-        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
-        """
+        """Execute the operation; ``author``/``modified_by`` semantics: see ``resolve_owner_and_actor``."""
         require_user_id(user_id=user_id, operation="save_skill_script")
-        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
-        owner, actor = who.owner, who.actor
+        owner_and_actor = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner, actor = owner_and_actor.owner, owner_and_actor.actor
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=script_name, label="script_name")
         require_non_empty(value=content, label="content")

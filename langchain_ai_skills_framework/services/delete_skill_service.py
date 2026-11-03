@@ -6,6 +6,7 @@ from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkill
 from langchain_ai_skills_framework.services.mutation_result import MutationResult
 from langchain_ai_skills_framework.services.skill_operation_error import (
     SkillOperationError,
+    acting_kwargs,
     require_non_empty,
     require_store,
     require_user_id,
@@ -32,16 +33,10 @@ class DeleteSkillService:
         author: str | None = None,
         modified_by: str | None = None,
     ) -> MutationResult:
-        """Execute the operation.
-
-        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
-        history. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
-        ``SkillOperationError``. This service performs no authorization: a caller passing an
-        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
-        """
+        """Execute the operation; ``author``/``modified_by`` semantics: see ``resolve_owner_and_actor``."""
         require_user_id(user_id=user_id, operation="delete_skill")
-        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
-        owner = who.owner
+        owner_and_actor = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner = owner_and_actor.owner
         require_non_empty(value=skill_name, label="skill_name")
         store = require_store(store=self._store)
 
@@ -50,7 +45,7 @@ class DeleteSkillService:
                 author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
-                **who.modified_by_kwargs(),
+                **acting_kwargs(owner_and_actor, key="modified_by"),
             )
             if deleted:
                 message = f"Skill '{skill_name}' deleted successfully."

@@ -22,16 +22,27 @@ class DeleteSkillService:
     def __init__(self, *, mongo_skill_loader: PluginSkillStore | None) -> None:
         self._store = mongo_skill_loader
 
-    async def execute(self, *, user_id: str, plugin_name: str, skill_name: str) -> MutationResult:
+    async def execute(
+        self,
+        *,
+        user_id: str,
+        plugin_name: str,
+        skill_name: str,
+        author: str | None = None,
+        modified_by: str | None = None,
+    ) -> MutationResult:
+        owner = author or user_id
+        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="delete_skill")
         require_non_empty(value=skill_name, label="skill_name")
         store = require_store(store=self._store)
 
         try:
             deleted = await store.delete_skill(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
+                modified_by=actor,
             )
             if deleted:
                 message = f"Skill '{skill_name}' deleted successfully."

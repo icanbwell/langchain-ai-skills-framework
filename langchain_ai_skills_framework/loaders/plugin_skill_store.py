@@ -20,6 +20,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSkillSnapshot,
     SkillDetails,
     SkillSnapshot,
 )
@@ -57,9 +58,10 @@ class PluginSkillStore(Protocol):
         skill_name: str,
         state: str,
         published_branch: str | None = None,
+        modified_by: str = "",
     ) -> MongoPluginSkillDocument: ...
 
-    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool: ...
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool: ...
 
     async def load_snapshot(
         self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
@@ -68,6 +70,8 @@ class PluginSkillStore(Protocol):
     async def load_shared_snapshot(
         self, *, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot: ...
+
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot: ...
 
     async def get_skill_details(
         self,
@@ -101,6 +105,7 @@ class PluginSkillStore(Protocol):
         plugin_name: str,
         skill_name: str,
         resource_name: str,
+        modified_by: str = "",
     ) -> bool: ...
 
     async def read_resource(
@@ -159,6 +164,7 @@ class PluginSkillStore(Protocol):
         plugin_name: str,
         skill_name: str,
         script_name: str,
+        modified_by: str = "",
     ) -> bool: ...
 
     async def read_script(

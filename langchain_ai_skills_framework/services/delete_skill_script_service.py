@@ -28,7 +28,11 @@ class DeleteSkillScriptService:
         plugin_name: str,
         skill_name: str,
         script_name: str,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> str:
+        owner = author or user_id
+        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="delete_skill_script")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=script_name, label="script_name")
@@ -36,10 +40,11 @@ class DeleteSkillScriptService:
 
         try:
             deleted = await store.delete_script(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=script_name,
+                modified_by=actor,
             )
             if not deleted:
                 raise SkillOperationError(f"Script '{script_name}' not found for skill '{skill_name}'.")

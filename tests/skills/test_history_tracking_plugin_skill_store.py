@@ -245,7 +245,9 @@ async def test_delete_skill_records_deleted_action(
     result = await store.delete_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
 
     assert result is True
-    inner_store.delete_skill.assert_awaited_once_with(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
+    inner_store.delete_skill.assert_awaited_once_with(
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", modified_by=""
+    )
     record = history_writer.write_skill_history.call_args.kwargs["record"]
     assert record.action == "deleted"
     assert record.document_snapshot["skill_name"] == "my-skill"
@@ -555,3 +557,35 @@ async def test_set_skill_state_failure_records_error(inner_store: AsyncMock, his
 
     error_record = error_writer.write_error.call_args.kwargs["record"]
     assert error_record.operation == "state_change"
+
+
+@pytest.mark.parametrize(
+    ("modified_by", "expected_changed_by"),
+    [("admin@example.com", "admin@example.com"), ("", "user-1")],
+)
+async def test_delete_and_state_change_record_acting_user_as_changed_by(
+    store: HistoryTrackingPluginSkillStore,
+    inner_store: AsyncMock,
+    history_writer: AsyncMock,
+    modified_by: str,
+    expected_changed_by: str,
+) -> None:
+    await store.delete_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill", modified_by=modified_by)
+    await store.delete_resource(
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", resource_name="r.md", modified_by=modified_by
+    )
+    await store.delete_script(
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", script_name="s.py", modified_by=modified_by
+    )
+    await store.set_skill_state(
+        author="user-1", plugin_name="my-plugin", skill_name="my-skill", state="draft", modified_by=modified_by
+    )
+
+    records = [
+        history_writer.write_skill_history.call_args_list[-1].kwargs["record"],
+        history_writer.write_reference_history.call_args_list[-1].kwargs["record"],
+        history_writer.write_script_history.call_args_list[-1].kwargs["record"],
+    ]
+    state_record = history_writer.write_skill_history.call_args_list[0].kwargs["record"]
+    assert all(r.changed_by == expected_changed_by for r in [*records, state_record])
+    assert all(r.user_id == "user-1" for r in [*records, state_record])

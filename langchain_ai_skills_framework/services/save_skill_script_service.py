@@ -39,7 +39,11 @@ class SaveSkillScriptService:
         content: str,
         folder: str | None = None,
         path: str | None = None,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> MutationResult:
+        owner = author or user_id
+        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="save_skill_script")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=script_name, label="script_name")
@@ -48,12 +52,12 @@ class SaveSkillScriptService:
 
         try:
             doc = await store.save_script(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 script_name=script_name,
                 content=content,
-                modified_by=user_id,
+                modified_by=actor,
                 folder=folder,
                 path=path,
             )
@@ -63,7 +67,7 @@ class SaveSkillScriptService:
             if self._post_save_hook is not None:
                 try:
                     await self._post_save_hook.on_script_saved(
-                        user_id=user_id,
+                        user_id=owner,
                         plugin_name=plugin_name,
                         skill_name=skill_name,
                         script_name=script_name,

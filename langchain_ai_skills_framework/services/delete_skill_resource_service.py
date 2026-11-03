@@ -28,7 +28,11 @@ class DeleteSkillResourceService:
         plugin_name: str,
         skill_name: str,
         resource_name: str,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> str:
+        owner = author or user_id
+        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="delete_skill_resource")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=resource_name, label="resource_name")
@@ -36,10 +40,11 @@ class DeleteSkillResourceService:
 
         try:
             deleted = await store.delete_resource(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
+                modified_by=actor,
             )
             if not deleted:
                 raise SkillOperationError(f"Resource '{resource_name}' not found for skill '{skill_name}'.")

@@ -19,12 +19,18 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSkillSnapshot,
     SkillDetails,
     SkillSnapshot,
 )
 
 _EMPTY_SNAPSHOT = SkillSnapshot(
     details_by_name=MappingProxyType({}),
+    ordered_summaries=(),
+)
+
+_EMPTY_ALL_AUTHORS_SNAPSHOT = AllAuthorsSkillSnapshot(
+    details_by_key=MappingProxyType({}),
     ordered_summaries=(),
 )
 
@@ -63,10 +69,11 @@ class NullPluginSkillStore:
         skill_name: str,
         state: str,
         published_branch: str | None = None,
+        modified_by: str = "",
     ) -> MongoPluginSkillDocument:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
-    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
     async def load_snapshot(
@@ -78,6 +85,9 @@ class NullPluginSkillStore:
         self, *, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
         return _EMPTY_SNAPSHOT
+
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        return _EMPTY_ALL_AUTHORS_SNAPSHOT
 
     async def get_skill_details(
         self,
@@ -116,6 +126,7 @@ class NullPluginSkillStore:
         plugin_name: str,
         skill_name: str,
         resource_name: str,
+        modified_by: str = "",
     ) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 
@@ -180,6 +191,7 @@ class NullPluginSkillStore:
         plugin_name: str,
         skill_name: str,
         script_name: str,
+        modified_by: str = "",
     ) -> bool:
         raise RuntimeError(_NOT_CONFIGURED_MSG)
 

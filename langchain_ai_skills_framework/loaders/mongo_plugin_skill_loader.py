@@ -53,6 +53,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     normalize_folder,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSkillSnapshot,
     ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
@@ -569,6 +570,7 @@ class MongoPluginSkillLoader:
         skill_name: str,
         state: str,
         published_branch: str | None = None,
+        modified_by: str = "",
     ) -> MongoPluginSkillDocument:
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
@@ -583,6 +585,8 @@ class MongoPluginSkillLoader:
             update_fields["published_date"] = now
         if published_branch is not None:
             update_fields["published_branch"] = published_branch
+        if modified_by:
+            update_fields["modified_by"] = modified_by
         raw = await self._skills_collection.find_one_and_update(
             self._version_filter({"author": author, "plugin_name": plugin_name, "skill_name": normalized_name}),
             {"$set": update_fields},
@@ -593,7 +597,7 @@ class MongoPluginSkillLoader:
         return MongoPluginSkillDocument.from_mongo_dict(raw)
 
     @_repairs_first
-    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool:
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
@@ -698,6 +702,7 @@ class MongoPluginSkillLoader:
         plugin_name: str,
         skill_name: str,
         resource_name: str,
+        modified_by: str = "",
     ) -> bool:
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
@@ -905,6 +910,7 @@ class MongoPluginSkillLoader:
         plugin_name: str,
         skill_name: str,
         script_name: str,
+        modified_by: str = "",
     ) -> bool:
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
@@ -1150,6 +1156,25 @@ class MongoPluginSkillLoader:
         return await self._build_snapshot(query=self._version_filter(query), owner_label="shared")
 
     @_repairs_first
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        """Return every author's skills in every state (drafts included), keyed by (author, plugin, name).
+
+        Callers must authorize this themselves; it deliberately has no author filter.
+        """
+        query: dict[str, object] = {}
+        if not include_staging:
+            query["state"] = {"$ne": "staging"}
+        docs: list[MongoPluginSkillDocument] = []
+        async for raw in self._skills_collection.find(self._version_filter(query)):
+            docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
+        details_list = await self._details_for_docs(docs=docs, owner_label="all")
+        by_key = {(doc.author, doc.plugin_name, doc.skill_name): detail for doc, detail in details_list}
+        ordered = tuple(
+            detail.summary for _key, detail in sorted(by_key.items(), key=lambda kv: (kv[0][1], kv[0][2], kv[0][0]))
+        )
+        return AllAuthorsSkillSnapshot(details_by_key=MappingProxyType(by_key), ordered_summaries=ordered)
+
+    @_repairs_first
     async def get_skill_details(
         self,
         *,
@@ -1239,6 +1264,20 @@ class MongoPluginSkillLoader:
         async for raw in self._skills_collection.find(query):
             docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
 
+        details_list = await self._details_for_docs(docs=docs, owner_label=owner_label)
+        details_map: dict[str, SkillDetails] = {}
+        for _doc, detail in details_list:
+            details_map[detail.name] = detail
+        ordered = tuple(sorted((d.summary for _doc, d in details_list), key=lambda s: s.name))
+        return SkillSnapshot(
+            details_by_name=MappingProxyType(details_map),
+            ordered_summaries=ordered,
+        )
+
+    async def _details_for_docs(
+        self, *, docs: Sequence[MongoPluginSkillDocument], owner_label: str
+    ) -> list[tuple[MongoPluginSkillDocument, SkillDetails]]:
+        """Attach manifests (resources + scripts digests) and build ``SkillDetails`` for each skill document."""
         authors = sorted({doc.author for doc in docs})
         skill_names = sorted({doc.skill_name for doc in docs})
 
@@ -1257,8 +1296,7 @@ class MongoPluginSkillLoader:
             sdoc = MongoPluginScriptDocument.from_mongo_dict(raw)
             scripts_by_key[(sdoc.author, sdoc.plugin_name, sdoc.skill_name)].append(sdoc)
 
-        details_map: dict[str, SkillDetails] = {}
-        summaries: list[SkillSummary] = []
+        results: list[tuple[MongoPluginSkillDocument, SkillDetails]] = []
 
         for doc in docs:
             manifest = self._build_manifest(
@@ -1287,14 +1325,8 @@ class MongoPluginSkillLoader:
                 content=doc.content,
                 source_path=summary.source_path,
             )
-            details_map[doc.skill_name] = detail
-            summaries.append(summary)
-
-        ordered = tuple(sorted(summaries, key=lambda s: s.name))
-        return SkillSnapshot(
-            details_by_name=MappingProxyType(details_map),
-            ordered_summaries=ordered,
-        )
+            results.append((doc, detail))
+        return results
 
     # --- Helpers -------------------------------------------------------------
 

@@ -74,13 +74,20 @@ class PublishSkillService:
         content: str | None = None,
         published: bool,
         branch_name: str | None = None,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> str:
         """Submit skill for review (published=True) or revert to draft (published=False).
 
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the ``content`` frontmatter.
+
+        ``author`` is whose skill is acted on and ``modified_by`` is the acting
+        user (recorded in history and the marketplace PR); both default to ``user_id``.
         """
         require_user_id(user_id=user_id, operation="publish_skill")
+        owner = author or user_id
+        actor = modified_by or user_id
 
         if not skill_name:
             if content:
@@ -105,13 +112,14 @@ class PublishSkillService:
             if published:
                 await self._ensure_exists_in_staging(
                     store=store,
-                    user_id=user_id,
+                    user_id=owner,
+                    modified_by=actor,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                 )
                 await self._validate_staging_state(
                     store=store,
-                    user_id=user_id,
+                    user_id=owner,
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                 )
@@ -130,11 +138,12 @@ class PublishSkillService:
             # Set state: "in_review" for publish, "draft" for unpublish
             target_state = "in_review" if published else "draft"
             doc = await store.set_skill_state(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 state=target_state,
                 published_branch=branch,
+                modified_by=actor,
             )
 
             message = (
@@ -153,7 +162,8 @@ class PublishSkillService:
 
                 task = asyncio.create_task(
                     self._try_publish(
-                        user_id=user_id,
+                        user_id=owner,
+                        acting_user_id=actor,
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,
@@ -192,6 +202,7 @@ class PublishSkillService:
         user_id: str,
         plugin_name: str,
         skill_name: str,
+        modified_by: str,
     ) -> None:
         """Ensure skill exists in MongoDB. Auto-save from skill_loader if missing."""
         exists = await store.skill_exists(
@@ -224,7 +235,7 @@ class PublishSkillService:
             skill_name=skill_name,
             content=details.content,
             state="staging",
-            modified_by=user_id,
+            modified_by=modified_by,
         )
         logger.info(
             "Auto-saved skill '%s/%s' with state='staging' (user=%s)",
@@ -265,6 +276,7 @@ class PublishSkillService:
         skill_name: str,
         published: bool,
         branch_name: str | None = None,
+        acting_user_id: str | None = None,
     ) -> None:
         """Best-effort publish/unpublish. Exceptions are logged, never raised."""
         if self._publisher is None or self._store is None:
@@ -276,6 +288,7 @@ class PublishSkillService:
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     branch_name=branch_name,
+                    acting_user_id=acting_user_id,
                 )
             else:
                 skill_dir = await self._resolve_skill_dir(
@@ -285,6 +298,7 @@ class PublishSkillService:
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     user_id=user_id,
+                    acting_user_id=acting_user_id,
                     skill_dir=skill_dir,
                 )
                 logger.info(
@@ -308,6 +322,7 @@ class PublishSkillService:
         plugin_name: str,
         skill_name: str,
         branch_name: str | None = None,
+        acting_user_id: str | None = None,
     ) -> None:
         if self._publisher is None or self._store is None:
             return
@@ -361,6 +376,7 @@ class PublishSkillService:
             resources=resources,
             scripts=scripts,
             user_id=user_id,
+            acting_user_id=acting_user_id,
             branch_name=effective_branch,
             skill_path=skill_path,
             resource_paths=resource_paths or None,

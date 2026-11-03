@@ -50,6 +50,8 @@ class SaveSkillService:
         folder: str | None = None,
         path: str | None = None,
         state: str | None = None,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> MutationResult:
         """Validate and persist the skill, returning a ``MutationResult``.
 
@@ -59,7 +61,12 @@ class SaveSkillService:
 
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the content frontmatter.
+
+        ``author`` is whose skill is written and ``modified_by`` is the acting
+        user recorded in history; both default to ``user_id``.
         """
+        owner = author or user_id
+        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="save_skill")
         require_non_empty(value=content, label="content")
         store = require_store(store=self._store)
@@ -92,7 +99,7 @@ class SaveSkillService:
 
         if not update_if_exists:
             exists = await store.skill_exists(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )
@@ -104,11 +111,11 @@ class SaveSkillService:
 
         try:
             doc = await store.save_skill(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=content,
-                modified_by=user_id,
+                modified_by=actor,
                 folder=folder,
                 path=path,
                 state=state,

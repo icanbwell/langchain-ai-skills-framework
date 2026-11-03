@@ -86,6 +86,7 @@ class TestPublishSkillTool:
             skill_name="test-skill",
             state="in_review",
             published_branch="skill-publish/test-plugin/test-skill",
+            modified_by="user-1",
         )
 
     @pytest.mark.asyncio
@@ -129,6 +130,7 @@ class TestPublishSkillTool:
             skill_name="test-skill",
             state="in_review",
             published_branch=None,
+            modified_by="user-1",
         )
 
     @pytest.mark.asyncio

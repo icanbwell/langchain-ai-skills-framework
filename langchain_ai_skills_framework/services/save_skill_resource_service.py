@@ -32,7 +32,11 @@ class SaveSkillResourceService:
         content: str,
         folder: str | None = None,
         path: str | None = None,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> MutationResult:
+        owner = author or user_id
+        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="save_skill_resource")
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=resource_name, label="resource_name")
@@ -41,12 +45,12 @@ class SaveSkillResourceService:
 
         try:
             doc = await store.save_resource(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 resource_name=resource_name,
                 content=content,
-                modified_by=user_id,
+                modified_by=actor,
                 folder=folder,
                 path=path,
             )

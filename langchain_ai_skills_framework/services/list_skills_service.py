@@ -43,17 +43,26 @@ class ListSkillsService:
         include_staging: bool = False,
         exclude_states: set[str] | None = None,
         allow_states: set[str] | None = None,
+        all_authors: bool = False,
     ) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``.
 
         ``allow_states`` is a positive whitelist applied after merging.
         Use it when callers need strict state enforcement (e.g. list_skills
         showing only published skills). Takes precedence over ``exclude_states``.
+
+        ``all_authors=True`` returns every author's skills (including other users'
+        drafts) as per-author entries; the caller must authorize it.
         """
         if user_id:
-            summaries = await self._loader.list_all_summaries(
-                user_id=user_id, allowed_skills=set(), include_staging=include_staging
-            )
+            if all_authors:
+                summaries = await self._loader.list_all_summaries(
+                    user_id=user_id, allowed_skills=set(), include_staging=include_staging, all_authors=True
+                )
+            else:
+                summaries = await self._loader.list_all_summaries(
+                    user_id=user_id, allowed_skills=set(), include_staging=include_staging
+                )
         else:
             summaries = self._loader.list_skill_summaries(allowed_skills=set())
 

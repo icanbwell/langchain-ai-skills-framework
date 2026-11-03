@@ -91,9 +91,16 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return self._shared_loader.list_skill_summaries(allowed_skills=allowed_skills)
 
     async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False
+        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False, all_authors: bool = False
     ) -> Sequence[SkillSummary]:
-        """Return merged summaries from shared + user skills."""
+        """Return merged summaries from shared + user skills.
+
+        With ``all_authors=True`` every author's skills in every state (including other
+        users' drafts) are returned as separate per-author entries instead of the merged,
+        name-collapsed view. The caller must authorize this.
+        """
+        if all_authors:
+            return await self._all_authors_summaries(include_staging=include_staging)
         snapshot = await self._merged_snapshot(user_id=user_id, include_staging=include_staging)
         return snapshot.ordered_summaries
 
@@ -481,6 +488,17 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         return definitions
 
     # --- Merging -------------------------------------------------------------
+
+    async def _all_authors_summaries(self, *, include_staging: bool) -> Sequence[SkillSummary]:
+        """Marketplace skills not overridden in the DB, plus every author's DB skills."""
+        all_snapshot = await self._user_loader.load_all_snapshot(include_staging=include_staging)
+        db_keys = {(s.plugin_name, s.name) for s in all_snapshot.ordered_summaries}
+        base = [
+            s
+            for s in self._shared_loader.list_skill_summaries(allowed_skills=set())
+            if (s.plugin_name, s.name) not in db_keys
+        ]
+        return tuple(sorted([*base, *all_snapshot.ordered_summaries], key=lambda s: s.name))
 
     async def _merged_snapshot(self, *, user_id: str, include_staging: bool = False) -> SkillSnapshot:
         """Build a merged snapshot with precedence: GitHub -> shared DB -> user DB.

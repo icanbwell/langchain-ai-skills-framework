@@ -48,12 +48,14 @@ class PublishSkillService:
 
     # Intentionally class-level and shared across all instances.
     # PublishSkillService is instantiated per-request by PublishSkillTool,
-    # but rapid publish/unpublish toggles for the *same* skill must be
+    # but rapid publish/unpublish toggles for the *same* author's skill must be
     # serialized globally — a per-instance dict would lose track of the
-    # previous task.  All access is single-threaded within one asyncio
-    # event loop, so no mutex is needed.  The done-callback in execute()
-    # removes completed entries to prevent unbounded growth.
-    _pending_tasks: ClassVar[dict[str, asyncio.Task[None]]] = {}
+    # previous task.  Keys are (author, plugin, skill) so different authors
+    # publishing a same-named skill never cancel each other.  All access is
+    # single-threaded within one asyncio event loop, so no mutex is needed.
+    # The done-callback in execute() removes completed entries to prevent
+    # unbounded growth.
+    _pending_tasks: ClassVar[dict[tuple[str, str, str], asyncio.Task[None]]] = {}
 
     def __init__(
         self,
@@ -157,11 +159,16 @@ class PublishSkillService:
             logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
             if self._publisher is not None:
-                task_key = f"{doc.plugin_name}/{doc.skill_name}"
+                task_key = (owner, doc.plugin_name, doc.skill_name)
+                skill_ref = f"{doc.plugin_name}/{doc.skill_name}"
                 previous = PublishSkillService._pending_tasks.get(task_key)
                 if previous is not None and not previous.done():
                     previous.cancel()
-                    logger.debug("Cancelled in-flight publish task for '%s'", task_key)
+                    logger.warning(
+                        "Cancelled in-flight marketplace task for '%s' (author=%s) in favor of a newer request",
+                        skill_ref,
+                        owner,
+                    )
 
                 task = asyncio.create_task(
                     self._try_publish(
@@ -172,12 +179,14 @@ class PublishSkillService:
                         published=published,
                         branch_name=branch_name,
                     ),
-                    name=f"marketplace-{'publish' if published else 'unpublish'}-{task_key}",
+                    name=f"marketplace-{'publish' if published else 'unpublish'}-{skill_ref}",
                 )
                 PublishSkillService._pending_tasks[task_key] = task
 
-                def _cleanup(_t: asyncio.Task[None], _key: str = task_key) -> None:
-                    PublishSkillService._pending_tasks.pop(_key, None)
+                def _cleanup(_t: asyncio.Task[None], _key: tuple[str, str, str] = task_key) -> None:
+                    # Only remove our own entry; a replacement task may already own the key.
+                    if PublishSkillService._pending_tasks.get(_key) is _t:
+                        del PublishSkillService._pending_tasks[_key]
 
                 task.add_done_callback(_cleanup)
 

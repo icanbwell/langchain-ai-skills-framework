@@ -13,6 +13,7 @@ from langchain_ai_skills_framework.services.skill_operation_error import (
     require_non_empty,
     require_store,
     require_user_id,
+    resolve_owner_and_actor,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -62,12 +63,14 @@ class SaveSkillService:
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the content frontmatter.
 
-        ``author`` is whose skill is written and ``modified_by`` is the acting
-        user recorded in history; both default to ``user_id``.
+        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
+        history. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
+        ``SkillOperationError``. This service performs no authorization: a caller passing an
+        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
         """
-        owner = author or user_id
-        actor = modified_by or user_id
         require_user_id(user_id=user_id, operation="save_skill")
+        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner, actor = who.owner, who.actor
         require_non_empty(value=content, label="content")
         store = require_store(store=self._store)
 

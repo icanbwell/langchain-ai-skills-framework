@@ -4,7 +4,7 @@ import base64
 import logging
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Final
 
 import httpx
 
@@ -15,6 +15,9 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+
+# Longest user id echoed into a PR body; longer values are truncated.
+MAX_PR_BODY_ID_LENGTH: Final = 200
 
 
 class GitHubMarketplacePublisher:
@@ -205,7 +208,7 @@ class GitHubMarketplacePublisher:
     @staticmethod
     def _inline(value: str) -> str:
         """Neutralize a user-controlled id for a single PR-body line (no newlines, HTML or link syntax)."""
-        collapsed = " ".join(value.split())[:200]
+        collapsed = " ".join(value.split())[:MAX_PR_BODY_ID_LENGTH]
         return collapsed.replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
 
     @staticmethod

@@ -35,7 +35,19 @@ class AllAuthorsSnapshotStore(Protocol):
     ``isinstance`` checks against it).
     """
 
-    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot: ...
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        """Return every author's skills, keyed by ``(author, plugin_name, skill_name)``.
+
+        Args:
+            include_staging: Also include skills in the ``staging`` state.
+
+        Returns:
+            An immutable snapshot spanning all authors, drafts included. The read is unbounded.
+
+        The store performs no authorization: the caller must verify the requesting user may
+        see other users' skills before calling this.
+        """
+        ...
 
 
 @runtime_checkable

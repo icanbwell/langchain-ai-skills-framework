@@ -9,6 +9,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.loaders.skill_sync import SYSTEM_USER_ID as _SYSTEM_AUTHOR
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,12 @@ class ListSkillsService:
         showing only published skills). Takes precedence over ``exclude_states``.
 
         ``all_authors=True`` returns every author's skills (including other users'
-        drafts) as per-author entries; the caller must authorize it.
+        drafts) as per-author entries. This service performs no authorization: the caller
+        must verify the user may list other users' skills. Raises ``SkillOperationError``
+        if ``all_authors`` is set without a ``user_id``.
         """
+        if all_authors and not user_id:
+            raise SkillOperationError("user_id is required to list skills for all authors.")
         if user_id:
             if all_authors:
                 summaries = await self._loader.list_all_summaries(

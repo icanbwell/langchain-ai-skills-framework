@@ -30,7 +30,7 @@ class TestDeleteSkillTool:
 
         assert "deleted successfully" in result
         loader.delete_skill.assert_awaited_once_with(
-            author="user-1", plugin_name="test-plugin", skill_name="test-skill", modified_by="user-1"
+            author="user-1", plugin_name="test-plugin", skill_name="test-skill"
         )
 
     @pytest.mark.asyncio

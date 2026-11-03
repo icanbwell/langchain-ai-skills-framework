@@ -33,7 +33,6 @@ async def test_delete_skill_script_success() -> None:
         plugin_name="test-plugin",
         skill_name="test-skill",
         script_name="test.sh",
-        modified_by="user123",
     )
 
 

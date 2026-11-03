@@ -545,6 +545,20 @@ class HistoryTrackingPluginSkillStore:
         return await self._inner.load_shared_snapshot(plugin_name=plugin_name, include_staging=include_staging)
 
     async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        """Delegate to the wrapped store's all-authors snapshot (no history is written for reads).
+
+        Args:
+            include_staging: Also include skills in the ``staging`` state.
+
+        Returns:
+            An immutable snapshot of every author's skills, drafts included.
+
+        Raises:
+            TypeError: If the wrapped store does not implement ``load_all_snapshot``.
+
+        No authorization is performed here: the caller must verify the requesting user may
+        see other users' skills.
+        """
         if not isinstance(self._inner, AllAuthorsSnapshotStore):
             raise TypeError(f"{type(self._inner).__name__} does not implement load_all_snapshot")
         return await self._inner.load_all_snapshot(include_staging=include_staging)

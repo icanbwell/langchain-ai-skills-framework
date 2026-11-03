@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -21,6 +22,7 @@ from langchain_ai_skills_framework.services.publish_skill_service import Publish
 from langchain_ai_skills_framework.services.save_skill_resource_service import SaveSkillResourceService
 from langchain_ai_skills_framework.services.save_skill_script_service import SaveSkillScriptService
 from langchain_ai_skills_framework.services.save_skill_service import SaveSkillService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 CONTENT = "---\nname: my-skill\ndescription: A test skill\n---\n# Body"
 ADMIN = "admin@example.com"
@@ -131,8 +133,15 @@ async def test_modified_by_is_recorded_separately_from_author(runner: Any, metho
     assert kwargs["modified_by"] == ADMIN
 
 
-@pytest.mark.parametrize(("runner", "method"), CASES)
-async def test_author_and_modified_by_default_to_user_id(runner: Any, method: str) -> None:
+# Methods whose call shape must stay exactly as before BAI-1500 when the owner acts for themself.
+LEGACY_SHAPE_CASES = [
+    c for c in CASES if c.values[1] in {"delete_skill", "delete_resource", "delete_script", "set_skill_state"}
+]
+SAVE_CASES = [c for c in CASES if c not in LEGACY_SHAPE_CASES]
+
+
+@pytest.mark.parametrize(("runner", "method"), SAVE_CASES)
+async def test_save_defaults_author_and_modified_by_to_user_id(runner: Any, method: str) -> None:
     store = _store()
 
     await runner(store, user_id=OWNER)
@@ -142,6 +151,34 @@ async def test_author_and_modified_by_default_to_user_id(runner: Any, method: st
     assert kwargs["modified_by"] == OWNER
 
 
+@pytest.mark.parametrize(("runner", "method"), LEGACY_SHAPE_CASES)
+@pytest.mark.parametrize("explicit", [False, True])
+async def test_old_call_shape_when_actor_is_owner(runner: Any, method: str, explicit: bool) -> None:
+    """External stores/mocks with pre-BAI-1500 signatures must keep working for non-admin calls."""
+    store = _store()
+    extra = {"author": OWNER, "modified_by": OWNER} if explicit else {}
+
+    await runner(store, user_id=OWNER, **extra)
+
+    kwargs = getattr(store, method).call_args.kwargs
+    assert kwargs["author"] == OWNER
+    assert "modified_by" not in kwargs
+
+
+@pytest.mark.parametrize(("runner", "method"), CASES)
+@pytest.mark.parametrize("field", ["author", "modified_by"])
+@pytest.mark.parametrize("blank", ["", "   "])
+async def test_explicitly_blank_author_or_modified_by_is_rejected(
+    runner: Any, method: str, field: str, blank: str
+) -> None:
+    store = _store()
+
+    with pytest.raises(SkillOperationError, match=field):
+        await runner(store, user_id=OWNER, **{field: blank})
+
+    getattr(store, method).assert_not_called()
+
+
 async def test_publish_gate_checks_the_authors_skill_not_the_actors() -> None:
     store = _store()
 
@@ -149,3 +186,51 @@ async def test_publish_gate_checks_the_authors_skill_not_the_actors() -> None:
 
     assert store.skill_exists.call_args.kwargs["author"] == OWNER
     assert store.get_skill_details.call_args.kwargs["author"] == OWNER
+
+
+def _publisher() -> MagicMock:
+    publisher = MagicMock()
+    publisher.use_branch = False
+    publisher.publish_skill = AsyncMock(return_value="sha")
+    publisher.unpublish_skill = AsyncMock(return_value="sha")
+    return publisher
+
+
+async def _drain_pending() -> None:
+    tasks = list(PublishSkillService._pending_tasks.values())
+    await asyncio.gather(*tasks)
+    PublishSkillService._pending_tasks.clear()
+
+
+def _publish_store() -> AsyncMock:
+    store = _store()
+    store.set_skill_state.return_value = _skill_doc()
+    store.get_skill_details.return_value = AsyncMock(
+        summary=AsyncMock(state="staging", folder=None, path="p/skills/my-skill/SKILL.md"),
+        content=CONTENT,
+    )
+    store.list_resource_documents.return_value = []
+    store.list_script_documents.return_value = []
+    return store
+
+
+@pytest.mark.parametrize(("published", "method"), [(True, "publish_skill"), (False, "unpublish_skill")])
+@pytest.mark.parametrize(
+    ("user_id", "author", "expected_acting"),
+    [(ADMIN, OWNER, ADMIN), (OWNER, None, None), (OWNER, OWNER, None)],
+)
+async def test_background_publish_carries_owner_and_actor(
+    published: bool, method: str, user_id: str, author: str | None, expected_acting: str | None
+) -> None:
+    publisher = _publisher()
+    service = PublishSkillService(mongo_skill_loader=_publish_store(), marketplace_publisher=publisher)
+
+    await service.execute(user_id=user_id, author=author, plugin_name="p", skill_name="my-skill", published=published)
+    await _drain_pending()
+
+    kwargs = getattr(publisher, method).call_args.kwargs
+    assert kwargs["user_id"] == OWNER
+    if expected_acting is None:
+        assert "acting_user_id" not in kwargs
+    else:
+        assert kwargs["acting_user_id"] == expected_acting

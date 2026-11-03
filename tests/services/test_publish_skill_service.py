@@ -107,7 +107,6 @@ class TestPublishSkillService:
             skill_name="test-skill",
             state="in_review",
             published_branch=None,
-            modified_by="user-1",
         )
 
     @pytest.mark.asyncio
@@ -167,7 +166,6 @@ class TestPublishSkillService:
             skill_name="test-skill",
             state="in_review",
             published_branch=None,
-            modified_by="user-1",
         )
 
     @pytest.mark.asyncio
@@ -228,7 +226,6 @@ class TestPublishSkillService:
             skill_name="test-skill",
             state="draft",
             published_branch=None,
-            modified_by="user-1",
         )
         # Should NOT call skill_exists or get_skill_details for unpublish
         store.skill_exists.assert_not_awaited()
@@ -405,7 +402,6 @@ class TestPublishSkillServicePathPropagation:
             plugin_name="test-plugin",
             skill_name="test-skill",
             user_id="user-1",
-            acting_user_id="user-1",
             skill_dir="plugins/test-plugin/skills/folder/test-skill",
         )
 
@@ -434,6 +430,5 @@ class TestPublishSkillServicePathPropagation:
             plugin_name="test-plugin",
             skill_name="test-skill",
             user_id="user-1",
-            acting_user_id="user-1",
             skill_dir=None,
         )

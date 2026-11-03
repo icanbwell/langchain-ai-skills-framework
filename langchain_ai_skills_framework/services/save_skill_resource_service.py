@@ -9,6 +9,7 @@ from langchain_ai_skills_framework.services.skill_operation_error import (
     require_non_empty,
     require_store,
     require_user_id,
+    resolve_owner_and_actor,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -35,9 +36,16 @@ class SaveSkillResourceService:
         author: str | None = None,
         modified_by: str | None = None,
     ) -> MutationResult:
-        owner = author or user_id
-        actor = modified_by or user_id
+        """Execute the operation.
+
+        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
+        history. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
+        ``SkillOperationError``. This service performs no authorization: a caller passing an
+        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
+        """
         require_user_id(user_id=user_id, operation="save_skill_resource")
+        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner, actor = who.owner, who.actor
         require_non_empty(value=skill_name, label="skill_name")
         require_non_empty(value=resource_name, label="resource_name")
         require_non_empty(value=content, label="content")

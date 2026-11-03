@@ -17,6 +17,7 @@ from langchain_ai_skills_framework.models.skills_model import (
     SkillSummary,
 )
 from langchain_ai_skills_framework.services.list_skills_service import ListSkillsService
+from langchain_ai_skills_framework.services.skill_operation_error import SkillOperationError
 
 
 def _summary(name: str, *, author: str | None = None, state: str = "published") -> SkillSummary:
@@ -122,3 +123,24 @@ async def test_composite_all_authors_raises_when_store_lacks_load_all_snapshot()
 
     with pytest.raises(TypeError, match="load_all_snapshot"):
         await composite.list_all_summaries(user_id="admin@example.com", allowed_skills=set(), all_authors=True)
+
+
+@pytest.mark.parametrize("include_staging", [True, False])
+async def test_composite_all_authors_passes_include_staging_through(include_staging: bool) -> None:
+    composite, store = _composite(mine=[], everyone=[], marketplace=[])
+
+    await composite.list_all_summaries(
+        user_id="admin@example.com", allowed_skills=set(), include_staging=include_staging, all_authors=True
+    )
+
+    store.load_all_snapshot.assert_awaited_once_with(include_staging=include_staging)
+
+
+@pytest.mark.parametrize("user_id", ["", None])
+async def test_service_all_authors_without_user_id_raises(user_id: str | None) -> None:
+    loader = AsyncMock(spec=SkillLoaderProtocol)
+
+    with pytest.raises(SkillOperationError, match="user_id is required"):
+        await ListSkillsService(skill_loader=loader).execute(user_id=user_id or "", all_authors=True)
+
+    loader.list_all_summaries.assert_not_awaited()

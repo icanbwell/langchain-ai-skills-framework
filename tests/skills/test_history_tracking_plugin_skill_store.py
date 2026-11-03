@@ -589,3 +589,16 @@ async def test_delete_and_state_change_record_acting_user_as_changed_by(
     state_record = history_writer.write_skill_history.call_args_list[0].kwargs["record"]
     assert all(r.changed_by == expected_changed_by for r in [*records, state_record])
     assert all(r.user_id == "user-1" for r in [*records, state_record])
+
+
+async def test_load_all_snapshot_raises_type_error_when_inner_store_lacks_it(history_writer: AsyncMock) -> None:
+    class LegacyInner:
+        pass
+
+    store = HistoryTrackingPluginSkillStore(
+        inner_store=LegacyInner(),  # type: ignore[arg-type]  # deliberately lacks load_all_snapshot
+        history_writer=history_writer,
+    )
+
+    with pytest.raises(TypeError, match="load_all_snapshot"):
+        await store.load_all_snapshot()

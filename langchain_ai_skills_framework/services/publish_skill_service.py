@@ -20,6 +20,7 @@ from langchain_ai_skills_framework.services.skill_operation_error import (
     require_non_empty,
     require_store,
     require_user_id,
+    resolve_owner_and_actor,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -82,12 +83,14 @@ class PublishSkillService:
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the ``content`` frontmatter.
 
-        ``author`` is whose skill is acted on and ``modified_by`` is the acting
-        user (recorded in history and the marketplace PR); both default to ``user_id``.
+        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
+        history and the marketplace PR. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
+        ``SkillOperationError``. This service performs no authorization: a caller passing an
+        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
         """
         require_user_id(user_id=user_id, operation="publish_skill")
-        owner = author or user_id
-        actor = modified_by or user_id
+        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner, actor = who.owner, who.actor
 
         if not skill_name:
             if content:
@@ -143,7 +146,7 @@ class PublishSkillService:
                 skill_name=skill_name,
                 state=target_state,
                 published_branch=branch,
-                modified_by=actor,
+                **who.modified_by_kwargs(),
             )
 
             message = (
@@ -163,7 +166,7 @@ class PublishSkillService:
                 task = asyncio.create_task(
                     self._try_publish(
                         user_id=owner,
-                        acting_user_id=actor,
+                        acting_user_id=actor if who.acts_for_another_user else None,
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,
@@ -268,6 +271,11 @@ class PublishSkillService:
     # Background publish logic
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _acting_kwargs(acting_user_id: str | None) -> dict[str, str]:
+        """``acting_user_id`` only when set, so the publisher call is unchanged when owner publishes."""
+        return {"acting_user_id": acting_user_id} if acting_user_id else {}
+
     async def _try_publish(
         self,
         *,
@@ -298,8 +306,8 @@ class PublishSkillService:
                     plugin_name=plugin_name,
                     skill_name=skill_name,
                     user_id=user_id,
-                    acting_user_id=acting_user_id,
                     skill_dir=skill_dir,
+                    **self._acting_kwargs(acting_user_id),
                 )
                 logger.info(
                     "Skill '%s/%s' removal result: %s",
@@ -376,11 +384,11 @@ class PublishSkillService:
             resources=resources,
             scripts=scripts,
             user_id=user_id,
-            acting_user_id=acting_user_id,
             branch_name=effective_branch,
             skill_path=skill_path,
             resource_paths=resource_paths or None,
             script_paths=script_paths or None,
+            **self._acting_kwargs(acting_user_id),
         )
         logger.info(
             "Skill '%s/%s' publish result: %s",

@@ -33,7 +33,6 @@ async def test_delete_skill_resource_success() -> None:
         plugin_name="test-plugin",
         skill_name="test-skill",
         resource_name="test.txt",
-        modified_by="user123",
     )
 
 

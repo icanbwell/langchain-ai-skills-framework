@@ -85,7 +85,7 @@ class TestPublishSkillTool:
             plugin_name="test-plugin",
             skill_name="test-skill",
             state="in_review",
-            published_branch="skill-publish/test-plugin/test-skill",
+            published_branch="skill-publish/user-1-c6c289e4/test-plugin/test-skill",
         )
 
     @pytest.mark.asyncio

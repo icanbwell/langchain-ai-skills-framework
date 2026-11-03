@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import re
 from typing import ClassVar
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -48,12 +50,14 @@ class PublishSkillService:
 
     # Intentionally class-level and shared across all instances.
     # PublishSkillService is instantiated per-request by PublishSkillTool,
-    # but rapid publish/unpublish toggles for the *same* skill must be
+    # but rapid publish/unpublish toggles for the *same* author's skill must be
     # serialized globally — a per-instance dict would lose track of the
-    # previous task.  All access is single-threaded within one asyncio
-    # event loop, so no mutex is needed.  The done-callback in execute()
-    # removes completed entries to prevent unbounded growth.
-    _pending_tasks: ClassVar[dict[str, asyncio.Task[None]]] = {}
+    # previous task.  Keys are (author, plugin, skill) so different authors
+    # publishing a same-named skill never cancel each other.  All access is
+    # single-threaded within one asyncio event loop, so no mutex is needed.
+    # The done-callback in execute() removes completed entries to prevent
+    # unbounded growth.
+    _pending_tasks: ClassVar[dict[tuple[str, str, str], asyncio.Task[None]]] = {}
 
     def __init__(
         self,
@@ -132,8 +136,9 @@ class PublishSkillService:
                 if branch_name:
                     branch = branch_name
                 else:
+                    # Author-scoped so two authors' same-named skills never share (and force-update) one branch.
                     branch = (
-                        f"skill-publish/{plugin_name}/{skill_name}"
+                        f"skill-publish/{self._branch_segment(value=owner)}/{plugin_name}/{skill_name}"
                         if published
                         else f"skill-unpublish/{plugin_name}/{skill_name}"
                     )
@@ -157,11 +162,16 @@ class PublishSkillService:
             logger.info("PublishSkillService: %s (user=%s)", message, user_id)
 
             if self._publisher is not None:
-                task_key = f"{doc.plugin_name}/{doc.skill_name}"
+                task_key = (owner, doc.plugin_name, doc.skill_name)
+                skill_ref = f"{doc.plugin_name}/{doc.skill_name}"
                 previous = PublishSkillService._pending_tasks.get(task_key)
                 if previous is not None and not previous.done():
                     previous.cancel()
-                    logger.debug("Cancelled in-flight publish task for '%s'", task_key)
+                    logger.warning(
+                        "Cancelled in-flight marketplace task for '%s' (author=%s) in favor of a newer request",
+                        skill_ref,
+                        owner,
+                    )
 
                 task = asyncio.create_task(
                     self._try_publish(
@@ -170,14 +180,17 @@ class PublishSkillService:
                         plugin_name=doc.plugin_name,
                         skill_name=doc.skill_name,
                         published=published,
-                        branch_name=branch_name,
+                        # Publish uses the resolved (author-scoped) branch; unpublish keeps the caller's value.
+                        branch_name=branch if published else branch_name,
                     ),
-                    name=f"marketplace-{'publish' if published else 'unpublish'}-{task_key}",
+                    name=f"marketplace-{'publish' if published else 'unpublish'}-{skill_ref}",
                 )
                 PublishSkillService._pending_tasks[task_key] = task
 
-                def _cleanup(_t: asyncio.Task[None], _key: str = task_key) -> None:
-                    PublishSkillService._pending_tasks.pop(_key, None)
+                def _cleanup(_t: asyncio.Task[None], _key: tuple[str, str, str] = task_key) -> None:
+                    # Only remove our own entry; a replacement task may already own the key.
+                    if PublishSkillService._pending_tasks.get(_key) is _t:
+                        del PublishSkillService._pending_tasks[_key]
 
                 task.add_done_callback(_cleanup)
 
@@ -322,6 +335,19 @@ class PublishSkillService:
                 plugin_name,
                 skill_name,
             )
+
+    @staticmethod
+    def _branch_segment(*, value: str) -> str:
+        """Make an author id a collision-free, valid single git ref path segment.
+
+        A readable sanitized prefix is followed by a short sha256 of the raw id, so ids that sanitize to the
+        same prefix still get distinct segments. The digest suffix also guarantees the segment never ends in
+        ``.lock`` or starts with a dot, and runs of dots (``..`` is illegal in a ref) are collapsed.
+        """
+        prefix = re.sub(r"[^A-Za-z0-9._-]", "-", value)
+        prefix = re.sub(r"\.{2,}", "-", prefix).strip(".-")[:40].strip(".-") or "author"
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+        return f"{prefix}-{digest}"
 
     async def _publish_skill(
         self,

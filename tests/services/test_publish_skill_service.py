@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import subprocess
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -432,3 +435,145 @@ class TestPublishSkillServicePathPropagation:
             user_id="user-1",
             skill_dir=None,
         )
+
+
+class TestPublishSkillServiceTaskIsolation:
+    """A background publish is replaced only by a repeat publish from the same author (BAI-1510)."""
+
+    @staticmethod
+    def _build_service() -> tuple[PublishSkillService, AsyncMock, asyncio.Event]:
+        store = AsyncMock(spec=PluginSkillStore)
+        store.skill_exists.return_value = True
+        store.get_skill_details.return_value = _make_skill_details(state="staging")
+        store.set_skill_state.return_value = _make_doc(state="in_review")
+        store.list_resource_documents.return_value = []
+        store.list_script_documents.return_value = []
+
+        release = asyncio.Event()
+
+        async def _blocked_publish(**_kwargs: object) -> str:
+            await release.wait()
+            return "abc123"
+
+        publisher = AsyncMock(spec=GitHubMarketplacePublisher)
+        publisher.use_branch = False
+        publisher.publish_skill.side_effect = _blocked_publish
+        service = PublishSkillService(mongo_skill_loader=store, marketplace_publisher=publisher)
+        return service, publisher, release
+
+    @staticmethod
+    async def _publish(service: PublishSkillService, *, author: str) -> asyncio.Task[None]:
+        before = set(PublishSkillService._pending_tasks.values())
+        await service.execute(user_id=author, plugin_name="test-plugin", skill_name="test-skill", published=True)
+        (task,) = set(PublishSkillService._pending_tasks.values()) - before
+        return task
+
+    @pytest.fixture(autouse=True)
+    def _isolate_pending_tasks(self) -> None:
+        PublishSkillService._pending_tasks.clear()
+
+    @pytest.mark.parametrize(
+        ("first_author", "second_author", "first_is_cancelled"),
+        [
+            ("author-a", "author-b", False),
+            ("author-a", "author-a", True),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_only_same_author_repeat_publish_cancels_earlier_task(
+        self, first_author: str, second_author: str, first_is_cancelled: bool
+    ) -> None:
+        service, _publisher, release = self._build_service()
+
+        first = await self._publish(service, author=first_author)
+        await asyncio.sleep(0)  # let the first publish reach the (blocked) marketplace call
+        second = await self._publish(service, author=second_author)
+        release.set()
+        await asyncio.gather(first, second, return_exceptions=True)
+
+        assert first.cancelled() is first_is_cancelled
+        assert not second.cancelled()
+        assert second.done()
+
+    @pytest.mark.asyncio
+    async def test_two_authors_publishing_same_skill_both_reach_marketplace(self) -> None:
+        service, publisher, release = self._build_service()
+
+        task_a = await self._publish(service, author="author-a")
+        task_b = await self._publish(service, author="author-b")
+        await asyncio.sleep(0)
+        release.set()
+        await asyncio.gather(task_a, task_b)
+
+        assert publisher.publish_skill.await_count == 2
+        assert {call.kwargs["user_id"] for call in publisher.publish_skill.await_args_list} == {"author-a", "author-b"}
+
+    @pytest.mark.asyncio
+    async def test_cancelling_in_flight_publish_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        service, _publisher, release = self._build_service()
+
+        first = await self._publish(service, author="author-a")
+        with caplog.at_level(logging.WARNING):
+            second = await self._publish(service, author="author-a")
+        release.set()
+        await asyncio.gather(first, second, return_exceptions=True)
+
+        assert any(r.levelno == logging.WARNING and "test-plugin/test-skill" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        ("author", "readable_prefix"),
+        [
+            ("author-a", "author-a-"),
+            ("a.b+c@example.org", "a.b-c-example.org-"),
+            ("@@", "author-"),
+            ("a..b@x.com", "a-b-x.com-"),
+            ("x.lock", "x.lock-"),
+            (".hidden.", "hidden-"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_default_publish_branch_is_scoped_to_author(self, author: str, readable_prefix: str) -> None:
+        service, publisher, release = self._build_service()
+        publisher.use_branch = True
+
+        task = await self._publish(service, author=author)
+        await asyncio.sleep(0)
+        release.set()
+        await task
+
+        branch = publisher.publish_skill.await_args.kwargs["branch_name"]
+        assert branch.startswith(f"skill-publish/{readable_prefix}")
+        assert branch.endswith("/test-plugin/test-skill")
+
+    @pytest.mark.parametrize(
+        "author_pair",
+        [
+            ("a+b@x.com", "a-b@x.com"),
+            ("a+b@x.com", "a b@x.com"),
+            ("@@", "!!"),
+            ("a..b", "a.b"),
+            ("alice", "Alice"),
+        ],
+    )
+    def test_branch_segment_is_collision_free(self, author_pair: tuple[str, str]) -> None:
+        first, second = (PublishSkillService._branch_segment(value=a) for a in author_pair)
+
+        assert first != second
+
+    @pytest.mark.parametrize(
+        "author",
+        ["a..b@x.com", "x.lock", "", "...", ".", "-", "a/b", "a b", "@{", "é☃", "x" * 500, "a.lock.", "~^:?*[\\"],
+    )
+    def test_branch_segment_is_valid_git_ref_component(self, author: str) -> None:
+        segment = PublishSkillService._branch_segment(value=author)
+        branch = f"skill-publish/{segment}/test-plugin/test-skill"
+
+        assert segment == PublishSkillService._branch_segment(value=author)  # stable
+        assert "/" not in segment
+        assert len(segment) <= 60
+        result = subprocess.run(
+            ["git", "check-ref-format", f"refs/heads/{branch}"],
+            check=False,
+            capture_output=True,
+        )
+        assert result.returncode == 0, branch

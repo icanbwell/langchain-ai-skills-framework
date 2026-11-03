@@ -16,7 +16,7 @@ import logging
 import re
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -46,6 +46,7 @@ from langchain_ai_skills_framework.loaders.summary_page_cursor import (
     SummaryPageKey,
     decode_cursor,
     encode_cursor,
+    filters_fingerprint,
     validate_page_limit,
 )
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
@@ -136,6 +137,7 @@ class MongoPluginSkillLoader:
     USAGE_SCHEMA_VERSION_INDEX_NAME = "ix_plugin_skill_usage_schema_version"
     PLUGIN_INDEX_NAME = "ux_plugin_name"
     LISTING_INDEX_NAME = "ix_plugin_skill_listing"
+    LISTING_STATE_INDEX_NAME = "ix_plugin_skill_listing_state"
     # Sort key of ``list_all_summaries_page``; also the tail of ``LISTING_INDEX_NAME`` so the sort is index-ordered.
     LISTING_SORT_KEYS: tuple[tuple[str, int], ...] = (("plugin_name", 1), ("skill_name", 1), ("author", 1))
 
@@ -225,16 +227,29 @@ class MongoPluginSkillLoader:
             unique=False,
             name=self.USAGE_SCHEMA_VERSION_INDEX_NAME,
         )
-        # Serves ``list_all_summaries_page`` (BAI-1509): equality on schema_version, then the sort key, so Mongo walks
-        # the index in order and stops after ``limit + 1`` documents instead of sorting the filtered set in memory.
-        # The ``state`` filter is a ``$ne`` (a range) and the keyset ``$or`` is covered by the sort-key prefix, so
-        # neither belongs before the sort keys. Non-unique and new, so it conflicts with no existing index.
+        # Serve ``list_all_summaries_page`` (BAI-1509); both are non-unique and new, so they conflict with no existing
+        # index. Every query has equality on schema_version and sorts by (plugin_name, skill_name, author).
+        # 1. Unfiltered and plugin_name walks: schema_version, then the sort key, so Mongo walks the index in order and
+        #    stops after ``limit + 1`` documents. A plugin_name equality filter stays a valid prefix of the sort key.
+        #    The default ``state`` filter is a ``$ne`` (a range) and is checked on the fetched document, so it is
+        #    deliberately not a key here.
         await self._ensure_index(
             self._skills_collection,
             keys=[(sv, 1), *self.LISTING_SORT_KEYS],
             unique=False,
             name=self.LISTING_INDEX_NAME,
         )
+        # 2. Explicit ``allow_states`` (an ``$in``), alone or with plugin_name: state, then plugin_name, then the rest of
+        #    the sort key; Mongo merge-sorts the per-state index ranges so rare states (drafts) are not found by
+        #    walking every skill. Without a plugin_name filter plugin_name is a range, and the merge still orders it.
+        await self._ensure_index(
+            self._skills_collection,
+            keys=[(sv, 1), ("state", 1), *self.LISTING_SORT_KEYS],
+            unique=False,
+            name=self.LISTING_STATE_INDEX_NAME,
+        )
+        # Not indexed on purpose: the ``folder`` filter is checked on fetched documents within whichever walk above is
+        # chosen, because folder is low-cardinality and an index per filter shape would sprawl on a shared collection.
         await self._ensure_index(
             self._plugins_collection,
             keys=[(sv, 1), ("plugin_name", 1)],
@@ -1200,7 +1215,14 @@ class MongoPluginSkillLoader:
 
     @_repairs_first
     async def list_all_summaries_page(
-        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
     ) -> AllAuthorsSummaryPage:
         """Return one bounded page of every author's skill summaries, without resources or scripts.
 
@@ -1210,14 +1232,27 @@ class MongoPluginSkillLoader:
 
         Raises:
             ValueError: If ``limit`` is below 1.
-            InvalidPageCursorError: If ``cursor`` is malformed or from an incompatible version.
+            InvalidPageCursorError: If ``cursor`` is malformed, from an incompatible version, or was issued under
+                different ``include_staging`` or filters.
         """
         page_limit = validate_page_limit(limit=limit)
+        fingerprint = filters_fingerprint(
+            include_staging=include_staging, plugin_name=plugin_name, folder=folder, allow_states=allow_states
+        )
+        after = decode_cursor(cursor=cursor, fingerprint=fingerprint) if cursor is not None else None
         query: dict[str, object] = {}
-        if not include_staging:
+        if plugin_name is not None:
+            query["plugin_name"] = plugin_name
+        if folder is not None:
+            query["folder"] = folder
+        if allow_states is not None:
+            permitted = set(allow_states) if include_staging else set(allow_states) - {"staging"}
+            if not permitted:
+                return AllAuthorsSummaryPage(summaries=(), next_cursor=None)
+            query["state"] = {"$in": sorted(permitted)}
+        elif not include_staging:
             query["state"] = {"$ne": "staging"}
-        if cursor is not None:
-            after = decode_cursor(cursor=cursor)
+        if after is not None:
             query["$or"] = [
                 {"plugin_name": {"$gt": after.plugin_name}},
                 {"plugin_name": after.plugin_name, "skill_name": {"$gt": after.skill_name}},
@@ -1235,7 +1270,10 @@ class MongoPluginSkillLoader:
         docs = docs[:page_limit]
         summaries = tuple(self._summary_without_manifest(doc=doc) for doc in docs)
         next_cursor = (
-            encode_cursor(key=SummaryPageKey(docs[-1].plugin_name, docs[-1].skill_name, docs[-1].author))
+            encode_cursor(
+                key=SummaryPageKey(docs[-1].plugin_name, docs[-1].skill_name, docs[-1].author),
+                fingerprint=fingerprint,
+            )
             if has_more
             else None
         )

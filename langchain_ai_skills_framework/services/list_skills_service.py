@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -123,19 +123,29 @@ class ListSkillsService:
         include_staging: bool = False,
         limit: int = DEFAULT_PAGE_LIMIT,
         cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
     ) -> SkillInfoPage:
         """Return one bounded page of every author's skills as per-author ``SkillInfo`` entries.
 
         The bounded alternative to ``execute(all_authors=True)``: ordered by ``(plugin_name, skill_name, author)``,
         built without reading resources or scripts. Pass ``next_cursor`` back as ``cursor`` for the next page. This
-        service performs no authorization: the caller must verify the user may list other users' skills. It applies
-        no ``plugin_name``/``folder``/state filters, because filtering after paging would make page sizes uneven.
+        service performs no authorization: the caller must verify the user may list other users' skills.
+
+        ``plugin_name``, ``folder`` and ``allow_states`` are optional and pushed down into the store query (not applied
+        after paging), so pages stay exactly ``limit`` long. ``allow_states`` narrows what ``include_staging`` allows
+        and never widens it. A cursor is valid only with the same ``include_staging`` and filters it was issued under.
+
+        Scope: the listing covers the Mongo store. That includes marketplace skills synced into it (``system``-authored
+        rows from the startup sync); an unsynced marketplace skill is not returned.
 
         Raises:
             SkillOperationError: If ``user_id`` is empty.
             TypeError: If the loader does not implement ``list_all_authors_summaries_page``.
             ValueError: If ``limit`` is below 1.
-            InvalidPageCursorError: If ``cursor`` is malformed or from an incompatible version.
+            InvalidPageCursorError: If ``cursor`` is malformed, from an incompatible version, or was issued under
+                different ``include_staging`` or filters.
         """
         require_non_empty(value=user_id, label="user_id")
         if not isinstance(self._loader, AllAuthorsSummaryPageLoader):
@@ -144,7 +154,12 @@ class ListSkillsService:
                 "paged all_authors listing is unavailable."
             )
         page = await self._loader.list_all_authors_summaries_page(
-            include_staging=include_staging, limit=limit, cursor=cursor
+            include_staging=include_staging,
+            limit=limit,
+            cursor=cursor,
+            plugin_name=plugin_name,
+            folder=folder,
+            allow_states=allow_states,
         )
         return SkillInfoPage(items=tuple(_to_skill_info(s) for s in page.summaries), next_cursor=page.next_cursor)
 

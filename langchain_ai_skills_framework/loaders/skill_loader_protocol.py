@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from langchain_ai_skills_framework.executors.my_script_execution_result import (
@@ -18,7 +18,14 @@ class AllAuthorsSummaryPageLoader(Protocol):
     """
 
     async def list_all_authors_summaries_page(
-        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
     ) -> AllAuthorsSummaryPage: ...
 
 

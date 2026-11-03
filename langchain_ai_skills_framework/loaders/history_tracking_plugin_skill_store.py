@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import traceback as tb
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -570,7 +570,14 @@ class HistoryTrackingPluginSkillStore:
         return await self._inner.load_all_snapshot(include_staging=include_staging)
 
     async def list_all_summaries_page(
-        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
     ) -> AllAuthorsSummaryPage:
         """Delegate to the wrapped store's paged all-authors summaries (no history is written for reads).
 
@@ -582,7 +589,14 @@ class HistoryTrackingPluginSkillStore:
         """
         if not isinstance(self._inner, AllAuthorsSummaryPageStore):
             raise TypeError(f"{type(self._inner).__name__} does not implement list_all_summaries_page")
-        return await self._inner.list_all_summaries_page(include_staging=include_staging, limit=limit, cursor=cursor)
+        return await self._inner.list_all_summaries_page(
+            include_staging=include_staging,
+            limit=limit,
+            cursor=cursor,
+            plugin_name=plugin_name,
+            folder=folder,
+            allow_states=allow_states,
+        )
 
     async def get_skill_details(
         self,

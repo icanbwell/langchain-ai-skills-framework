@@ -5,7 +5,7 @@ Reads return empty results.  Writes raise ``RuntimeError``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from types import MappingProxyType
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error import (
@@ -92,7 +92,14 @@ class NullPluginSkillStore:
         return _EMPTY_ALL_AUTHORS_SNAPSHOT
 
     async def list_all_summaries_page(
-        self, *, include_staging: bool = False, limit: int = DEFAULT_PAGE_LIMIT, cursor: str | None = None
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
     ) -> AllAuthorsSummaryPage:
         validate_page_limit(limit=limit)
         return AllAuthorsSummaryPage(summaries=(), next_cursor=None)

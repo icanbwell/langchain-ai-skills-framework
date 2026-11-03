@@ -132,7 +132,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             return shared_snapshot.details_by_name[normalized]
 
         # 3. GitHub/filesystem skills (lowest precedence)
-        return self._shared_loader.get_skill_details(skill_name=normalized, plugin_name=plugin_name)
+        return await asyncio.to_thread(
+            self._shared_loader.get_skill_details, skill_name=normalized, plugin_name=plugin_name
+        )
 
     def refresh(self) -> None:
         self._shared_loader.refresh()
@@ -235,9 +237,12 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 except SkillNotFoundError:
                     pass
 
-        # Fall back to shared filesystem loader
-        return self._shared_loader.read_skill_resource(
-            skill_name=normalized, resource_name=resource_name, plugin_name=plugin_name
+        # Fall back to shared filesystem loader (off the event loop: may trigger a marketplace download)
+        return await asyncio.to_thread(
+            self._shared_loader.read_skill_resource,
+            skill_name=normalized,
+            resource_name=resource_name,
+            plugin_name=plugin_name,
         )
 
     def read_skill_script(self, *, skill_name: str, script_name: str, plugin_name: str | None = None) -> str:
@@ -277,8 +282,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
                 except SkillNotFoundError:
                     pass
 
-        return self._shared_loader.read_skill_script(
-            skill_name=normalized, script_name=script_name, plugin_name=plugin_name
+        return await asyncio.to_thread(
+            self._shared_loader.read_skill_script,
+            skill_name=normalized,
+            script_name=script_name,
+            plugin_name=plugin_name,
         )
 
     async def run_skill_script(
@@ -372,7 +380,9 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         # Shared loader scripts
         try:
-            shared_scripts = self._shared_loader.list_skill_script_names(skill_name=normalized, plugin_name=plugin_name)
+            shared_scripts = await asyncio.to_thread(
+                self._shared_loader.list_skill_script_names, skill_name=normalized, plugin_name=plugin_name
+            )
             names.update(shared_scripts)
         except SkillNotFoundError:
             pass
@@ -400,8 +410,8 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
         # Shared loader resources
         try:
-            shared_resources = self._shared_loader.list_skill_resource_names(
-                skill_name=normalized, plugin_name=plugin_name
+            shared_resources = await asyncio.to_thread(
+                self._shared_loader.list_skill_resource_names, skill_name=normalized, plugin_name=plugin_name
             )
             names.update(shared_resources)
         except SkillNotFoundError:

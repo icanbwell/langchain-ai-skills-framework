@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Literal
 
-from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import AllAuthorsSnapshotStore, PluginSkillStore
 from langchain_ai_skills_framework.loaders.schema_migrations import content_digest_and_size
 from langchain_ai_skills_framework.models.error_record import ErrorRecord
 from langchain_ai_skills_framework.models.history_record import HistoryRecord
@@ -545,6 +545,8 @@ class HistoryTrackingPluginSkillStore:
         return await self._inner.load_shared_snapshot(plugin_name=plugin_name, include_staging=include_staging)
 
     async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        if not isinstance(self._inner, AllAuthorsSnapshotStore):
+            raise TypeError(f"{type(self._inner).__name__} does not implement load_all_snapshot")
         return await self._inner.load_all_snapshot(include_staging=include_staging)
 
     async def get_skill_details(

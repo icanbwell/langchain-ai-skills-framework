@@ -203,11 +203,22 @@ class GitHubMarketplacePublisher:
         )
 
     @staticmethod
+    def _inline(value: str) -> str:
+        """Neutralize a user-controlled id for a single PR-body line (no newlines, HTML or link syntax)."""
+        collapsed = " ".join(value.split())[:200]
+        return collapsed.replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
+
+    @staticmethod
     def _actor_lines(*, label: str, user_id: str, acting_user_id: str | None) -> str:
-        """PR body lines naming who acted; adds the author when someone acts for another user."""
+        """PR body lines naming who acted; adds the author when someone acts for another user.
+
+        Ids are user-controlled, so each is flattened to one line and stripped of markup.
+        """
+        owner = GitHubMarketplacePublisher._inline(user_id)
         if acting_user_id and acting_user_id != user_id:
-            return f"- **{label}**: {acting_user_id}\n- **Author**: {user_id}\n"
-        return f"- **{label}**: {user_id}\n"
+            actor = GitHubMarketplacePublisher._inline(acting_user_id)
+            return f"- **{label}**: {actor}\n- **Author**: {owner}\n"
+        return f"- **{label}**: {owner}\n"
 
     # ------------------------------------------------------------------
     # Path safety

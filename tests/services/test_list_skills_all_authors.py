@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from langchain_ai_skills_framework.loaders.composite_skill_loader import CompositeSkillLoader
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
@@ -63,6 +65,7 @@ def _composite(
         summary=next(m for m in marketplace if m.name == skill_name), content="c"
     )
     store = AsyncMock(spec=PluginSkillStore)
+    store.load_all_snapshot = AsyncMock()
     details = {s.name: SkillDetails(summary=s, content="c") for s in mine}
     store.load_snapshot.return_value = SkillSnapshot(
         details_by_name=MappingProxyType(details), ordered_summaries=tuple(mine)
@@ -106,3 +109,16 @@ async def test_composite_all_authors_returns_every_authors_skills_and_marketplac
         ("same", "author-a@example.com"),
         ("same", "author-b@example.com"),
     ]
+
+
+async def test_composite_all_authors_raises_when_store_lacks_load_all_snapshot() -> None:
+    """A PluginSkillStore written before BAI-1500 must fail clearly, not with AttributeError."""
+
+    class LegacyStore:
+        pass
+
+    shared = MagicMock()
+    composite = CompositeSkillLoader(shared_loader=shared, user_loader=LegacyStore())  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="load_all_snapshot"):
+        await composite.list_all_summaries(user_id="admin@example.com", allowed_skills=set(), all_authors=True)

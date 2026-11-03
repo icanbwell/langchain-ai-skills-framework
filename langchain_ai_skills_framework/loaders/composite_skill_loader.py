@@ -20,6 +20,7 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
     SkillNotFoundError,
 )
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
+    AllAuthorsSnapshotStore,
     PluginSkillStore,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
@@ -491,6 +492,11 @@ class CompositeSkillLoader(SkillLoaderProtocol):
 
     async def _all_authors_summaries(self, *, include_staging: bool) -> Sequence[SkillSummary]:
         """Marketplace skills not overridden in the DB, plus every author's DB skills."""
+        if not isinstance(self._user_loader, AllAuthorsSnapshotStore):
+            raise TypeError(
+                f"{type(self._user_loader).__name__} does not implement load_all_snapshot; "
+                "all_authors listing is unavailable."
+            )
         all_snapshot = await self._user_loader.load_all_snapshot(include_staging=include_staging)
         db_keys = {(s.plugin_name, s.name) for s in all_snapshot.ordered_summaries}
         base = [

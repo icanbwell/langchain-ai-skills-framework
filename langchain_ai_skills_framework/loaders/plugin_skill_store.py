@@ -27,6 +27,18 @@ from langchain_ai_skills_framework.models.skills_model import (
 
 
 @runtime_checkable
+class AllAuthorsSnapshotStore(Protocol):
+    """Optional capability: read every author's skills.
+
+    Kept separate from ``PluginSkillStore`` so existing external implementers of that
+    protocol keep satisfying it (a new required method would break them, and runtime
+    ``isinstance`` checks against it).
+    """
+
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot: ...
+
+
+@runtime_checkable
 class PluginSkillStore(Protocol):
     """Abstraction over plugin-scoped skill persistence.
 
@@ -70,8 +82,6 @@ class PluginSkillStore(Protocol):
     async def load_shared_snapshot(
         self, *, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot: ...
-
-    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot: ...
 
     async def get_skill_details(
         self,

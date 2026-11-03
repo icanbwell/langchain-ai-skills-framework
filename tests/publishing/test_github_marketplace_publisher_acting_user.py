@@ -58,3 +58,26 @@ async def test_body_unchanged_when_actor_matches_or_is_omitted(body_fn: object, 
 
     assert f"- **{label}**: {OWNER}\n" in body
     assert "**Author**" not in body
+
+
+@pytest.mark.parametrize(
+    ("hostile", "expected"),
+    [
+        ("admin@example.com\n## Approved by security", "admin@example.com ## Approved by security"),
+        ("admin\r\n- **Author**: ceo@example.com", "admin - **Author**: ceo@example.com"),
+        ("<img src=x onerror=alert(1)>", "&lt;img src=x onerror=alert(1)&gt;"),
+        ("[click](https://evil.example)", "\\[click\\](https://evil.example)"),
+    ],
+)
+@pytest.mark.parametrize("body_fn", [_publish_body, _unpublish_body])
+async def test_hostile_acting_user_cannot_inject_lines_or_markup(body_fn: object, hostile: str, expected: str) -> None:
+    body = await body_fn(_publisher(), hostile)  # type: ignore[operator]
+
+    assert f": {expected}\n- **Author**: {OWNER}\n" in body
+    assert "\n## " not in body  # no heading smuggled in after the template's own first line
+
+
+async def test_overlong_acting_user_is_truncated() -> None:
+    body = await _publish_body(_publisher(), "a" * 5000)
+
+    assert "a" * 201 not in body

@@ -23,6 +23,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.loaders.summary_page_cursor import (
+    MAX_CURSOR_LENGTH,
     MAX_PAGE_LIMIT,
     InvalidPageCursorError,
     SummaryPageKey,
@@ -616,3 +617,35 @@ async def test_service_passes_filters_through(mock_mongo_database: MagicMock) ->
     )
 
     assert [(i.plugin_name, i.name, i.author, i.folder) for i in page.items] == [("p1", "one", "b@example.com", "f1")]
+
+
+def test_oversized_cursor_is_rejected_before_decoding() -> None:
+    oversized = "A" * (MAX_CURSOR_LENGTH + 1)
+
+    with pytest.raises(InvalidPageCursorError):
+        decode_cursor(cursor=oversized)
+
+
+def test_bare_string_allow_states_is_rejected() -> None:
+    with pytest.raises(TypeError):
+        filters_fingerprint(include_staging=False, plugin_name=None, folder=None, allow_states="draft")
+
+
+def test_deeply_nested_cursor_is_rejected_as_invalid_cursor() -> None:
+    nested = base64.urlsafe_b64encode(b"[" * 200_000).decode("ascii")
+
+    with pytest.raises(InvalidPageCursorError):
+        decode_cursor(cursor=nested)
+
+
+@pytest.mark.asyncio
+async def test_null_store_rejects_invalid_cursor() -> None:
+    with pytest.raises(InvalidPageCursorError):
+        await NullPluginSkillStore().list_all_summaries_page(cursor="not-a-cursor")
+
+
+def test_cursor_with_huge_key_part_is_rejected() -> None:
+    huge = encode_cursor(key=SummaryPageKey(plugin_name="p" * 5_000_000, skill_name="s", author="a"))
+
+    with pytest.raises(InvalidPageCursorError):
+        decode_cursor(cursor=huge)

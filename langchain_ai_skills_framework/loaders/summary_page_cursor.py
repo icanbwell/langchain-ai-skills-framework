@@ -18,6 +18,8 @@ from dataclasses import dataclass
 DEFAULT_PAGE_LIMIT = 100
 MAX_PAGE_LIMIT = 500
 _CURSOR_VERSION = 1
+# A real cursor is a few hundred bytes; reject anything larger before base64/JSON decoding it.
+MAX_CURSOR_LENGTH = 2048
 
 
 class InvalidPageCursorError(ValueError):
@@ -43,7 +45,13 @@ def validate_page_limit(*, limit: int) -> int:
 def filters_fingerprint(
     *, include_staging: bool, plugin_name: str | None, folder: str | None, allow_states: Collection[str] | None
 ) -> str:
-    """Short, order-insensitive hash of the filters a page walk runs under."""
+    """Short, order-insensitive hash of the filters a page walk runs under.
+
+    Raises:
+        TypeError: If ``allow_states`` is a bare string, which would be iterated as single characters.
+    """
+    if isinstance(allow_states, str):
+        raise TypeError("allow_states must be a collection of state names, not a single string")
     normalised = json.dumps(
         [include_staging, plugin_name, folder, None if allow_states is None else sorted(set(allow_states))]
     )
@@ -62,9 +70,11 @@ def decode_cursor(*, cursor: str, fingerprint: str = "") -> SummaryPageKey:
     Raises ``InvalidPageCursorError`` for anything else, including a cursor issued under different filters
     (``fingerprint`` mismatch).
     """
+    if not isinstance(cursor, str) or len(cursor) > MAX_CURSOR_LENGTH:
+        raise InvalidPageCursorError("cursor is not a valid page cursor")
     try:
         data = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8"))
-    except (binascii.Error, UnicodeError, ValueError, AttributeError) as exc:
+    except (binascii.Error, UnicodeError, ValueError, AttributeError, RecursionError) as exc:
         raise InvalidPageCursorError("cursor is not a valid page cursor") from exc
     if not isinstance(data, dict) or data.get("v") != _CURSOR_VERSION:
         raise InvalidPageCursorError("cursor has an unsupported version")

@@ -126,8 +126,10 @@ class CompositeSkillLoader(SkillLoaderProtocol):
         ``AllAuthorsSummaryPageStore.list_all_summaries_page``); with none set, nothing is filtered.
 
         Scope: this lists the Mongo user store only. That includes marketplace skills synced into it (the
-        ``system``-authored rows written by the startup sync). A marketplace skill that has not been synced is NOT
-        returned, unlike the unpaged ``all_authors`` call, which also merges unsynced marketplace skills.
+        ``system``-authored rows written by the startup sync). The startup sync runs only while the plugins collection
+        is empty; later marketplace additions have no row until ``reload_plugins`` is run. A marketplace skill that has
+        not been synced is NOT returned, unlike the unpaged ``all_authors`` call, which also merges unsynced
+        marketplace skills. With no Mongo store (``NullPluginSkillStore``) the page is always empty.
         The caller must authorize this.
 
         Raises:

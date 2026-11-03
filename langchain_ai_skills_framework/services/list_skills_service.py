@@ -138,7 +138,9 @@ class ListSkillsService:
         and never widens it. A cursor is valid only with the same ``include_staging`` and filters it was issued under.
 
         Scope: the listing covers the Mongo store. That includes marketplace skills synced into it (``system``-authored
-        rows from the startup sync); an unsynced marketplace skill is not returned.
+        rows from the startup sync, which runs only while the plugins collection is empty; run ``reload_plugins`` after
+        adding marketplace skills). An unsynced marketplace skill is not returned, and with no Mongo store the page is
+        empty.
 
         Raises:
             SkillOperationError: If ``user_id`` is empty.

@@ -376,3 +376,63 @@ async def test_service_raises_type_error_for_loader_without_paging() -> None:
 
     with pytest.raises(TypeError, match="list_all_authors_summaries_page"):
         await service.execute_all_authors_page(user_id="admin@example.com")
+
+
+def _index_calls(database: MagicMock, collection: str) -> dict[str, tuple[list[tuple[str, int]], bool]]:
+    return {
+        c.kwargs["name"]: (c.args[0], c.kwargs["unique"]) for c in database[collection].create_index.await_args_list
+    }
+
+
+async def test_ensure_indexes_creates_listing_index_serving_the_page_query(mock_mongo_database: MagicMock) -> None:
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+
+    await loader.ensure_indexes()
+
+    keys, unique = _index_calls(mock_mongo_database, "plugin_skills")[MongoPluginSkillLoader.LISTING_INDEX_NAME]
+    assert unique is False
+    # equality field first, then exactly the sort the query uses, so the index order satisfies the sort
+    assert keys == [
+        (MongoPluginSkillLoader.SCHEMA_VERSION_FIELD, 1),
+        ("plugin_name", 1),
+        ("skill_name", 1),
+        ("author", 1),
+    ]
+
+
+async def test_page_query_filter_and_sort_match_the_listing_index(mock_mongo_database: MagicMock) -> None:
+    loader = _loader(mock_mongo_database, [])
+    cursor = encode_cursor(key=SummaryPageKey("p", "s", "a"))
+    sorts: list[list[tuple[str, int]]] = []
+
+    def record_sort(spec: list[tuple[str, int]]) -> _FakeCursor:
+        sorts.append(spec)
+        return _FakeCursor([])
+
+    mock_mongo_database["plugin_skills"].find.side_effect = None
+    mock_mongo_database["plugin_skills"].find.return_value = MagicMock(sort=record_sort)
+
+    await loader.list_all_summaries_page(limit=5, cursor=cursor)
+
+    query = mock_mongo_database["plugin_skills"].find.call_args.args[0]
+    assert sorts == [list(MongoPluginSkillLoader.LISTING_SORT_KEYS)]
+    equality_fields = {k for k, v in query.items() if k not in ("$or", "state") and not isinstance(v, dict)}
+    assert equality_fields == {MongoPluginSkillLoader.SCHEMA_VERSION_FIELD}
+
+
+async def test_ensure_indexes_is_idempotent_and_leaves_existing_indexes_alone(mock_mongo_database: MagicMock) -> None:
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+
+    await loader.ensure_indexes()
+    first = _index_calls(mock_mongo_database, "plugin_skills")
+    await loader.ensure_indexes()
+
+    skills = mock_mongo_database["plugin_skills"]
+    assert _index_calls(mock_mongo_database, "plugin_skills") == first
+    assert skills.create_index.await_count == 2 * len(first)
+    assert {MongoPluginSkillLoader.INDEX_NAME, MongoPluginSkillLoader.PATH_INDEX_NAME} <= set(first)
+    assert first[MongoPluginSkillLoader.INDEX_NAME] == (
+        [(MongoPluginSkillLoader.SCHEMA_VERSION_FIELD, 1), ("author", 1), ("plugin_name", 1), ("skill_name", 1)],
+        True,
+    )
+    skills.drop_index.assert_not_called()

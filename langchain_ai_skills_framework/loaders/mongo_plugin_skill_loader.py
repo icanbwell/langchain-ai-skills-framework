@@ -135,6 +135,9 @@ class MongoPluginSkillLoader:
     USAGE_INDEX_NAME = "ix_plugin_skill_usage_lookup"
     USAGE_SCHEMA_VERSION_INDEX_NAME = "ix_plugin_skill_usage_schema_version"
     PLUGIN_INDEX_NAME = "ux_plugin_name"
+    LISTING_INDEX_NAME = "ix_plugin_skill_listing"
+    # Sort key of ``list_all_summaries_page``; also the tail of ``LISTING_INDEX_NAME`` so the sort is index-ordered.
+    LISTING_SORT_KEYS: tuple[tuple[str, int], ...] = (("plugin_name", 1), ("skill_name", 1), ("author", 1))
 
     SCHEMA_VERSION_FIELD = "schema_version"
 
@@ -221,6 +224,16 @@ class MongoPluginSkillLoader:
             keys=[(sv, 1)],
             unique=False,
             name=self.USAGE_SCHEMA_VERSION_INDEX_NAME,
+        )
+        # Serves ``list_all_summaries_page`` (BAI-1509): equality on schema_version, then the sort key, so Mongo walks
+        # the index in order and stops after ``limit + 1`` documents instead of sorting the filtered set in memory.
+        # The ``state`` filter is a ``$ne`` (a range) and the keyset ``$or`` is covered by the sort-key prefix, so
+        # neither belongs before the sort keys. Non-unique and new, so it conflicts with no existing index.
+        await self._ensure_index(
+            self._skills_collection,
+            keys=[(sv, 1), *self.LISTING_SORT_KEYS],
+            unique=False,
+            name=self.LISTING_INDEX_NAME,
         )
         await self._ensure_index(
             self._plugins_collection,
@@ -1213,7 +1226,7 @@ class MongoPluginSkillLoader:
         docs: list[MongoPluginSkillDocument] = []
         skill_cursor = (
             self._skills_collection.find(self._version_filter(query), {"content": 0})
-            .sort([("plugin_name", 1), ("skill_name", 1), ("author", 1)])
+            .sort(list(self.LISTING_SORT_KEYS))
             .limit(page_limit + 1)
         )
         async for raw in skill_cursor:

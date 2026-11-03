@@ -16,7 +16,7 @@ import logging
 import re
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -41,6 +41,14 @@ from langchain_ai_skills_framework.loaders.schema_migrations import (
     content_digest_and_size,
     migrate_fields,
 )
+from langchain_ai_skills_framework.loaders.summary_page_cursor import (
+    DEFAULT_PAGE_LIMIT,
+    SummaryPageKey,
+    decode_cursor,
+    encode_cursor,
+    filters_fingerprint,
+    validate_page_limit,
+)
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
@@ -54,6 +62,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
 )
 from langchain_ai_skills_framework.models.skills_model import (
     AllAuthorsSkillSnapshot,
+    AllAuthorsSummaryPage,
     ManifestFileEntry,
     SkillDetails,
     SkillSnapshot,
@@ -127,6 +136,10 @@ class MongoPluginSkillLoader:
     USAGE_INDEX_NAME = "ix_plugin_skill_usage_lookup"
     USAGE_SCHEMA_VERSION_INDEX_NAME = "ix_plugin_skill_usage_schema_version"
     PLUGIN_INDEX_NAME = "ux_plugin_name"
+    LISTING_INDEX_NAME = "ix_plugin_skill_listing"
+    LISTING_STATE_INDEX_NAME = "ix_plugin_skill_listing_state"
+    # Sort key of ``list_all_summaries_page``; also the tail of ``LISTING_INDEX_NAME`` so the sort is index-ordered.
+    LISTING_SORT_KEYS: tuple[tuple[str, int], ...] = (("plugin_name", 1), ("skill_name", 1), ("author", 1))
 
     SCHEMA_VERSION_FIELD = "schema_version"
 
@@ -214,6 +227,29 @@ class MongoPluginSkillLoader:
             unique=False,
             name=self.USAGE_SCHEMA_VERSION_INDEX_NAME,
         )
+        # Serve ``list_all_summaries_page`` (BAI-1509); both are non-unique and new, so they conflict with no existing
+        # index. Every query has equality on schema_version and sorts by (plugin_name, skill_name, author).
+        # 1. Unfiltered and plugin_name walks: schema_version, then the sort key, so Mongo walks the index in order and
+        #    stops after ``limit + 1`` documents. A plugin_name equality filter stays a valid prefix of the sort key.
+        #    The default ``state`` filter is a ``$ne`` (a range) and is checked on the fetched document, so it is
+        #    deliberately not a key here.
+        await self._ensure_index(
+            self._skills_collection,
+            keys=[(sv, 1), *self.LISTING_SORT_KEYS],
+            unique=False,
+            name=self.LISTING_INDEX_NAME,
+        )
+        # 2. Explicit ``allow_states`` (an ``$in``), alone or with plugin_name: state, then plugin_name, then the rest of
+        #    the sort key; Mongo merge-sorts the per-state index ranges so rare states (drafts) are not found by
+        #    walking every skill. Without a plugin_name filter plugin_name is a range, and the merge still orders it.
+        await self._ensure_index(
+            self._skills_collection,
+            keys=[(sv, 1), ("state", 1), *self.LISTING_SORT_KEYS],
+            unique=False,
+            name=self.LISTING_STATE_INDEX_NAME,
+        )
+        # Not indexed on purpose: the ``folder`` filter is checked on fetched documents within whichever walk above is
+        # chosen, because folder is low-cardinality and an index per filter shape would sprawl on a shared collection.
         await self._ensure_index(
             self._plugins_collection,
             keys=[(sv, 1), ("plugin_name", 1)],
@@ -1164,6 +1200,9 @@ class MongoPluginSkillLoader:
         """Return every author's skills in every state (drafts included), keyed by (author, plugin, name).
 
         Callers must authorize this themselves; it deliberately has no author filter.
+
+        Unbounded: loads every skill document plus all resources and scripts of those skills. For listing, prefer
+        ``list_all_summaries_page``.
         """
         query: dict[str, object] = {}
         if not include_staging:
@@ -1177,6 +1216,91 @@ class MongoPluginSkillLoader:
             detail.summary for _key, detail in sorted(by_key.items(), key=lambda kv: (kv[0][1], kv[0][2], kv[0][0]))
         )
         return AllAuthorsSkillSnapshot(details_by_key=MappingProxyType(by_key), ordered_summaries=ordered)
+
+    @_repairs_first
+    async def list_all_summaries_page(
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
+    ) -> AllAuthorsSummaryPage:
+        """Return one bounded page of every author's skill summaries, without resources or scripts.
+
+        Keyset-paged in ``(plugin_name, skill_name, author)`` order, the same order as ``load_all_snapshot``. Reads at
+        most ``limit + 1`` skill documents with ``content`` excluded and never touches the resource or script
+        collections, so summaries have ``manifest=None``. Callers must authorize this themselves.
+
+        Raises:
+            ValueError: If ``limit`` is below 1.
+            InvalidPageCursorError: If ``cursor`` is malformed, from an incompatible version, or was issued under
+                different ``include_staging`` or filters.
+        """
+        page_limit = validate_page_limit(limit=limit)
+        fingerprint = filters_fingerprint(
+            include_staging=include_staging, plugin_name=plugin_name, folder=folder, allow_states=allow_states
+        )
+        after = decode_cursor(cursor=cursor, fingerprint=fingerprint) if cursor is not None else None
+        query: dict[str, object] = {}
+        if plugin_name is not None:
+            query["plugin_name"] = plugin_name
+        if folder is not None:
+            query["folder"] = folder
+        if allow_states is not None:
+            permitted = set(allow_states) if include_staging else set(allow_states) - {"staging"}
+            if not permitted:
+                return AllAuthorsSummaryPage(summaries=(), next_cursor=None)
+            query["state"] = {"$in": sorted(permitted)}
+        elif not include_staging:
+            query["state"] = {"$ne": "staging"}
+        if after is not None:
+            query["$or"] = [
+                {"plugin_name": {"$gt": after.plugin_name}},
+                {"plugin_name": after.plugin_name, "skill_name": {"$gt": after.skill_name}},
+                {"plugin_name": after.plugin_name, "skill_name": after.skill_name, "author": {"$gt": after.author}},
+            ]
+        docs: list[MongoPluginSkillDocument] = []
+        skill_cursor = (
+            self._skills_collection.find(self._version_filter(query), {"content": 0})
+            .sort(list(self.LISTING_SORT_KEYS))
+            .limit(page_limit + 1)
+        )
+        async for raw in skill_cursor:
+            docs.append(MongoPluginSkillDocument.from_mongo_dict(raw))
+        has_more = len(docs) > page_limit
+        docs = docs[:page_limit]
+        summaries = tuple(self._summary_without_manifest(doc=doc) for doc in docs)
+        next_cursor = (
+            encode_cursor(
+                key=SummaryPageKey(docs[-1].plugin_name, docs[-1].skill_name, docs[-1].author),
+                fingerprint=fingerprint,
+            )
+            if has_more
+            else None
+        )
+        return AllAuthorsSummaryPage(summaries=summaries, next_cursor=next_cursor)
+
+    @staticmethod
+    def _summary_without_manifest(*, doc: MongoPluginSkillDocument) -> SkillSummary:
+        return SkillSummary(
+            name=doc.skill_name,
+            description=doc.description,
+            plugin_name=doc.plugin_name,
+            folder=doc.folder,
+            path=doc.path,
+            state=doc.state,
+            source_path=Path(f"mongodb://all/{doc.plugin_name}/{doc.skill_name}"),
+            license=None,
+            compatibility=None,
+            metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+            allowed_tools=doc.allowed_tools,
+            date_modified=doc.date_modified,
+            required_external_servers=doc.required_external_servers,
+            manifest=None,
+        )
 
     @_repairs_first
     async def get_skill_details(

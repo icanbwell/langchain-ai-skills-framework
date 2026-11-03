@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from html import escape
 from types import MappingProxyType
 from typing import Any
@@ -21,17 +21,20 @@ from langchain_ai_skills_framework.loaders.exceptions.skill_not_found_error impo
 )
 from langchain_ai_skills_framework.loaders.plugin_skill_store import (
     AllAuthorsSnapshotStore,
+    AllAuthorsSummaryPageStore,
     PluginSkillStore,
 )
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT
 from langchain_ai_skills_framework.models.plugin_definition import PluginDefinition
 from langchain_ai_skills_framework.models.plugin_mcp_config import (
     PluginMcpServerEntry,
     coerce_mcp_visibility,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSummaryPage,
     SkillDetails,
     SkillSnapshot,
     SkillSummary,
@@ -104,6 +107,50 @@ class CompositeSkillLoader(SkillLoaderProtocol):
             return await self._all_authors_summaries(include_staging=include_staging)
         snapshot = await self._merged_snapshot(user_id=user_id, include_staging=include_staging)
         return snapshot.ordered_summaries
+
+    async def list_all_authors_summaries_page(
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
+    ) -> AllAuthorsSummaryPage:
+        """Return one bounded, summaries-only page of every author's database skills (BAI-1509).
+
+        The bounded alternative to ``list_all_summaries(all_authors=True)``: pages are ordered by
+        ``(plugin_name, skill_name, author)``, carry no ``manifest``, and never load resources or scripts.
+        ``plugin_name``, ``folder`` and ``allow_states`` are optional filters applied in the query (see
+        ``AllAuthorsSummaryPageStore.list_all_summaries_page``); with none set, nothing is filtered.
+
+        Scope: this lists the Mongo user store only. That includes marketplace skills synced into it (the
+        ``system``-authored rows written by the startup sync). The startup sync runs only while the plugins collection
+        is empty; later marketplace additions have no row until ``reload_plugins`` is run. A marketplace skill that has
+        not been synced is NOT returned, unlike the unpaged ``all_authors`` call, which also merges unsynced
+        marketplace skills. With no Mongo store (``NullPluginSkillStore``) the page is always empty.
+        The caller must authorize this.
+
+        Raises:
+            TypeError: If the user store does not implement ``list_all_summaries_page``.
+            ValueError: If ``limit`` is below 1.
+            InvalidPageCursorError: If ``cursor`` is malformed, from an incompatible version, or was issued under
+                different ``include_staging`` or filters.
+        """
+        if not isinstance(self._user_loader, AllAuthorsSummaryPageStore):
+            raise TypeError(
+                f"{type(self._user_loader).__name__} does not implement list_all_summaries_page; "
+                "paged all_authors listing is unavailable."
+            )
+        return await self._user_loader.list_all_summaries_page(
+            include_staging=include_staging,
+            limit=limit,
+            cursor=cursor,
+            plugin_name=plugin_name,
+            folder=folder,
+            allow_states=allow_states,
+        )
 
     def get_skill_details(self, *, skill_name: str, plugin_name: str | None = None) -> SkillDetails:
         """Get skill details from shared loader only (sync)."""

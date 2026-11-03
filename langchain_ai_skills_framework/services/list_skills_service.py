@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
+    AllAuthorsSummaryPageLoader,
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.loaders.skill_sync import SYSTEM_USER_ID as _SYSTEM_AUTHOR
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT
+from langchain_ai_skills_framework.models.skills_model import SkillSummary
 from langchain_ai_skills_framework.services.skill_operation_error import require_non_empty
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -27,6 +30,33 @@ class SkillInfo:
     state: str = "published"
     date_modified: datetime | None = None
     author: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SkillInfoPage:
+    """One page of ``SkillInfo`` from :meth:`ListSkillsService.execute_all_authors_page`.
+
+    ``next_cursor`` is opaque; ``None`` means this is the last page.
+    """
+
+    items: tuple[SkillInfo, ...]
+    next_cursor: str | None = None
+
+
+def _to_skill_info(summary: SkillSummary) -> SkillInfo:
+    return SkillInfo(
+        name=summary.name,
+        description=summary.description,
+        plugin_name=summary.plugin_name,
+        folder=summary.folder,
+        state=summary.state,
+        date_modified=summary.date_modified,
+        author=(
+            str(summary.metadata["user_id"])
+            if summary.metadata and summary.metadata.get("user_id") not in (None, _SYSTEM_AUTHOR)
+            else None
+        ),
+    )
 
 
 class ListSkillsService:
@@ -82,27 +112,58 @@ class ListSkillsService:
         elif exclude_states:
             summaries = [s for s in summaries if s.state not in exclude_states]
 
-        results = sorted(
-            (
-                SkillInfo(
-                    name=s.name,
-                    description=s.description,
-                    plugin_name=s.plugin_name,
-                    folder=s.folder,
-                    state=s.state,
-                    date_modified=s.date_modified,
-                    author=(
-                        str(s.metadata["user_id"])
-                        if s.metadata and s.metadata.get("user_id") not in (None, _SYSTEM_AUTHOR)
-                        else None
-                    ),
-                )
-                for s in summaries
-            ),
-            key=lambda s: s.name,
-        )
+        results = sorted((_to_skill_info(s) for s in summaries), key=lambda s: s.name)
         logger.debug("ListSkillsService: found %d skills for user_id=%s", len(results), user_id)
         return results
+
+    async def execute_all_authors_page(
+        self,
+        *,
+        user_id: str,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
+    ) -> SkillInfoPage:
+        """Return one bounded page of every author's skills as per-author ``SkillInfo`` entries.
+
+        The bounded alternative to ``execute(all_authors=True)``: ordered by ``(plugin_name, skill_name, author)``,
+        built without reading resources or scripts. Pass ``next_cursor`` back as ``cursor`` for the next page. This
+        service performs no authorization: the caller must verify the user may list other users' skills.
+
+        ``plugin_name``, ``folder`` and ``allow_states`` are optional and pushed down into the store query (not applied
+        after paging), so pages stay exactly ``limit`` long. ``allow_states`` narrows what ``include_staging`` allows
+        and never widens it. A cursor is valid only with the same ``include_staging`` and filters it was issued under.
+
+        Scope: the listing covers the Mongo store. That includes marketplace skills synced into it (``system``-authored
+        rows from the startup sync, which runs only while the plugins collection is empty; run ``reload_plugins`` after
+        adding marketplace skills). An unsynced marketplace skill is not returned, and with no Mongo store the page is
+        empty.
+
+        Raises:
+            SkillOperationError: If ``user_id`` is empty.
+            TypeError: If the loader does not implement ``list_all_authors_summaries_page``.
+            ValueError: If ``limit`` is below 1.
+            InvalidPageCursorError: If ``cursor`` is malformed, from an incompatible version, or was issued under
+                different ``include_staging`` or filters.
+        """
+        require_non_empty(value=user_id, label="user_id")
+        if not isinstance(self._loader, AllAuthorsSummaryPageLoader):
+            raise TypeError(
+                f"{type(self._loader).__name__} does not implement list_all_authors_summaries_page; "
+                "paged all_authors listing is unavailable."
+            )
+        page = await self._loader.list_all_authors_summaries_page(
+            include_staging=include_staging,
+            limit=limit,
+            cursor=cursor,
+            plugin_name=plugin_name,
+            folder=folder,
+            allow_states=allow_states,
+        )
+        return SkillInfoPage(items=tuple(_to_skill_info(s) for s in page.summaries), next_cursor=page.next_cursor)
 
     @staticmethod
     def format_as_text(skills: Sequence[SkillInfo]) -> str:

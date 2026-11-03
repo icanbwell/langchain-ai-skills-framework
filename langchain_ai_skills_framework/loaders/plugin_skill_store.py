@@ -9,9 +9,10 @@ Replaces the legacy ``UserSkillStore`` protocol.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
+from langchain_ai_skills_framework.loaders.summary_page_cursor import DEFAULT_PAGE_LIMIT
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginDefinitionDocument,
     MongoPluginResourceDocument,
@@ -21,6 +22,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
 )
 from langchain_ai_skills_framework.models.skills_model import (
     AllAuthorsSkillSnapshot,
+    AllAuthorsSummaryPage,
     SkillDetails,
     SkillSnapshot,
 )
@@ -42,10 +44,58 @@ class AllAuthorsSnapshotStore(Protocol):
             include_staging: Also include skills in the ``staging`` state.
 
         Returns:
-            An immutable snapshot spanning all authors, drafts included. The read is unbounded.
+            An immutable snapshot spanning all authors, drafts included. The read is unbounded: it loads every
+            skill document plus every resource and script document of those skills. For listing, prefer
+            ``AllAuthorsSummaryPageStore.list_all_summaries_page``.
 
         The store performs no authorization: the caller must verify the requesting user may
         see other users' skills before calling this.
+        """
+        ...
+
+
+@runtime_checkable
+class AllAuthorsSummaryPageStore(Protocol):
+    """Optional capability: list every author's skills as bounded, summaries-only pages (BAI-1509).
+
+    Separate from ``AllAuthorsSnapshotStore`` so implementers of that protocol keep satisfying it. Discover it with
+    ``isinstance`` and raise ``TypeError`` when absent, as the all-authors path does.
+    """
+
+    async def list_all_summaries_page(
+        self,
+        *,
+        include_staging: bool = False,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        cursor: str | None = None,
+        plugin_name: str | None = None,
+        folder: str | None = None,
+        allow_states: Collection[str] | None = None,
+    ) -> AllAuthorsSummaryPage:
+        """Return one page of every author's skill summaries.
+
+        Args:
+            include_staging: Also include skills in the ``staging`` state.
+            limit: Maximum summaries in the page; at least 1, clamped to ``MAX_PAGE_LIMIT``.
+            cursor: ``next_cursor`` of the previous page, or ``None`` for the first page.
+            plugin_name: Only skills of this plugin (``None``: no filter).
+            folder: Only skills stored in exactly this folder (``None``: no filter).
+            allow_states: Only skills in these states (``None``: no filter; an empty collection matches nothing).
+                It narrows, never widens, what ``include_staging`` allows: ``staging`` is returned only when
+                ``include_staging`` is true and ``"staging"`` is listed.
+
+        Filters are applied in the query, so every page except the last holds exactly ``limit`` summaries. A cursor is
+        valid only with the same ``include_staging`` and filters it was issued under.
+
+        Returns:
+            Up to ``limit`` summaries ordered by ``(plugin_name, skill_name, author)`` with no ``manifest``, and
+            ``next_cursor`` (``None`` on the last page). Resource and script documents are never read.
+
+        Raises:
+            ValueError: If ``limit`` is below 1.
+            InvalidPageCursorError: If ``cursor`` is malformed or from an incompatible version.
+
+        The store performs no authorization: the caller must verify the requesting user may see other users' skills.
         """
         ...
 

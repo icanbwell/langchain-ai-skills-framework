@@ -4,7 +4,7 @@ import base64
 import logging
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Final
 
 import httpx
 
@@ -15,6 +15,9 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
+
+# Longest user id echoed into a PR body; longer values are truncated.
+MAX_PR_BODY_ID_LENGTH: Final = 200
 
 
 class GitHubMarketplacePublisher:
@@ -76,6 +79,7 @@ class GitHubMarketplacePublisher:
         skill_path: str | None = None,
         resource_paths: dict[str, str] | None = None,
         script_paths: dict[str, str] | None = None,
+        acting_user_id: str | None = None,
     ) -> str:
         """Create or update a commit that adds/updates a skill in the marketplace.
 
@@ -83,6 +87,10 @@ class GitHubMarketplacePublisher:
         those marketplace-relative paths are used verbatim instead of the
         default ``plugins/{plugin}/skills/{skill}/...`` layout. Path overrides
         let callers honor stored materialized paths (custom folders).
+
+        ``user_id`` is the skill's author. ``acting_user_id`` is the user who
+        triggered the publish; when it differs from ``user_id`` the PR body names
+        both. Omitted or equal, the PR body is unchanged.
 
         Returns the PR HTML URL (branch mode) or commit SHA (direct mode).
 
@@ -110,7 +118,7 @@ class GitHubMarketplacePublisher:
             f"## Skill Published\n\n"
             f"- **Plugin**: {plugin_name}\n"
             f"- **Skill**: {skill_name}\n"
-            f"- **Published by**: {user_id}\n"
+            f"{self._actor_lines(label='Published by', user_id=user_id, acting_user_id=acting_user_id)}"
             f"- **Timestamp**: {datetime.now(UTC).isoformat()}\n"
         )
 
@@ -143,6 +151,7 @@ class GitHubMarketplacePublisher:
         skill_name: str,
         user_id: str,
         skill_dir: str | None = None,
+        acting_user_id: str | None = None,
     ) -> str | None:
         """Create a commit that removes a skill directory from the marketplace.
 
@@ -152,6 +161,8 @@ class GitHubMarketplacePublisher:
 
         Returns the PR HTML URL (branch mode), commit SHA (direct mode),
         or ``None`` when no files exist under the skill directory.
+
+        ``acting_user_id`` behaves as in :meth:`publish_skill`.
 
         Raises:
             httpx.HTTPStatusError: If any GitHub API call fails.
@@ -169,7 +180,7 @@ class GitHubMarketplacePublisher:
             f"## Skill Removed\n\n"
             f"- **Plugin**: {plugin_name}\n"
             f"- **Skill**: {skill_name}\n"
-            f"- **Unpublished by**: {user_id}\n"
+            f"{self._actor_lines(label='Unpublished by', user_id=user_id, acting_user_id=acting_user_id)}"
             f"- **Timestamp**: {datetime.now(UTC).isoformat()}\n"
         )
 
@@ -193,6 +204,24 @@ class GitHubMarketplacePublisher:
             directory_prefix=skill_dir,
             commit_message=commit_message,
         )
+
+    @staticmethod
+    def _inline(value: str) -> str:
+        """Neutralize a user-controlled id for a single PR-body line (no newlines, HTML or link syntax)."""
+        collapsed = " ".join(value.split())[:MAX_PR_BODY_ID_LENGTH]
+        return collapsed.replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
+
+    @staticmethod
+    def _actor_lines(*, label: str, user_id: str, acting_user_id: str | None) -> str:
+        """PR body lines naming who acted; adds the author when someone acts for another user.
+
+        Ids are user-controlled, so each is flattened to one line and stripped of markup.
+        """
+        owner = GitHubMarketplacePublisher._inline(user_id)
+        if acting_user_id and acting_user_id != user_id:
+            actor = GitHubMarketplacePublisher._inline(acting_user_id)
+            return f"- **{label}**: {actor}\n- **Author**: {owner}\n"
+        return f"- **{label}**: {owner}\n"
 
     # ------------------------------------------------------------------
     # Path safety

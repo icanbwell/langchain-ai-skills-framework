@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Literal
 
-from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
+from langchain_ai_skills_framework.loaders.plugin_skill_store import AllAuthorsSnapshotStore, PluginSkillStore
 from langchain_ai_skills_framework.loaders.schema_migrations import content_digest_and_size
 from langchain_ai_skills_framework.models.error_record import ErrorRecord
 from langchain_ai_skills_framework.models.history_record import HistoryRecord
@@ -21,6 +21,7 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSkillSnapshot,
     SkillDetails,
     SkillSnapshot,
 )
@@ -141,6 +142,7 @@ class HistoryTrackingPluginSkillStore:
         skill_name: str,
         state: str,
         published_branch: str | None = None,
+        modified_by: str = "",
     ) -> MongoPluginSkillDocument:
         try:
             doc = await self._inner.set_skill_state(
@@ -149,6 +151,7 @@ class HistoryTrackingPluginSkillStore:
                 skill_name=skill_name,
                 state=state,
                 published_branch=published_branch,
+                modified_by=modified_by,
             )
         except Exception as exc:
             await self._record_error(
@@ -163,7 +166,7 @@ class HistoryTrackingPluginSkillStore:
         record = HistoryRecord(
             action="state_changed",
             document_snapshot={**doc.to_mongo_dict(), "state": state},
-            changed_by=author,
+            changed_by=modified_by or author,
             timestamp=datetime.now(UTC),
             source_collection="plugin_skills",
             user_id=author,
@@ -173,7 +176,7 @@ class HistoryTrackingPluginSkillStore:
         await self._history.write_skill_history(record=record)
         return doc
 
-    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool:
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool:
         normalized_name = normalize_skill_name(value=skill_name)
 
         snapshot: dict[str, object] = {}
@@ -204,7 +207,9 @@ class HistoryTrackingPluginSkillStore:
         except Exception:  # noqa: BLE001 - script enumeration is best-effort before delete; must not block the delete itself
             logger.debug("Could not enumerate scripts before skill delete %s/%s", plugin_name, skill_name)
 
-        deleted = await self._inner.delete_skill(author=author, plugin_name=plugin_name, skill_name=skill_name)
+        deleted = await self._inner.delete_skill(
+            author=author, plugin_name=plugin_name, skill_name=skill_name, modified_by=modified_by
+        )
 
         if deleted:
             now = datetime.now(UTC)
@@ -212,7 +217,7 @@ class HistoryTrackingPluginSkillStore:
                 child_record = HistoryRecord(
                     action="deleted",
                     document_snapshot={"resource_name": resource, "plugin_name": plugin_name, "user_id": author},
-                    changed_by=author,
+                    changed_by=modified_by or author,
                     timestamp=now,
                     source_collection="plugin_references",
                     user_id=author,
@@ -225,7 +230,7 @@ class HistoryTrackingPluginSkillStore:
                 child_record = HistoryRecord(
                     action="deleted",
                     document_snapshot={"script_name": script, "plugin_name": plugin_name, "user_id": author},
-                    changed_by=author,
+                    changed_by=modified_by or author,
                     timestamp=now,
                     source_collection="plugin_scripts",
                     user_id=author,
@@ -237,7 +242,7 @@ class HistoryTrackingPluginSkillStore:
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
-                changed_by=author,
+                changed_by=modified_by or author,
                 timestamp=now,
                 source_collection="plugin_skills",
                 user_id=author,
@@ -312,6 +317,7 @@ class HistoryTrackingPluginSkillStore:
         plugin_name: str,
         skill_name: str,
         resource_name: str,
+        modified_by: str = "",
     ) -> bool:
         normalized_skill = normalize_skill_name(value=skill_name)
         normalized_resource = resource_name.strip()
@@ -337,14 +343,18 @@ class HistoryTrackingPluginSkillStore:
             )
 
         deleted = await self._inner.delete_resource(
-            author=author, plugin_name=plugin_name, skill_name=skill_name, resource_name=resource_name
+            author=author,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+            resource_name=resource_name,
+            modified_by=modified_by,
         )
 
         if deleted:
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
-                changed_by=author,
+                changed_by=modified_by or author,
                 timestamp=datetime.now(UTC),
                 source_collection="plugin_references",
                 user_id=author,
@@ -423,6 +433,7 @@ class HistoryTrackingPluginSkillStore:
         plugin_name: str,
         skill_name: str,
         script_name: str,
+        modified_by: str = "",
     ) -> bool:
         normalized_skill = normalize_skill_name(value=skill_name)
         normalized_script = script_name.strip()
@@ -448,7 +459,11 @@ class HistoryTrackingPluginSkillStore:
             )
 
         deleted = await self._inner.delete_script(
-            author=author, plugin_name=plugin_name, skill_name=skill_name, script_name=script_name
+            author=author,
+            plugin_name=plugin_name,
+            skill_name=skill_name,
+            script_name=script_name,
+            modified_by=modified_by,
         )
 
         if deleted:
@@ -459,7 +474,7 @@ class HistoryTrackingPluginSkillStore:
             record = HistoryRecord(
                 action="deleted",
                 document_snapshot=snapshot,
-                changed_by=author,
+                changed_by=modified_by or author,
                 timestamp=datetime.now(UTC),
                 source_collection="plugin_scripts",
                 user_id=author,
@@ -528,6 +543,25 @@ class HistoryTrackingPluginSkillStore:
         self, *, plugin_name: str | None = None, include_staging: bool = False
     ) -> SkillSnapshot:
         return await self._inner.load_shared_snapshot(plugin_name=plugin_name, include_staging=include_staging)
+
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        """Delegate to the wrapped store's all-authors snapshot (no history is written for reads).
+
+        Args:
+            include_staging: Also include skills in the ``staging`` state.
+
+        Returns:
+            An immutable snapshot of every author's skills, drafts included.
+
+        Raises:
+            TypeError: If the wrapped store does not implement ``load_all_snapshot``.
+
+        No authorization is performed here: the caller must verify the requesting user may
+        see other users' skills.
+        """
+        if not isinstance(self._inner, AllAuthorsSnapshotStore):
+            raise TypeError(f"{type(self._inner).__name__} does not implement load_all_snapshot")
+        return await self._inner.load_all_snapshot(include_staging=include_staging)
 
     async def get_skill_details(
         self,

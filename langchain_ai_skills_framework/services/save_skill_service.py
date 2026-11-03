@@ -13,6 +13,7 @@ from langchain_ai_skills_framework.services.skill_operation_error import (
     require_non_empty,
     require_store,
     require_user_id,
+    resolve_owner_and_actor,
 )
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
@@ -50,6 +51,8 @@ class SaveSkillService:
         folder: str | None = None,
         path: str | None = None,
         state: str | None = None,
+        author: str | None = None,
+        modified_by: str | None = None,
     ) -> MutationResult:
         """Validate and persist the skill, returning a ``MutationResult``.
 
@@ -59,8 +62,15 @@ class SaveSkillService:
 
         When ``skill_name`` is None, it is extracted from the ``name``
         field in the content frontmatter.
+
+        ``author`` is whose skill is acted on and ``modified_by`` is the acting user recorded in
+        history. Each defaults to ``user_id`` only when omitted; an explicitly blank value raises
+        ``SkillOperationError``. This service performs no authorization: a caller passing an
+        ``author`` or ``modified_by`` different from ``user_id`` must first verify that user may do so.
         """
         require_user_id(user_id=user_id, operation="save_skill")
+        who = resolve_owner_and_actor(user_id=user_id, author=author, modified_by=modified_by)
+        owner, actor = who.owner, who.actor
         require_non_empty(value=content, label="content")
         store = require_store(store=self._store)
 
@@ -92,7 +102,7 @@ class SaveSkillService:
 
         if not update_if_exists:
             exists = await store.skill_exists(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
             )
@@ -104,11 +114,11 @@ class SaveSkillService:
 
         try:
             doc = await store.save_skill(
-                author=user_id,
+                author=owner,
                 plugin_name=plugin_name,
                 skill_name=skill_name,
                 content=content,
-                modified_by=user_id,
+                modified_by=actor,
                 folder=folder,
                 path=path,
                 state=state,

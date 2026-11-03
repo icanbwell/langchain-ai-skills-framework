@@ -9,6 +9,7 @@ from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     SkillLoaderProtocol,
 )
 from langchain_ai_skills_framework.loaders.skill_sync import SYSTEM_USER_ID as _SYSTEM_AUTHOR
+from langchain_ai_skills_framework.services.skill_operation_error import require_non_empty
 from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -43,17 +44,30 @@ class ListSkillsService:
         include_staging: bool = False,
         exclude_states: set[str] | None = None,
         allow_states: set[str] | None = None,
+        all_authors: bool = False,
     ) -> Sequence[SkillInfo]:
         """Return available skills as a sequence of ``SkillInfo``.
 
         ``allow_states`` is a positive whitelist applied after merging.
         Use it when callers need strict state enforcement (e.g. list_skills
         showing only published skills). Takes precedence over ``exclude_states``.
+
+        ``all_authors=True`` returns every author's skills (including other users'
+        drafts) as per-author entries. This service performs no authorization: the caller
+        must verify the user may list other users' skills. Raises ``SkillOperationError``
+        if ``all_authors`` is set without a ``user_id``.
         """
+        if all_authors:
+            require_non_empty(value=user_id, label="user_id")
         if user_id:
-            summaries = await self._loader.list_all_summaries(
-                user_id=user_id, allowed_skills=set(), include_staging=include_staging
-            )
+            if all_authors:
+                summaries = await self._loader.list_all_summaries(
+                    user_id=user_id, allowed_skills=set(), include_staging=include_staging, all_authors=True
+                )
+            else:
+                summaries = await self._loader.list_all_summaries(
+                    user_id=user_id, allowed_skills=set(), include_staging=include_staging
+                )
         else:
             summaries = self._loader.list_skill_summaries(allowed_skills=set())
 

@@ -73,3 +73,15 @@ class SkillSnapshot:
     details_by_name: Mapping[str, SkillDetails]
     ordered_summaries: tuple[SkillSummary, ...]
     mcp_servers: tuple[PluginMcpServerEntry, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AllAuthorsSkillSnapshot:
+    """Immutable view of every author's skills, keyed by ``(author, plugin_name, skill_name)``.
+
+    ``SkillSnapshot.details_by_name`` is keyed by name alone, so same-named skills from
+    different authors would collapse. This view keeps them apart.
+    """
+
+    details_by_key: Mapping[tuple[str, str, str], SkillDetails]
+    ordered_summaries: tuple[SkillSummary, ...]

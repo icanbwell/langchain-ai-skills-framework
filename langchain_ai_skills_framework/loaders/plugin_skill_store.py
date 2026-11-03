@@ -20,9 +20,34 @@ from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginSkillUsageDocument,
 )
 from langchain_ai_skills_framework.models.skills_model import (
+    AllAuthorsSkillSnapshot,
     SkillDetails,
     SkillSnapshot,
 )
+
+
+@runtime_checkable
+class AllAuthorsSnapshotStore(Protocol):
+    """Optional capability: read every author's skills.
+
+    Kept separate from ``PluginSkillStore`` so existing external implementers of that
+    protocol keep satisfying it (a new required method would break them, and runtime
+    ``isinstance`` checks against it).
+    """
+
+    async def load_all_snapshot(self, *, include_staging: bool = False) -> AllAuthorsSkillSnapshot:
+        """Return every author's skills, keyed by ``(author, plugin_name, skill_name)``.
+
+        Args:
+            include_staging: Also include skills in the ``staging`` state.
+
+        Returns:
+            An immutable snapshot spanning all authors, drafts included. The read is unbounded.
+
+        The store performs no authorization: the caller must verify the requesting user may
+        see other users' skills before calling this.
+        """
+        ...
 
 
 @runtime_checkable
@@ -57,9 +82,10 @@ class PluginSkillStore(Protocol):
         skill_name: str,
         state: str,
         published_branch: str | None = None,
+        modified_by: str = "",
     ) -> MongoPluginSkillDocument: ...
 
-    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str) -> bool: ...
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool: ...
 
     async def load_snapshot(
         self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
@@ -101,6 +127,7 @@ class PluginSkillStore(Protocol):
         plugin_name: str,
         skill_name: str,
         resource_name: str,
+        modified_by: str = "",
     ) -> bool: ...
 
     async def read_resource(
@@ -159,6 +186,7 @@ class PluginSkillStore(Protocol):
         plugin_name: str,
         skill_name: str,
         script_name: str,
+        modified_by: str = "",
     ) -> bool: ...
 
     async def read_script(

@@ -40,7 +40,7 @@ class _StubSkillLoader(SkillLoaderProtocol):
         return [detail.summary for detail in self._details.values()]
 
     async def list_all_summaries(
-        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False
+        self, *, user_id: str, allowed_skills: set[str], include_staging: bool = False, all_authors: bool = False
     ) -> Sequence[SkillSummary]:
         return self.list_skill_summaries(allowed_skills=allowed_skills)
 

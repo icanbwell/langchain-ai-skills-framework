@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 from typing import ClassVar
@@ -337,8 +338,16 @@ class PublishSkillService:
 
     @staticmethod
     def _branch_segment(*, value: str) -> str:
-        """Make an author id safe to embed as a single git ref path segment."""
-        return re.sub(r"[^A-Za-z0-9._-]", "-", value).strip(".-") or "author"
+        """Make an author id a collision-free, valid single git ref path segment.
+
+        A readable sanitized prefix is followed by a short sha256 of the raw id, so ids that sanitize to the
+        same prefix still get distinct segments. The digest suffix also guarantees the segment never ends in
+        ``.lock`` or starts with a dot, and runs of dots (``..`` is illegal in a ref) are collapsed.
+        """
+        prefix = re.sub(r"[^A-Za-z0-9._-]", "-", value)
+        prefix = re.sub(r"\.{2,}", "-", prefix).strip(".-")[:40].strip(".-") or "author"
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+        return f"{prefix}-{digest}"
 
     async def _publish_skill(
         self,

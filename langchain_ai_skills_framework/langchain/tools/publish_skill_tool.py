@@ -41,7 +41,7 @@ class PublishSkillInput(BaseModel):
     )
     branch_name: str | None = Field(
         default=None,
-        description="Optional branch name for the PR. Defaults to 'skill-publish/{author}/{plugin}/{skill}'.",
+        description="Optional branch name for the PR. Defaults to 'skill-publish/{author}-{hash}/{plugin}/{skill}'.",
     )
     runtime: ToolRuntime
 

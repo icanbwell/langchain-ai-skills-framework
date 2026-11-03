@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -520,16 +521,18 @@ class TestPublishSkillServiceTaskIsolation:
         assert any(r.levelno == logging.WARNING and "test-plugin/test-skill" in r.getMessage() for r in caplog.records)
 
     @pytest.mark.parametrize(
-        ("author", "expected_branch"),
+        ("author", "readable_prefix"),
         [
-            ("author-a", "skill-publish/author-a/test-plugin/test-skill"),
-            ("author-b", "skill-publish/author-b/test-plugin/test-skill"),
-            ("a.b+c@example.org", "skill-publish/a.b-c-example.org/test-plugin/test-skill"),
-            ("@@", "skill-publish/author/test-plugin/test-skill"),
+            ("author-a", "author-a-"),
+            ("a.b+c@example.org", "a.b-c-example.org-"),
+            ("@@", "author-"),
+            ("a..b@x.com", "a-b-x.com-"),
+            ("x.lock", "x.lock-"),
+            (".hidden.", "hidden-"),
         ],
     )
     @pytest.mark.asyncio
-    async def test_default_publish_branch_is_scoped_to_author(self, author: str, expected_branch: str) -> None:
+    async def test_default_publish_branch_is_scoped_to_author(self, author: str, readable_prefix: str) -> None:
         service, publisher, release = self._build_service()
         publisher.use_branch = True
 
@@ -538,4 +541,39 @@ class TestPublishSkillServiceTaskIsolation:
         release.set()
         await task
 
-        assert publisher.publish_skill.await_args.kwargs["branch_name"] == expected_branch
+        branch = publisher.publish_skill.await_args.kwargs["branch_name"]
+        assert branch.startswith(f"skill-publish/{readable_prefix}")
+        assert branch.endswith("/test-plugin/test-skill")
+
+    @pytest.mark.parametrize(
+        "author_pair",
+        [
+            ("a+b@x.com", "a-b@x.com"),
+            ("a+b@x.com", "a b@x.com"),
+            ("@@", "!!"),
+            ("a..b", "a.b"),
+            ("alice", "Alice"),
+        ],
+    )
+    def test_branch_segment_is_collision_free(self, author_pair: tuple[str, str]) -> None:
+        first, second = (PublishSkillService._branch_segment(value=a) for a in author_pair)
+
+        assert first != second
+
+    @pytest.mark.parametrize(
+        "author",
+        ["a..b@x.com", "x.lock", "", "...", ".", "-", "a/b", "a b", "@{", "é☃", "x" * 500, "a.lock.", "~^:?*[\\"],
+    )
+    def test_branch_segment_is_valid_git_ref_component(self, author: str) -> None:
+        segment = PublishSkillService._branch_segment(value=author)
+        branch = f"skill-publish/{segment}/test-plugin/test-skill"
+
+        assert segment == PublishSkillService._branch_segment(value=author)  # stable
+        assert "/" not in segment
+        assert len(segment) <= 60
+        result = subprocess.run(
+            ["git", "check-ref-format", f"refs/heads/{branch}"],
+            check=False,
+            capture_output=True,
+        )
+        assert result.returncode == 0, branch

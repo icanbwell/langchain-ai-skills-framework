@@ -135,7 +135,13 @@ class PluginSkillStore(Protocol):
         modified_by: str = "",
     ) -> MongoPluginSkillDocument: ...
 
-    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool: ...
+    async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool:
+        """Delete the skill and its resources and scripts; ``modified_by`` is not persisted by the store.
+
+        The acting user is recorded by ``HistoryTrackingPluginSkillStore``, which forwards ``modified_by`` here
+        so implementations that want it (for example an audit-aware store) can use it.
+        """
+        ...
 
     async def load_snapshot(
         self, *, author: str, plugin_name: str | None = None, include_staging: bool = False
@@ -178,7 +184,9 @@ class PluginSkillStore(Protocol):
         skill_name: str,
         resource_name: str,
         modified_by: str = "",
-    ) -> bool: ...
+    ) -> bool:
+        """Delete one resource; ``modified_by`` is not persisted by the store (see :meth:`delete_skill`)."""
+        ...
 
     async def read_resource(
         self,
@@ -237,7 +245,9 @@ class PluginSkillStore(Protocol):
         skill_name: str,
         script_name: str,
         modified_by: str = "",
-    ) -> bool: ...
+    ) -> bool:
+        """Delete one script; ``modified_by`` is not persisted by the store (see :meth:`delete_skill`)."""
+        ...
 
     async def read_script(
         self,

@@ -634,6 +634,8 @@ class MongoPluginSkillLoader:
 
     @_repairs_first
     async def delete_skill(self, *, author: str, plugin_name: str, skill_name: str, modified_by: str = "") -> bool:
+        """Delete the skill with its resources and scripts. ``modified_by`` is ignored by design: this store keeps no
+        record of deletions; ``HistoryTrackingPluginSkillStore`` records the actor."""
         self._validate_author(author)
         normalized_name = self._normalize(skill_name)
         self._validate_not_empty(plugin_name, "plugin_name")
@@ -740,6 +742,7 @@ class MongoPluginSkillLoader:
         resource_name: str,
         modified_by: str = "",
     ) -> bool:
+        """Delete one resource. ``modified_by`` is ignored by design (see :meth:`delete_skill`)."""
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         result = await self._resources_collection.delete_one(
@@ -948,6 +951,7 @@ class MongoPluginSkillLoader:
         script_name: str,
         modified_by: str = "",
     ) -> bool:
+        """Delete one script. ``modified_by`` is ignored by design (see :meth:`delete_skill`)."""
         self._validate_author(author)
         normalized_skill = self._normalize(skill_name)
         filter_ = self._version_filter(

@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from langchain_ai_skills_framework.loaders.mongo_plugin_skill_loader import MongoPluginSkillLoader
 from langchain_ai_skills_framework.models.mongo_plugin_skill_document import (
     MongoPluginResourceDocument,
@@ -408,3 +410,74 @@ async def test_get_skill_details_uses_skills_own_plugin_not_caller_plugin_arg(
     assert isinstance(manifest, tuple)
     assert any(entry.path == "references/only-a.md" for entry in manifest)
     assert not any(entry.path == "references/only-b.md" for entry in manifest)
+
+
+_CACHE_FRONTMATTER = (
+    "---\nname: my-skill\ndescription: d\nmetadata:\n  cache-ttl-seconds: 600\n  owner: team-a\n---\n# Body"
+)
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_metadata"),
+    [
+        (_CACHE_FRONTMATTER, {"cache-ttl-seconds": "600", "owner": "team-a"}),
+        ("---\nname: my-skill\ndescription: d\n---\n# Body", {}),
+        ("# No frontmatter", {}),
+        ("---\nname: my-skill\ndescription: d\nmetadata: not-a-mapping\n---\n# Body", {}),
+        ("---\n: : broken yaml [\n---\n# Body", {}),
+    ],
+)
+async def test_save_skill_stores_frontmatter_metadata_as_strings(
+    mock_mongo_database: MagicMock, content: str, expected_metadata: dict[str, str]
+) -> None:
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+    saved: dict[str, object] = {}
+
+    async def fake_find_one_and_update(
+        filter_: dict[str, object], update: dict[str, dict[str, object]], **kwargs: object
+    ) -> dict[str, object]:
+        saved.update(update["$set"])
+        return {
+            "author": "user-1",
+            "plugin_name": "my-plugin",
+            "skill_name": "my-skill",
+            **update["$set"],
+            **update["$setOnInsert"],
+        }
+
+    mock_mongo_database["plugin_skills"].find_one_and_update = fake_find_one_and_update
+
+    doc = await loader.save_skill(author="user-1", plugin_name="my-plugin", skill_name="my-skill", content=content)
+
+    assert saved["metadata"] == expected_metadata
+    assert doc.metadata == expected_metadata
+
+
+async def test_get_skill_details_exposes_digest_and_frontmatter_metadata_without_overriding_system_keys(
+    mock_mongo_database: MagicMock,
+) -> None:
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+    digest = "sha256:" + "b" * 64
+    mock_mongo_database["plugin_skills"].find_one = AsyncMock(
+        return_value={
+            "author": "user-1",
+            "plugin_name": "my-plugin",
+            "skill_name": "my-skill",
+            "content": "# Skill",
+            "digest": digest,
+            "size": 8,
+            "metadata": {"cache-ttl-seconds": "600", "user_id": "attacker", "source": "spoofed", "plugin_name": "x"},
+        }
+    )
+    mock_mongo_database["plugin_references"].find.return_value.to_list = AsyncMock(return_value=[])
+    mock_mongo_database["plugin_scripts"].find.return_value.to_list = AsyncMock(return_value=[])
+
+    details = await loader.get_skill_details(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
+
+    assert details.summary.digest == digest
+    assert details.summary.metadata == {
+        "cache-ttl-seconds": "600",
+        "source": "mongodb",
+        "user_id": "user-1",
+        "plugin_name": "my-plugin",
+    }

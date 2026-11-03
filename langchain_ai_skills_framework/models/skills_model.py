@@ -47,6 +47,10 @@ class SkillSummary:
     Script entries' ``path`` uses the script's stored stem name with no file
     extension (e.g. ``scripts/run`` for a script saved from ``run.py``) — do
     not assume ``scripts/<name>`` maps 1:1 to an on-disk filename."""
+    digest: str | None = None
+    """``sha256:<hex>`` digest of the SKILL.md content, computed at write time. A pure function of the content, so
+    it is identical across pods and changes whenever the skill is edited. ``None`` for skills with no stored digest
+    (marketplace directory skills, or content written before the digest existed)."""
 
 
 @dataclass(frozen=True, slots=True)

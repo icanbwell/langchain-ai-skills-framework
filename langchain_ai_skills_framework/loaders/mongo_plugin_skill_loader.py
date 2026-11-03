@@ -534,6 +534,7 @@ class MongoPluginSkillLoader:
             "digest": digest,
             "size": size,
             "is_dynamic": is_dynamic,
+            "metadata": self._extract_metadata(content),
         }
 
         if state is not None:
@@ -1212,11 +1213,12 @@ class MongoPluginSkillLoader:
             source_path=Path(f"mongodb://{author}/{doc.plugin_name}/{doc.skill_name}"),
             license=None,
             compatibility=None,
-            metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+            metadata=self._summary_metadata(doc=doc),
             allowed_tools=doc.allowed_tools,
             date_modified=doc.date_modified,
             required_external_servers=doc.required_external_servers,
             manifest=manifest,
+            digest=doc.digest,
         )
         return SkillDetails(
             summary=summary,
@@ -1318,11 +1320,12 @@ class MongoPluginSkillLoader:
                 source_path=Path(f"mongodb://{owner_label}/{doc.plugin_name}/{doc.skill_name}"),
                 license=None,
                 compatibility=None,
-                metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+                metadata=self._summary_metadata(doc=doc),
                 allowed_tools=doc.allowed_tools,
                 date_modified=doc.date_modified,
                 required_external_servers=doc.required_external_servers,
                 manifest=manifest,
+                digest=doc.digest,
             )
             detail = SkillDetails(
                 summary=summary,
@@ -1411,6 +1414,32 @@ class MongoPluginSkillLoader:
                 ManifestFileEntry(path=f"scripts/{script.script_name}", digest=script.digest, size=script.size)
             )
         return tuple(sorted(entries, key=lambda entry: entry.path))
+
+    @staticmethod
+    def _extract_metadata(content: str) -> dict[str, str]:
+        """The frontmatter ``metadata`` mapping, with keys and values as strings (as ``skills_ref`` parses it)."""
+        match = _FRONTMATTER_RE.match(content)
+        if not match:
+            return {}
+        try:
+            frontmatter = yaml.safe_load(match.group(1))
+        except yaml.YAMLError as e:
+            logger.debug("Failed to parse YAML frontmatter in skill content: %s", e)
+            return {}
+        raw = frontmatter.get("metadata") if isinstance(frontmatter, dict) else None
+        if not isinstance(raw, dict):
+            return {}
+        return {str(key): str(value) for key, value in raw.items()}
+
+    @staticmethod
+    def _summary_metadata(*, doc: MongoPluginSkillDocument) -> dict[str, object]:
+        """Frontmatter metadata plus the system keys. System keys win: ``user_id`` is used for authorization."""
+        return {
+            **(doc.metadata or {}),
+            "source": "mongodb",
+            "user_id": doc.author,
+            "plugin_name": doc.plugin_name,
+        }
 
     @staticmethod
     def _extract_description(content: str) -> str:

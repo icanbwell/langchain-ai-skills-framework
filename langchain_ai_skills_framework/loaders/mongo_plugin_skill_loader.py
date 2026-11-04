@@ -26,6 +26,8 @@ import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
+from skills_ref.errors import ParseError
+from skills_ref.parser import parse_frontmatter
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_loader_error import (
     SkillLoaderError,
@@ -1417,19 +1419,14 @@ class MongoPluginSkillLoader:
 
     @staticmethod
     def _extract_metadata(content: str) -> dict[str, str]:
-        """The frontmatter ``metadata`` mapping, with keys and values as strings (as ``skills_ref`` parses it)."""
-        match = _FRONTMATTER_RE.match(content)
-        if not match:
-            return {}
+        """The frontmatter ``metadata`` mapping (string keys to string values), parsed by ``skills_ref``."""
         try:
-            frontmatter = yaml.safe_load(match.group(1))
-        except yaml.YAMLError as e:
+            frontmatter, _ = parse_frontmatter(content)
+        except ParseError as e:
             logger.debug("Failed to parse YAML frontmatter in skill content: %s", e)
             return {}
-        raw = frontmatter.get("metadata") if isinstance(frontmatter, dict) else None
-        if not isinstance(raw, dict):
-            return {}
-        return {str(key): str(value) for key, value in raw.items()}
+        raw = frontmatter.get("metadata")
+        return dict(raw) if isinstance(raw, dict) else {}
 
     @staticmethod
     def _summary_metadata(*, doc: MongoPluginSkillDocument) -> dict[str, object]:

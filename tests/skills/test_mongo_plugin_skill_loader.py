@@ -425,6 +425,10 @@ _CACHE_FRONTMATTER = (
         ("# No frontmatter", {}),
         ("---\nname: my-skill\ndescription: d\nmetadata: not-a-mapping\n---\n# Body", {}),
         ("---\n: : broken yaml [\n---\n# Body", {}),
+        (
+            '---\nname: my-skill\ndescription: d\nmetadata:\n  enabled: true\n  version: "1.0"\n---\n# Body',
+            {"enabled": "true", "version": "1.0"},
+        ),
     ],
 )
 async def test_save_skill_stores_frontmatter_metadata_as_strings(

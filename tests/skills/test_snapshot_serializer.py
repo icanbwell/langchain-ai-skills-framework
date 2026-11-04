@@ -321,3 +321,19 @@ def test_summary_without_digest_round_trips_as_none() -> None:
     restored = deserialize_snapshot(data=serialize_snapshot(snapshot=snapshot))
 
     assert restored.ordered_summaries[0].digest is None
+
+
+def test_old_payload_without_digest_key_deserializes_with_none() -> None:
+    summary = SkillSummary(name="s", description="d", digest="sha256:" + "d" * 64)
+    snapshot = SkillSnapshot(
+        details_by_name={"s": SkillDetails(summary=summary, content="body")}, ordered_summaries=(summary,)
+    )
+    payload = serialize_snapshot(snapshot=snapshot)
+    for entry in payload["ordered_summaries"]:
+        entry.pop("digest")
+    for detail in payload["details_by_name"].values():
+        detail["summary"].pop("digest")
+
+    restored = deserialize_snapshot(data=payload)
+
+    assert restored.ordered_summaries[0].digest is None

@@ -485,3 +485,50 @@ async def test_get_skill_details_exposes_digest_and_frontmatter_metadata_without
         "user_id": "user-1",
         "plugin_name": "my-plugin",
     }
+
+
+def _frontmatter_with_metadata(entries: list[str]) -> str:
+    body = "".join(f"  {entry}\n" for entry in entries)
+    return f"---\nname: my-skill\ndescription: d\nmetadata:\n{body}---\n# Body"
+
+
+@pytest.mark.parametrize(
+    ("entries", "expected"),
+    [
+        (["user_id: attacker", "owner: team-a"], {"owner": "team-a"}),
+        (["source: spoofed", "plugin_name: x", "owner: team-a"], {"owner": "team-a"}),
+        (['"a.b": 1', "owner: team-a"], {"owner": "team-a"}),
+        (['"$set": 1', "owner: team-a"], {"owner": "team-a"}),
+        (['"": 1', "owner: team-a"], {"owner": "team-a"}),
+        ([f'"{"k" * 65}": 1', "owner: team-a"], {"owner": "team-a"}),
+        ([f"big: {'v' * 1025}", "owner: team-a"], {"owner": "team-a"}),
+        (["flag: true", "none:", "n: 7"], {"flag": "true", "none": "", "n": "7"}),
+    ],
+)
+def test_extract_metadata_drops_unsafe_and_reserved_entries(entries: list[str], expected: dict[str, str]) -> None:
+    content = _frontmatter_with_metadata(entries)
+
+    assert MongoPluginSkillLoader._extract_metadata(content=content) == expected
+
+
+def test_extract_metadata_caps_the_number_of_entries() -> None:
+    entries = [f"key{i}: {i}" for i in range(40)]
+
+    result = MongoPluginSkillLoader._extract_metadata(content=_frontmatter_with_metadata(entries))
+
+    assert len(result) == 32
+    assert "key0" in result and "key39" not in result
+
+
+async def test_get_skill_details_tolerates_document_without_metadata_or_digest(mock_mongo_database: MagicMock) -> None:
+    loader = MongoPluginSkillLoader(database=mock_mongo_database)
+    mock_mongo_database["plugin_skills"].find_one = AsyncMock(
+        return_value={"author": "user-1", "plugin_name": "my-plugin", "skill_name": "my-skill", "content": "# Skill"}
+    )
+    mock_mongo_database["plugin_references"].find.return_value.to_list = AsyncMock(return_value=[])
+    mock_mongo_database["plugin_scripts"].find.return_value.to_list = AsyncMock(return_value=[])
+
+    details = await loader.get_skill_details(author="user-1", plugin_name="my-plugin", skill_name="my-skill")
+
+    assert details.summary.digest is None
+    assert details.summary.metadata == {"source": "mongodb", "user_id": "user-1", "plugin_name": "my-plugin"}

@@ -1455,7 +1455,11 @@ class MongoPluginSkillLoader:
                 logger.debug("Dropping skill metadata key %r (reserved, unsafe, or over size bounds)", shown_key)
                 continue
             if len(cleaned) >= MAX_METADATA_ENTRIES:
-                logger.debug("Dropping skill metadata key %r (over the %d entry limit)", shown_key, MAX_METADATA_ENTRIES)
+                logger.debug(
+                    "Dropping skill metadata key %r (over the %d entry limit)",
+                    shown_key,
+                    MAX_METADATA_ENTRIES,
+                )
                 continue
             cleaned[key] = value
         return cleaned

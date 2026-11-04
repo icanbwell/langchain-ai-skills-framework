@@ -67,6 +67,7 @@ def _serialize_summary(*, summary: SkillSummary) -> dict[str, Any]:
         "allowed_tools": list(summary.allowed_tools),
         "required_external_servers": list(summary.required_external_servers),
         "manifest": _serialize_manifest(manifest=summary.manifest),
+        "digest": summary.digest,
     }
 
 
@@ -101,6 +102,7 @@ def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
         allowed_tools=tuple(data.get("allowed_tools", [])),
         required_external_servers=tuple(data.get("required_external_servers", [])),
         manifest=_deserialize_manifest(data=data.get("manifest")),
+        digest=data.get("digest"),
     )
 
 

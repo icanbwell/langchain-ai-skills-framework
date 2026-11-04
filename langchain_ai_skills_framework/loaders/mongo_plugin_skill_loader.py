@@ -26,6 +26,8 @@ import yaml
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
+from skills_ref.errors import ParseError
+from skills_ref.parser import parse_frontmatter
 
 from langchain_ai_skills_framework.loaders.exceptions.skill_loader_error import (
     SkillLoaderError,
@@ -84,6 +86,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+# Summary metadata keys set by the loader. ``user_id`` is used for authorization, so frontmatter never supplies them.
+SYSTEM_METADATA_KEYS = frozenset({"source", "user_id", "plugin_name"})
+MAX_METADATA_ENTRIES = 32
+MAX_METADATA_KEY_LENGTH = 64
+MAX_METADATA_VALUE_LENGTH = 1024
 
 # Default collection names — overridable via environment variables.
 DEFAULT_SKILLS_COLLECTION = "plugin_skills"
@@ -570,6 +578,7 @@ class MongoPluginSkillLoader:
             "digest": digest,
             "size": size,
             "is_dynamic": is_dynamic,
+            "metadata": self._extract_metadata(content=content),
         }
 
         if state is not None:
@@ -1336,11 +1345,12 @@ class MongoPluginSkillLoader:
             source_path=Path(f"mongodb://{author}/{doc.plugin_name}/{doc.skill_name}"),
             license=None,
             compatibility=None,
-            metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+            metadata=self._summary_metadata(doc=doc),
             allowed_tools=doc.allowed_tools,
             date_modified=doc.date_modified,
             required_external_servers=doc.required_external_servers,
             manifest=manifest,
+            digest=doc.digest,
         )
         return SkillDetails(
             summary=summary,
@@ -1442,11 +1452,12 @@ class MongoPluginSkillLoader:
                 source_path=Path(f"mongodb://{owner_label}/{doc.plugin_name}/{doc.skill_name}"),
                 license=None,
                 compatibility=None,
-                metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+                metadata=self._summary_metadata(doc=doc),
                 allowed_tools=doc.allowed_tools,
                 date_modified=doc.date_modified,
                 required_external_servers=doc.required_external_servers,
                 manifest=manifest,
+                digest=doc.digest,
             )
             detail = SkillDetails(
                 summary=summary,
@@ -1535,6 +1546,57 @@ class MongoPluginSkillLoader:
                 ManifestFileEntry(path=f"scripts/{script.script_name}", digest=script.digest, size=script.size)
             )
         return tuple(sorted(entries, key=lambda entry: entry.path))
+
+    @staticmethod
+    def _extract_metadata(*, content: str) -> dict[str, str]:
+        """The frontmatter ``metadata`` mapping (string keys to string values, parsed by ``skills_ref``), limited to
+        what is safe to store and republish.
+
+        Keys the system owns, keys Mongo cannot store as field names (empty, containing ``.`` or starting with ``$``),
+        and oversized keys or values are dropped, and at most ``MAX_METADATA_ENTRIES`` entries are kept.
+        """
+        try:
+            frontmatter, _ = parse_frontmatter(content)
+        except ParseError as e:
+            logger.debug("Failed to parse YAML frontmatter in skill content: %s", e)
+            return {}
+        raw = frontmatter.get("metadata")
+        if not isinstance(raw, dict):
+            return {}
+        cleaned: dict[str, str] = {}
+        for raw_key, raw_value in raw.items():
+            key, value = str(raw_key), str(raw_value)
+            # Log the key name only, never the value; the key is truncated since it is caller-supplied.
+            shown_key = key[:MAX_METADATA_KEY_LENGTH]
+            if (
+                not key
+                or "." in key
+                or key.startswith("$")
+                or key in SYSTEM_METADATA_KEYS
+                or len(key) > MAX_METADATA_KEY_LENGTH
+                or len(value) > MAX_METADATA_VALUE_LENGTH
+            ):
+                logger.debug("Dropping skill metadata key %r (reserved, unsafe, or over size bounds)", shown_key)
+                continue
+            if len(cleaned) >= MAX_METADATA_ENTRIES:
+                logger.debug(
+                    "Dropping skill metadata key %r (over the %d entry limit)",
+                    shown_key,
+                    MAX_METADATA_ENTRIES,
+                )
+                continue
+            cleaned[key] = value
+        return cleaned
+
+    @staticmethod
+    def _summary_metadata(*, doc: MongoPluginSkillDocument) -> dict[str, object]:
+        """Frontmatter metadata plus the system keys. System keys win: ``user_id`` is used for authorization."""
+        return {
+            **{key: value for key, value in (doc.metadata or {}).items() if key not in SYSTEM_METADATA_KEYS},
+            "source": "mongodb",
+            "user_id": doc.author,
+            "plugin_name": doc.plugin_name,
+        }
 
     @staticmethod
     def _extract_description(content: str) -> str:

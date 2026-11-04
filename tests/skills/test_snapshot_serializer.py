@@ -300,3 +300,40 @@ class TestSnapshotSerializer:
 
         assert restored.mcp_servers[0].server_key == "legacy-server"
         assert restored.mcp_servers[0].visibility == "internal"
+
+
+def test_summary_digest_round_trips() -> None:
+    digest = "sha256:" + "c" * 64
+    summary = SkillSummary(name="s", description="d", digest=digest)
+    details = SkillDetails(summary=summary, content="body")
+    snapshot = SkillSnapshot(details_by_name={"s": details}, ordered_summaries=(summary,))
+
+    restored = deserialize_snapshot(data=serialize_snapshot(snapshot=snapshot))
+
+    assert restored.ordered_summaries[0].digest == digest
+
+
+def test_summary_without_digest_round_trips_as_none() -> None:
+    summary = SkillSummary(name="s", description="d")
+    details = SkillDetails(summary=summary, content="body")
+    snapshot = SkillSnapshot(details_by_name={"s": details}, ordered_summaries=(summary,))
+
+    restored = deserialize_snapshot(data=serialize_snapshot(snapshot=snapshot))
+
+    assert restored.ordered_summaries[0].digest is None
+
+
+def test_old_payload_without_digest_key_deserializes_with_none() -> None:
+    summary = SkillSummary(name="s", description="d", digest="sha256:" + "d" * 64)
+    snapshot = SkillSnapshot(
+        details_by_name={"s": SkillDetails(summary=summary, content="body")}, ordered_summaries=(summary,)
+    )
+    payload = serialize_snapshot(snapshot=snapshot)
+    for entry in payload["ordered_summaries"]:
+        entry.pop("digest")
+    for detail in payload["details_by_name"].values():
+        detail["summary"].pop("digest")
+
+    restored = deserialize_snapshot(data=payload)
+
+    assert restored.ordered_summaries[0].digest is None

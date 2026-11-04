@@ -1442,6 +1442,8 @@ class MongoPluginSkillLoader:
         cleaned: dict[str, str] = {}
         for raw_key, raw_value in raw.items():
             key, value = str(raw_key), str(raw_value)
+            # Log the key name only, never the value; the key is truncated since it is caller-supplied.
+            shown_key = key[:MAX_METADATA_KEY_LENGTH]
             if (
                 not key
                 or "." in key
@@ -1450,10 +1452,12 @@ class MongoPluginSkillLoader:
                 or len(key) > MAX_METADATA_KEY_LENGTH
                 or len(value) > MAX_METADATA_VALUE_LENGTH
             ):
+                logger.debug("Dropping skill metadata key %r (reserved, unsafe, or over size bounds)", shown_key)
+                continue
+            if len(cleaned) >= MAX_METADATA_ENTRIES:
+                logger.debug("Dropping skill metadata key %r (over the %d entry limit)", shown_key, MAX_METADATA_ENTRIES)
                 continue
             cleaned[key] = value
-            if len(cleaned) >= MAX_METADATA_ENTRIES:
-                break
         return cleaned
 
     @staticmethod

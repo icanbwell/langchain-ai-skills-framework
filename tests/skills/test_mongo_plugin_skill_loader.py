@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -518,6 +519,32 @@ def test_extract_metadata_caps_the_number_of_entries() -> None:
 
     assert len(result) == 32
     assert "key0" in result and "key39" not in result
+
+
+def test_extract_metadata_logs_dropped_key_names_but_never_values(caplog: pytest.LogCaptureFixture) -> None:
+    entries = ["user_id: secret-value-1", f"big: {'v' * 1025}", "owner: team-a"]
+    loader_logger = "langchain_ai_skills_framework.loaders.mongo_plugin_skill_loader"
+
+    with caplog.at_level(logging.DEBUG, logger=loader_logger):
+        result = MongoPluginSkillLoader._extract_metadata(content=_frontmatter_with_metadata(entries))
+
+    assert result == {"owner": "team-a"}
+    assert "user_id" in caplog.text
+    assert "big" in caplog.text
+    assert "secret-value-1" not in caplog.text
+    assert "vvvvvvvv" not in caplog.text
+    assert "team-a" not in caplog.text
+
+
+def test_extract_metadata_logs_keys_dropped_over_the_entry_limit(caplog: pytest.LogCaptureFixture) -> None:
+    entries = [f"key{i}: val{i}" for i in range(40)]
+    loader_logger = "langchain_ai_skills_framework.loaders.mongo_plugin_skill_loader"
+
+    with caplog.at_level(logging.DEBUG, logger=loader_logger):
+        MongoPluginSkillLoader._extract_metadata(content=_frontmatter_with_metadata(entries))
+
+    assert "key39" in caplog.text
+    assert "val39" not in caplog.text
 
 
 async def test_get_skill_details_tolerates_document_without_metadata_or_digest(mock_mongo_database: MagicMock) -> None:

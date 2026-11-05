@@ -971,7 +971,7 @@ requires-dist = [
     { name = "simple-container", specifier = ">=1.0.2" },
     { name = "skillkit", specifier = ">=0.4.0" },
     { name = "skills-ref", specifier = ">=0.1.1" },
-    { name = "uv", specifier = ">=0.11.0" },
+    { name = "uv", specifier = ">=0.13.4" },
 ]
 provides-extras = ["langchain", "agentcore"]
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -394,3 +395,138 @@ class TestCollectAllMcpConfigs:
         urls = {c.url for c in configs}
         assert "http://localhost:8080" in urls
         assert "http://localhost:8081" in urls
+
+
+class TestEnvExpansionAllowlist:
+    """`${ENV_VAR}` in a plugin's url and headers is expanded from the process environment only for
+    plugins the manager is told may use it. A plugin outside the list keeps the placeholder verbatim,
+    so a plugin author cannot read service secrets (a database password, a GitHub App key) by naming
+    them in `.mcp.json`."""
+
+    @staticmethod
+    def _write(tmp_path: Path, *, url: str, headers: dict[str, str] | None = None) -> PluginEntry:
+        server: dict[str, object] = {"url": url}
+        if headers is not None:
+            server["headers"] = headers
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": server}}))
+        return PluginEntry(name="other-plugin", path=tmp_path)
+
+    def test_default_expands_for_every_plugin(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SOME_URL", "http://expanded")
+        entry = self._write(tmp_path, url="${SOME_URL}/x")
+
+        result = MarketplacePluginManager().read_mcp_configs(entry)
+
+        assert result.entries[0].url == "http://expanded/x"
+
+    def test_unlisted_plugin_keeps_url_and_header_placeholders_verbatim(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("MONGO_DB_PASSWORD", "super-secret-value")
+        monkeypatch.setenv("SOME_URL", "http://expanded")
+        entry = self._write(
+            tmp_path,
+            url="${SOME_URL}/x",
+            headers={"X-Key": "${MONGO_DB_PASSWORD}", "X-Static": "plain"},
+        )
+        caplog.set_level(logging.DEBUG)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({"bailey"})).read_mcp_configs(entry)
+
+        assert result.skipped == ()
+        server = result.entries[0]
+        assert server.url == "${SOME_URL}/x"
+        assert server.headers == {"X-Key": "${MONGO_DB_PASSWORD}", "X-Static": "plain"}
+        assert "super-secret-value" not in caplog.text
+        assert "http://expanded" not in caplog.text
+        assert "MONGO_DB_PASSWORD" in caplog.text  # the variable name is logged, never its value
+        assert "other-plugin" in caplog.text
+
+    def test_unlisted_plugin_with_an_unset_variable_is_not_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("UNSET_VAR", raising=False)
+        entry = self._write(tmp_path, url="${UNSET_VAR}/x")
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({"bailey"})).read_mcp_configs(entry)
+
+        assert result.skipped == ()
+        assert result.entries[0].url == "${UNSET_VAR}/x"
+
+    def test_listed_plugin_still_expands_and_is_still_skipped_for_an_unset_variable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SOME_URL", "http://expanded")
+        monkeypatch.delenv("UNSET_VAR", raising=False)
+        manager = MarketplacePluginManager(env_expansion_plugins=frozenset({"other-plugin"}))
+
+        expanded = manager.read_mcp_configs(self._write(tmp_path, url="${SOME_URL}/x"))
+        skipped = manager.read_mcp_configs(self._write(tmp_path, url="${UNSET_VAR}/x"))
+
+        assert expanded.entries[0].url == "http://expanded/x"
+        assert skipped.entries == ()
+        assert skipped.skipped[0].missing_env_vars == ("UNSET_VAR",)
+
+    def test_plugin_root_is_still_substituted_for_an_unlisted_plugin(self, tmp_path: Path) -> None:
+        entry = self._write(tmp_path, url="${CLAUDE_PLUGIN_ROOT}/x")
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset()).read_mcp_configs(entry)
+
+        assert result.entries[0].url == f"{tmp_path}/x"
+
+    def test_an_empty_list_expands_for_no_plugin(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SOME_URL", "http://expanded")
+        entry = self._write(tmp_path, url="${SOME_URL}/x")
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset()).read_mcp_configs(entry)
+
+        assert result.entries[0].url == "${SOME_URL}/x"
+
+    @pytest.mark.parametrize(
+        ("server", "field"),
+        [
+            ({"command": "${MONGO_DB_PASSWORD}"}, "command"),
+            ({"command": "run", "args": ["--key", "${MONGO_DB_PASSWORD}"]}, "args"),
+            ({"command": "run", "env": {"X": "${MONGO_DB_PASSWORD}"}}, "env"),
+        ],
+    )
+    def test_unlisted_plugin_keeps_command_args_and_env_placeholders_verbatim(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: dict[str, object], field: str
+    ) -> None:
+        monkeypatch.setenv("MONGO_DB_PASSWORD", "super-secret-value")
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": server}}))
+        entry = PluginEntry(name="other-plugin", path=tmp_path)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({"bailey"})).read_mcp_configs(entry)
+
+        resolved = result.entries[0]
+        assert "super-secret-value" not in repr(getattr(resolved, field))
+        assert "${MONGO_DB_PASSWORD}" in repr(getattr(resolved, field))
+
+    def test_listed_plugin_still_expands_command_args_and_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SOME_VALUE", "expanded")
+        server = {"command": "${SOME_VALUE}", "args": ["${SOME_VALUE}"], "env": {"X": "${SOME_VALUE}"}}
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": server}}))
+        entry = PluginEntry(name="other-plugin", path=tmp_path)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({"other-plugin"})).read_mcp_configs(entry)
+
+        resolved = result.entries[0]
+        assert (resolved.command, resolved.args, resolved.env) == ("expanded", ("expanded",), {"X": "expanded"})
+
+    @pytest.mark.parametrize(
+        ("allowlisted", "plugin_name"),
+        [("Bailey", "bailey"), ("my_plugin", "my-plugin"), ("my plugin", "My-Plugin"), (" my-plugin ", "my_plugin")],
+    )
+    def test_allowlist_matches_names_like_the_include_filter(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, allowlisted: str, plugin_name: str
+    ) -> None:
+        monkeypatch.setenv("SOME_URL", "http://expanded")
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": {"url": "${SOME_URL}/x"}}}))
+        entry = PluginEntry(name=plugin_name, path=tmp_path)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({allowlisted})).read_mcp_configs(entry)
+
+        assert result.entries[0].url == "http://expanded/x"

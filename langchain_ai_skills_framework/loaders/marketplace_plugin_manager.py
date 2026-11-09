@@ -57,7 +57,21 @@ class MarketplacePluginManager:
 
     Per-plugin ``.mcp.json`` files are parsed to extract MCP server
     entries with ``${CLAUDE_PLUGIN_ROOT}`` substitution.
+
+    ``${ENV_VAR}`` in a server's ``url`` and ``headers`` is expanded from the process
+    environment. ``env_expansion_plugins`` limits that to the named plugins (compared
+    case-insensitively): a plugin outside the set keeps the placeholder verbatim, so a plugin
+    author cannot read a service secret (a database password, a GitHub App key) by naming it in
+    ``.mcp.json``. ``None`` (the default) expands for every plugin, as before.
     """
+
+    def __init__(self, *, env_expansion_plugins: frozenset[str] | None = None) -> None:
+        self._env_expansion_plugins = (
+            None if env_expansion_plugins is None else frozenset(name.lower() for name in env_expansion_plugins)
+        )
+
+    def _may_expand_env(self, plugin_name: str) -> bool:
+        return self._env_expansion_plugins is None or plugin_name.lower() in self._env_expansion_plugins
 
     def discover_plugins(
         self,
@@ -118,6 +132,7 @@ class MarketplacePluginManager:
             return McpConfigReadResult()
 
         plugin_root_str = str(entry.path)
+        expand_env = self._may_expand_env(entry.name)
         entries: list[PluginMcpServerEntry] = []
         skipped: list[SkippedMcpServer] = []
 
@@ -126,8 +141,14 @@ class MarketplacePluginManager:
                 continue
 
             missing_env_vars: list[str] = []
+            unexpanded_env_vars: list[str] = []
 
-            def _sub_strict(value: str, _root: str = plugin_root_str, _missing: list[str] = missing_env_vars) -> str:
+            def _sub_strict(
+                value: str,
+                _root: str = plugin_root_str,
+                _missing: list[str] = missing_env_vars,
+                _unexpanded: list[str] = unexpanded_env_vars,
+            ) -> str:
                 """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} in url/headers.
 
                 Records any ${ENV_VAR} whose variable is unset in _missing
@@ -144,6 +165,11 @@ class MarketplacePluginManager:
                 valid HTTP entry over an irrelevant stdio-only field.
                 """
                 value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
+                if not expand_env:
+                    # Not on the environment-expansion allowlist: the placeholder stays as
+                    # written, and an unset variable is not an error because nothing is read.
+                    _unexpanded.extend(m.group(1) for m in _ENV_VAR_RE.finditer(value))
+                    return value
 
                 def _replace(m: re.Match[str]) -> str:
                     env_value = os.environ.get(m.group(1))
@@ -174,6 +200,16 @@ class MarketplacePluginManager:
             resolved_headers = {
                 k: _sub_strict(v) for k, v in headers_raw.items() if isinstance(k, str) and isinstance(v, str)
             }
+
+            if unexpanded_env_vars:
+                logger.warning(
+                    "Plugin '%s' MCP server '%s': leaving environment placeholder(s) %s unexpanded "
+                    "in url/headers (the plugin is not on the environment-expansion allowlist). "
+                    "Only the variable names are logged.",
+                    entry.name,
+                    server_key,
+                    sorted(set(unexpanded_env_vars)),
+                )
 
             if missing_env_vars:
                 logger.error(

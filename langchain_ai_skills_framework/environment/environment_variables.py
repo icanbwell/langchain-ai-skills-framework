@@ -157,6 +157,23 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
         return {item.strip() for item in raw_value.split(",") if item.strip()}
 
     @property
+    def plugins_marketplace_env_expansion_include(self) -> set[str] | None:
+        """Plugins whose ``.mcp.json`` ``url`` and ``headers`` may expand ``${ENV_VAR}`` from the
+        process environment when the marketplace is synced.
+
+        Unset: every plugin may (the behavior before this setting existed). Set, even to an empty
+        string: only the listed plugins may, so an empty value fails closed and no plugin expands.
+        Names are comma-separated and compared case-insensitively. A plugin outside the list keeps
+        the placeholder verbatim, so a plugin author cannot read a service secret by naming it.
+
+        Expected environment variable: PLUGINS_MARKETPLACE_ENV_EXPANSION_INCLUDE (comma-separated)
+        """
+        raw_value = os.environ.get("PLUGINS_MARKETPLACE_ENV_EXPANSION_INCLUDE")
+        if raw_value is None:
+            return None
+        return {item.strip().lower() for item in raw_value.split(",") if item.strip()}
+
+    @property
     def plugins_marketplace_exclude(self) -> set[str]:
         """Plugin names to exclude from the marketplace."""
         raw_value = os.environ.get("PLUGINS_MARKETPLACE_EXCLUDE")

@@ -24,6 +24,7 @@ from langchain_ai_skills_framework.loaders.github_directory_downloader import (
 from langchain_ai_skills_framework.loaders.marketplace_directory_loader import (
     MarketplaceDirectoryLoader,
 )
+from langchain_ai_skills_framework.loaders.marketplace_plugin_manager import MarketplacePluginManager
 from langchain_ai_skills_framework.loaders.plugin_skill_store import PluginSkillStore
 from langchain_ai_skills_framework.loaders.plugin_skill_store_factory import (
     PluginSkillStoreFactory,
@@ -89,8 +90,16 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
     except ContainerError:
         logger.debug("SnapshotCacheStore not available; proceeding without cache.")
 
+    # Read with getattr so a consumer's own EnvironmentVariables without this setting keeps the
+    # old behavior (every plugin may expand ${ENV_VAR}).
+    env_expansion_include = getattr(env_vars, "plugins_marketplace_env_expansion_include", None)
+    plugin_manager = MarketplacePluginManager(
+        env_expansion_plugins=None if env_expansion_include is None else frozenset(env_expansion_include)
+    )
+
     return MarketplaceDirectoryLoader(
         environment_variables=env_vars,
+        plugin_manager=plugin_manager,
         github_directory_downloader=c.resolve(GithubDirectoryDownloader),
         snapshot_cache_store=snapshot_cache_store,
         token_provider=c.resolve(GitHubTokenProvider),

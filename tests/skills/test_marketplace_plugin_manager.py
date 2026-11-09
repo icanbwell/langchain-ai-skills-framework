@@ -481,3 +481,37 @@ class TestEnvExpansionAllowlist:
         result = MarketplacePluginManager(env_expansion_plugins=frozenset()).read_mcp_configs(entry)
 
         assert result.entries[0].url == "${SOME_URL}/x"
+
+    @pytest.mark.parametrize(
+        ("server", "field"),
+        [
+            ({"command": "${MONGO_DB_PASSWORD}"}, "command"),
+            ({"command": "run", "args": ["--key", "${MONGO_DB_PASSWORD}"]}, "args"),
+            ({"command": "run", "env": {"X": "${MONGO_DB_PASSWORD}"}}, "env"),
+        ],
+    )
+    def test_unlisted_plugin_keeps_command_args_and_env_placeholders_verbatim(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: dict[str, object], field: str
+    ) -> None:
+        monkeypatch.setenv("MONGO_DB_PASSWORD", "super-secret-value")
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": server}}))
+        entry = PluginEntry(name="other-plugin", path=tmp_path)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({"bailey"})).read_mcp_configs(entry)
+
+        resolved = result.entries[0]
+        assert "super-secret-value" not in repr(getattr(resolved, field))
+        assert "${MONGO_DB_PASSWORD}" in repr(getattr(resolved, field))
+
+    def test_listed_plugin_still_expands_command_args_and_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SOME_VALUE", "expanded")
+        server = {"command": "${SOME_VALUE}", "args": ["${SOME_VALUE}"], "env": {"X": "${SOME_VALUE}"}}
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": server}}))
+        entry = PluginEntry(name="other-plugin", path=tmp_path)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({"other-plugin"})).read_mcp_configs(entry)
+
+        resolved = result.entries[0]
+        assert (resolved.command, resolved.args, resolved.env) == ("expanded", ("expanded",), {"X": "expanded"})

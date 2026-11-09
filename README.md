@@ -13,7 +13,7 @@
 
 ## GitHub authentication for remote plugins
 - When `PLUGINS_MARKETPLACE` uses `github://...`, provide a token via `SKILLS_GITHUB_TOKEN` (preferred) or `GITHUB_TOKEN` (fallback).
-- `${ENV_VAR}` in a plugin's `.mcp.json` `url` and `headers` is expanded from the process environment at sync. Set `PLUGINS_MARKETPLACE_ENV_EXPANSION_INCLUDE` (comma-separated plugin names) to limit that to the listed plugins: any other plugin keeps the placeholder verbatim, so it cannot read a service secret by naming it. Unset means every plugin may expand (the default, unchanged); set to an empty string means none may.
+- `${ENV_VAR}` in a plugin's `.mcp.json` `url`, `headers`, `command`, `args` and `env` is expanded from the process environment at sync. Set `PLUGINS_MARKETPLACE_ENV_EXPANSION_INCLUDE` (comma-separated plugin names) to limit that to the listed plugins: any other plugin keeps the placeholder verbatim, so it cannot read a service secret by naming it. Unset means every plugin may expand (the default, unchanged); set to an empty string means none may.
 - Expected GitHub directory format: `github://<owner>/<repo>/<path>?ref=<branch>` (for example: `github://my-org/ai-plugin-marketplace/plugins?ref=main`).
 - Supported token types: fine-grained Personal Access Token (PAT) and GitHub App installation token.
 - Recommended usage:

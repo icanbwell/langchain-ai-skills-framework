@@ -58,7 +58,7 @@ class MarketplacePluginManager:
     Per-plugin ``.mcp.json`` files are parsed to extract MCP server
     entries with ``${CLAUDE_PLUGIN_ROOT}`` substitution.
 
-    ``${ENV_VAR}`` in a server's ``url`` and ``headers`` is expanded from the process
+    ``${ENV_VAR}`` in a server's ``url``, ``headers``, ``command``, ``args`` and ``env`` is expanded from the process
     environment. ``env_expansion_plugins`` limits that to the named plugins (compared
     case-insensitively): a plugin outside the set keeps the placeholder verbatim, so a plugin
     author cannot read a service secret (a database password, a GitHub App key) by naming it in
@@ -184,9 +184,14 @@ class MarketplacePluginManager:
                 """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} in command/args/env.
 
                 Best-effort only, no missing-var tracking -- see _sub_strict's
-                docstring for why these stdio-only fields are exempt.
+                docstring for why these stdio-only fields are exempt. A plugin
+                outside the environment-expansion allowlist keeps ${ENV_VAR}
+                verbatim here too: these values are persisted by the sync, so
+                expanding them would leak the same secrets the allowlist guards.
                 """
                 value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
+                if not expand_env:
+                    return value
                 return _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
 
             url = server_config.get("url")

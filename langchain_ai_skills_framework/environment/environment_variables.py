@@ -158,7 +158,7 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
 
     @property
     def plugins_marketplace_env_expansion_include(self) -> set[str] | None:
-        """Plugins whose ``.mcp.json`` ``url`` and ``headers`` may expand ``${ENV_VAR}`` from the
+        """Plugins whose ``.mcp.json`` ``url``, ``headers``, ``command``, ``args`` and ``env`` may expand ``${ENV_VAR}`` from the
         process environment when the marketplace is synced.
 
         Unset: every plugin may (the behavior before this setting existed). Set, even to an empty

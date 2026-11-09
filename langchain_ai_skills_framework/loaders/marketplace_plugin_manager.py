@@ -59,19 +59,23 @@ class MarketplacePluginManager:
     entries with ``${CLAUDE_PLUGIN_ROOT}`` substitution.
 
     ``${ENV_VAR}`` in a server's ``url``, ``headers``, ``command``, ``args`` and ``env`` is expanded from the process
-    environment. ``env_expansion_plugins`` limits that to the named plugins (compared
-    case-insensitively): a plugin outside the set keeps the placeholder verbatim, so a plugin
+    environment. ``env_expansion_plugins`` limits that to the named plugins (matched like
+    ``PLUGINS_MARKETPLACE_INCLUDE``: case-insensitive, ``_`` and spaces equal ``-``): a plugin outside the set keeps the placeholder verbatim, so a plugin
     author cannot read a service secret (a database password, a GitHub App key) by naming it in
     ``.mcp.json``. ``None`` (the default) expands for every plugin, as before.
     """
 
     def __init__(self, *, env_expansion_plugins: frozenset[str] | None = None) -> None:
         self._env_expansion_plugins = (
-            None if env_expansion_plugins is None else frozenset(name.lower() for name in env_expansion_plugins)
+            None
+            if env_expansion_plugins is None
+            else frozenset(normalize_skill_name(value=name) for name in env_expansion_plugins)
         )
 
     def _may_expand_env(self, plugin_name: str) -> bool:
-        return self._env_expansion_plugins is None or plugin_name.lower() in self._env_expansion_plugins
+        if self._env_expansion_plugins is None:
+            return True
+        return normalize_skill_name(value=plugin_name) in self._env_expansion_plugins
 
     def discover_plugins(
         self,

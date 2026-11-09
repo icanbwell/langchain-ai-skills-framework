@@ -163,7 +163,7 @@ class LangchainAISkillsFrameworkEnvironmentVariables(EnvironmentVariables, Skill
 
         Unset: every plugin may (the behavior before this setting existed). Set, even to an empty
         string: only the listed plugins may, so an empty value fails closed and no plugin expands.
-        Names are comma-separated and compared case-insensitively. A plugin outside the list keeps
+        Names are comma-separated and matched like PLUGINS_MARKETPLACE_INCLUDE (case-insensitive, ``_`` and spaces equal ``-``). A plugin outside the list keeps
         the placeholder verbatim, so a plugin author cannot read a service secret by naming it.
 
         Expected environment variable: PLUGINS_MARKETPLACE_ENV_EXPANSION_INCLUDE (comma-separated)

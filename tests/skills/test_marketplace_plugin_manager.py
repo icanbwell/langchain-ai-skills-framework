@@ -515,3 +515,18 @@ class TestEnvExpansionAllowlist:
 
         resolved = result.entries[0]
         assert (resolved.command, resolved.args, resolved.env) == ("expanded", ("expanded",), {"X": "expanded"})
+
+    @pytest.mark.parametrize(
+        ("allowlisted", "plugin_name"),
+        [("Bailey", "bailey"), ("my_plugin", "my-plugin"), ("my plugin", "My-Plugin"), (" my-plugin ", "my_plugin")],
+    )
+    def test_allowlist_matches_names_like_the_include_filter(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, allowlisted: str, plugin_name: str
+    ) -> None:
+        monkeypatch.setenv("SOME_URL", "http://expanded")
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": {"url": "${SOME_URL}/x"}}}))
+        entry = PluginEntry(name=plugin_name, path=tmp_path)
+
+        result = MarketplacePluginManager(env_expansion_plugins=frozenset({allowlisted})).read_mcp_configs(entry)
+
+        assert result.entries[0].url == "http://expanded/x"

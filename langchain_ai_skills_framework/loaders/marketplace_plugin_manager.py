@@ -64,8 +64,10 @@ class MarketplacePluginManager:
     author cannot read a service secret (a database password, a GitHub App key) by naming it in
     ``.mcp.json``. ``None`` (the default) expands for every plugin, as before.
 
-    ``env_expansion_variables`` narrows that per variable. It is read on every lookup, so a mapping the host fills
-    in later is honoured. It maps a plugin name (normalized the same way) to the exact
+    ``env_expansion_variables`` narrows that per variable. It is read on every ``read_mcp_configs`` call, so a mapping the host
+    fills in later is honoured by the next snapshot build. A snapshot already built (in memory or in the shared
+    snapshot cache) is not rebuilt when the mapping changes: the host must call ``refresh``/``reload_plugins`` after
+    filling it. It maps a plugin name (normalized the same way) to the exact
     variable names that plugin may expand. A plugin in ``env_expansion_plugins`` is fully trusted and may expand any
     variable. Any other plugin with an entry in the map expands only the listed variables and keeps every other
     ``${VAR}`` verbatim (a warning logs the plugin and the variable name, never a value). A plugin in neither expands
@@ -92,7 +94,8 @@ class MarketplacePluginManager:
         if self._env_expansion_variables is None:
             return None
         matched: frozenset[str] | None = None
-        for name, variables in self._env_expansion_variables.items():
+        # One atomic copy of the items: the host may fill the mapping from another thread while a snapshot builds.
+        for name, variables in tuple(self._env_expansion_variables.items()):
             if normalize_skill_name(value=name) == normalized_plugin:
                 matched = frozenset(variables) if matched is None else matched | frozenset(variables)
         return matched

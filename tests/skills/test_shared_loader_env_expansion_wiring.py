@@ -53,3 +53,21 @@ def test_a_list_without_the_plugin_leaves_the_placeholder(tmp_path: Path, monkey
 
 def test_a_list_with_the_plugin_expands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert _read(tmp_path, monkeypatch, include="other-plugin") == "http://expanded/x"
+
+
+def test_the_per_variable_map_is_passed_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLUGINS_MARKETPLACE", "github://example/repo/plugins?ref=main")
+    monkeypatch.setenv("PLUGINS_MARKETPLACE_ENV_EXPANSION_INCLUDE", "bailey")
+    monkeypatch.setenv("WIRING_TEST_VAR", "http://expanded")
+    monkeypatch.setenv("WIRING_OTHER_VAR", "secret")
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"s": {"url": "${WIRING_TEST_VAR}/${WIRING_OTHER_VAR}"}}})
+    )
+    loader = _build_shared_loader(
+        c=_Container(),  # type: ignore[arg-type]
+        env_expansion_variables={"other-plugin": frozenset({"WIRING_TEST_VAR"})},
+    )
+
+    result = loader._plugin_manager.read_mcp_configs(PluginEntry(name="other-plugin", path=tmp_path))  # type: ignore[attr-defined]
+
+    assert result.entries[0].url == "http://expanded/${WIRING_OTHER_VAR}"

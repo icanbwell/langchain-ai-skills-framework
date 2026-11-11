@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 from typing import cast
 
 from key_value.aio.stores.base import BaseStore
@@ -80,8 +81,16 @@ def _build_key_value_store(*, c: IContainer) -> BaseStore:
     return MongoDBStore(url=url, db_name=env.mongo_skills_db_name)
 
 
-def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
-    """Build the shared skill loader from the plugin marketplace."""
+def _build_shared_loader(
+    *,
+    c: IContainer,
+    env_expansion_variables: Mapping[str, frozenset[str]] | None = None,
+) -> SkillLoaderProtocol:
+    """Build the shared skill loader from the plugin marketplace.
+
+    ``env_expansion_variables`` is the optional per-plugin variable allowlist handed to
+    :class:`MarketplacePluginManager` (plugin name to the exact variable names it may expand).
+    """
     env_vars = cast(SkillLoaderEnvironmentVariables, c.resolve(EnvironmentVariables))
 
     snapshot_cache_store: BaseStore | None = None
@@ -94,7 +103,8 @@ def _build_shared_loader(*, c: IContainer) -> SkillLoaderProtocol:
     # old behavior (every plugin may expand ${ENV_VAR}).
     env_expansion_include = getattr(env_vars, "plugins_marketplace_env_expansion_include", None)
     plugin_manager = MarketplacePluginManager(
-        env_expansion_plugins=None if env_expansion_include is None else frozenset(env_expansion_include)
+        env_expansion_plugins=None if env_expansion_include is None else frozenset(env_expansion_include),
+        env_expansion_variables=env_expansion_variables,
     )
 
     return MarketplaceDirectoryLoader(
@@ -201,6 +211,7 @@ class LangchainAISkillsFrameworkContainerFactory:
     def register_services_in_container(
         *,
         container: SimpleContainer,
+        env_expansion_variables: Mapping[str, frozenset[str]] | None = None,
     ) -> SimpleContainer:
 
         container.singleton(
@@ -241,7 +252,7 @@ class LangchainAISkillsFrameworkContainerFactory:
         # instance (avoiding redundant downloads and inconsistent cache state).
         container.singleton(
             MarketplaceDirectoryLoader,
-            lambda c: _build_shared_loader(c=c),
+            lambda c: _build_shared_loader(c=c, env_expansion_variables=env_expansion_variables),
         )
 
         container.singleton(

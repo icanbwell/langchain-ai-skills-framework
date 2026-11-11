@@ -530,3 +530,174 @@ class TestEnvExpansionAllowlist:
         result = MarketplacePluginManager(env_expansion_plugins=frozenset({allowlisted})).read_mcp_configs(entry)
 
         assert result.entries[0].url == "http://expanded/x"
+
+
+class TestPerVariableEnvExpansion:
+    """``env_expansion_variables`` narrows expansion to named variables for a plugin."""
+
+    SECRET = "super-secret-value"
+
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ALLOWED_URL", "http://allowed")
+        monkeypatch.setenv("MONGO_DB_PASSWORD", self.SECRET)
+
+    @staticmethod
+    def _entry(tmp_path: Path, *, plugin: str, server: dict[str, object]) -> PluginEntry:
+        (tmp_path / ".mcp.json").write_text(json.dumps({"mcpServers": {"server": server}}))
+        return PluginEntry(name=plugin, path=tmp_path)
+
+    @pytest.mark.parametrize(
+        ("plugins", "variables", "plugin", "expected_url", "expected_key"),
+        [
+            # full trust: any variable, the map is ignored
+            ({"bailey"}, {"bailey": {"ALLOWED_URL"}}, "bailey", "http://allowed/x", SECRET),
+            ({"bailey"}, None, "bailey", "http://allowed/x", SECRET),
+            # not trusted but in the map: only the listed variables
+            ({"bailey"}, {"vendor": {"ALLOWED_URL"}}, "vendor", "http://allowed/x", "${MONGO_DB_PASSWORD}"),
+            ({"bailey"}, {"vendor": set()}, "vendor", "${ALLOWED_URL}/x", "${MONGO_DB_PASSWORD}"),
+            # neither: nothing when the include list is set
+            ({"bailey"}, {"vendor": {"ALLOWED_URL"}}, "other", "${ALLOWED_URL}/x", "${MONGO_DB_PASSWORD}"),
+            ({"bailey"}, None, "other", "${ALLOWED_URL}/x", "${MONGO_DB_PASSWORD}"),
+            # include list unset: allow-everything unless the map has an entry for the plugin
+            (None, None, "other", "http://allowed/x", SECRET),
+            (None, {"vendor": {"ALLOWED_URL"}}, "other", "http://allowed/x", SECRET),
+            (None, {"vendor": {"ALLOWED_URL"}}, "vendor", "http://allowed/x", "${MONGO_DB_PASSWORD}"),
+            (None, {"vendor": set()}, "vendor", "${ALLOWED_URL}/x", "${MONGO_DB_PASSWORD}"),
+            # empty include list: no full trust, the map still grants per variable
+            (set(), {"vendor": {"ALLOWED_URL"}}, "vendor", "http://allowed/x", "${MONGO_DB_PASSWORD}"),
+            (set(), None, "vendor", "${ALLOWED_URL}/x", "${MONGO_DB_PASSWORD}"),
+        ],
+    )
+    def test_combinations(
+        self,
+        tmp_path: Path,
+        plugins: set[str] | None,
+        variables: dict[str, set[str]] | None,
+        plugin: str,
+        expected_url: str,
+        expected_key: str,
+    ) -> None:
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=None if plugins is None else frozenset(plugins),
+            env_expansion_variables=None if variables is None else {k: frozenset(v) for k, v in variables.items()},
+        )
+        entry = self._entry(
+            tmp_path,
+            plugin=plugin,
+            server={"url": "${ALLOWED_URL}/x", "headers": {"X-Key": "${MONGO_DB_PASSWORD}"}},
+        )
+
+        server = manager.read_mcp_configs(entry).entries[0]
+
+        assert server.url == expected_url
+        assert server.headers == {"X-Key": expected_key}
+
+    @pytest.mark.parametrize(
+        ("map_key", "plugin"),
+        [("Vendor", "vendor"), ("my_plugin", "my-plugin"), ("my plugin", "My-Plugin"), (" my-plugin ", "my_plugin")],
+    )
+    def test_map_keys_are_normalized_like_the_include_list(self, tmp_path: Path, map_key: str, plugin: str) -> None:
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=frozenset(), env_expansion_variables={map_key: frozenset({"ALLOWED_URL"})}
+        )
+        entry = self._entry(tmp_path, plugin=plugin, server={"url": "${ALLOWED_URL}/x"})
+
+        assert manager.read_mcp_configs(entry).entries[0].url == "http://allowed/x"
+
+    def test_map_keys_that_normalize_alike_are_merged(self, tmp_path: Path) -> None:
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=frozenset(),
+            env_expansion_variables={"my_plugin": frozenset({"ALLOWED_URL"}), "My-Plugin": frozenset({"OTHER"})},
+        )
+        entry = self._entry(tmp_path, plugin="my-plugin", server={"url": "${ALLOWED_URL}/${OTHER}"})
+
+        assert manager.read_mcp_configs(entry).skipped[0].missing_env_vars == ("OTHER",)
+
+    def test_mapping_mutated_after_construction_is_followed(self, tmp_path: Path) -> None:
+        live: dict[str, frozenset[str]] = {}
+        manager = MarketplacePluginManager(env_expansion_plugins=frozenset(), env_expansion_variables=live)
+        entry = self._entry(
+            tmp_path, plugin="vendor", server={"url": "${ALLOWED_URL}/x", "headers": {"X": "${MONGO_DB_PASSWORD}"}}
+        )
+
+        assert manager.read_mcp_configs(entry).entries[0].url == "${ALLOWED_URL}/x"
+
+        live["Vendor"] = frozenset({"ALLOWED_URL"})
+        server = manager.read_mcp_configs(entry).entries[0]
+        assert server.url == "http://allowed/x"
+        assert server.headers == {"X": "${MONGO_DB_PASSWORD}"}
+
+        live["Vendor"] = frozenset({"MONGO_DB_PASSWORD"})
+        server = manager.read_mcp_configs(entry).entries[0]
+        assert server.url == "${ALLOWED_URL}/x"
+        assert server.headers == {"X": self.SECRET}
+
+        live.clear()
+        assert manager.read_mcp_configs(entry).entries[0].url == "${ALLOWED_URL}/x"
+
+    @pytest.mark.parametrize(
+        "server",
+        [
+            {"url": "${MONGO_DB_PASSWORD}"},
+            {"url": "http://h", "headers": {"X": "Bearer ${MONGO_DB_PASSWORD}"}},
+            {"command": "run", "args": ["${MONGO_DB_PASSWORD}"]},
+            {"command": "run", "env": {"X": "${MONGO_DB_PASSWORD}"}},
+            {"command": "${MONGO_DB_PASSWORD}"},
+        ],
+    )
+    def test_unlisted_variable_stays_verbatim_and_the_warning_has_names_only(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, server: dict[str, object]
+    ) -> None:
+        caplog.set_level(logging.DEBUG)
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=frozenset(), env_expansion_variables={"vendor": frozenset({"ALLOWED_URL"})}
+        )
+
+        result = manager.read_mcp_configs(self._entry(tmp_path, plugin="vendor", server=server))
+
+        assert result.skipped == ()
+        assert self.SECRET not in repr(result.entries[0])
+        assert "${MONGO_DB_PASSWORD}" in repr(result.entries[0])
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("MONGO_DB_PASSWORD" in r.getMessage() and "vendor" in r.getMessage() for r in warnings)
+        assert self.SECRET not in caplog.text
+        assert "http://allowed" not in caplog.text
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("${ALLOWED_URL}/x", "http://allowed/x"),
+            ("$ALLOWED_URL/x", "$ALLOWED_URL/x"),  # the bare form was never expanded
+            ("$MONGO_DB_PASSWORD", "$MONGO_DB_PASSWORD"),
+            ("${ALLOWED_URL}/${MONGO_DB_PASSWORD}", "http://allowed/${MONGO_DB_PASSWORD}"),
+        ],
+    )
+    def test_braced_and_bare_forms(self, tmp_path: Path, value: str, expected: str) -> None:
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=frozenset(), env_expansion_variables={"vendor": frozenset({"ALLOWED_URL"})}
+        )
+        entry = self._entry(tmp_path, plugin="vendor", server={"command": "run", "args": [value]})
+
+        assert manager.read_mcp_configs(entry).entries[0].args == (expected,)
+
+    def test_unset_listed_variable_is_still_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("UNSET_VAR", raising=False)
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=frozenset(), env_expansion_variables={"vendor": frozenset({"UNSET_VAR"})}
+        )
+
+        result = manager.read_mcp_configs(self._entry(tmp_path, plugin="vendor", server={"url": "${UNSET_VAR}/x"}))
+
+        assert result.skipped[0].missing_env_vars == ("UNSET_VAR",)
+
+    def test_unlisted_unset_variable_is_not_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("UNSET_VAR", raising=False)
+        manager = MarketplacePluginManager(
+            env_expansion_plugins=frozenset(), env_expansion_variables={"vendor": frozenset({"ALLOWED_URL"})}
+        )
+
+        result = manager.read_mcp_configs(self._entry(tmp_path, plugin="vendor", server={"url": "${UNSET_VAR}/x"}))
+
+        assert result.skipped == ()
+        assert result.entries[0].url == "${UNSET_VAR}/x"

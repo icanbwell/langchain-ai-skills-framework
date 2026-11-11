@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,19 +63,51 @@ class MarketplacePluginManager:
     ``PLUGINS_MARKETPLACE_INCLUDE``: case-insensitive, ``_`` and spaces equal ``-``): a plugin outside the set keeps the placeholder verbatim, so a plugin
     author cannot read a service secret (a database password, a GitHub App key) by naming it in
     ``.mcp.json``. ``None`` (the default) expands for every plugin, as before.
+
+    ``env_expansion_variables`` narrows that per variable. It is read on every lookup, so a mapping the host fills
+    in later is honoured. It maps a plugin name (normalized the same way) to the exact
+    variable names that plugin may expand. A plugin in ``env_expansion_plugins`` is fully trusted and may expand any
+    variable. Any other plugin with an entry in the map expands only the listed variables and keeps every other
+    ``${VAR}`` verbatim (a warning logs the plugin and the variable name, never a value). A plugin in neither expands
+    nothing when ``env_expansion_plugins`` is set; when it is ``None`` such a plugin expands everything, as before.
     """
 
-    def __init__(self, *, env_expansion_plugins: frozenset[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        env_expansion_plugins: frozenset[str] | None = None,
+        env_expansion_variables: Mapping[str, frozenset[str]] | None = None,
+    ) -> None:
         self._env_expansion_plugins = (
             None
             if env_expansion_plugins is None
             else frozenset(normalize_skill_name(value=name) for name in env_expansion_plugins)
         )
+        # Held by reference, not copied: the host may build the loader before it knows the variables and fill (or
+        # replace the contents of) this mapping later.
+        self._env_expansion_variables = env_expansion_variables
 
-    def _may_expand_env(self, plugin_name: str) -> bool:
+    def _variables_for(self, normalized_plugin: str) -> frozenset[str] | None:
+        """Union of the variable sets whose key normalizes to ``normalized_plugin``, read from the live mapping."""
+        if self._env_expansion_variables is None:
+            return None
+        matched: frozenset[str] | None = None
+        for name, variables in self._env_expansion_variables.items():
+            if normalize_skill_name(value=name) == normalized_plugin:
+                matched = frozenset(variables) if matched is None else matched | frozenset(variables)
+        return matched
+
+    def _allowed_env_vars(self, plugin_name: str) -> frozenset[str] | None:
+        """The variable names a plugin may expand: ``None`` means any, an empty set means none."""
+        normalized = normalize_skill_name(value=plugin_name)
+        if self._env_expansion_plugins is not None and normalized in self._env_expansion_plugins:
+            return None
+        per_variable = self._variables_for(normalized)
+        if per_variable is not None:
+            return per_variable
         if self._env_expansion_plugins is None:
-            return True
-        return normalize_skill_name(value=plugin_name) in self._env_expansion_plugins
+            return None
+        return frozenset()
 
     def discover_plugins(
         self,
@@ -136,7 +168,7 @@ class MarketplacePluginManager:
             return McpConfigReadResult()
 
         plugin_root_str = str(entry.path)
-        expand_env = self._may_expand_env(entry.name)
+        allowed_env = self._allowed_env_vars(entry.name)
         entries: list[PluginMcpServerEntry] = []
         skipped: list[SkippedMcpServer] = []
 
@@ -146,6 +178,7 @@ class MarketplacePluginManager:
 
             missing_env_vars: list[str] = []
             unexpanded_env_vars: list[str] = []
+            unexpanded_other_vars: list[str] = []
 
             def _sub_strict(
                 value: str,
@@ -169,34 +202,45 @@ class MarketplacePluginManager:
                 valid HTTP entry over an irrelevant stdio-only field.
                 """
                 value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
-                if not expand_env:
-                    # Not on the environment-expansion allowlist: the placeholder stays as
-                    # written, and an unset variable is not an error because nothing is read.
-                    _unexpanded.extend(m.group(1) for m in _ENV_VAR_RE.finditer(value))
-                    return value
 
                 def _replace(m: re.Match[str]) -> str:
-                    env_value = os.environ.get(m.group(1))
+                    name = m.group(1)
+                    if allowed_env is not None and name not in allowed_env:
+                        # Not allowed for this plugin: the placeholder stays as written, and an unset
+                        # variable is not an error because nothing is read.
+                        _unexpanded.append(name)
+                        return m.group(0)
+                    env_value = os.environ.get(name)
                     if env_value is None:
-                        _missing.append(m.group(1))
+                        _missing.append(name)
                         return m.group(0)
                     return env_value
 
                 return _ENV_VAR_RE.sub(_replace, value)
 
-            def _sub_lenient(value: str, _root: str = plugin_root_str) -> str:
+            def _sub_lenient(
+                value: str,
+                _root: str = plugin_root_str,
+                _unexpanded: list[str] = unexpanded_other_vars,
+            ) -> str:
                 """Substitute ${CLAUDE_PLUGIN_ROOT} and ${ENV_VAR} in command/args/env.
 
                 Best-effort only, no missing-var tracking -- see _sub_strict's
-                docstring for why these stdio-only fields are exempt. A plugin
-                outside the environment-expansion allowlist keeps ${ENV_VAR}
-                verbatim here too: these values are persisted by the sync, so
-                expanding them would leak the same secrets the allowlist guards.
+                docstring for why these stdio-only fields are exempt. A variable the
+                plugin may not expand stays verbatim here too: these values are
+                persisted by the sync, so expanding them would leak the same
+                secrets the allowlist guards.
                 """
                 value = value.replace("${CLAUDE_PLUGIN_ROOT}", _root)
-                if not expand_env:
-                    return value
-                return _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
+
+                def _replace(m: re.Match[str]) -> str:
+                    name = m.group(1)
+                    if allowed_env is not None and name not in allowed_env:
+                        _unexpanded.append(name)
+                        return m.group(0)
+                    return os.environ.get(name, m.group(0))
+
+                return _ENV_VAR_RE.sub(_replace, value)
 
             url = server_config.get("url")
             command = server_config.get("command")
@@ -213,7 +257,7 @@ class MarketplacePluginManager:
             if unexpanded_env_vars:
                 logger.warning(
                     "Plugin '%s' MCP server '%s': leaving environment placeholder(s) %s unexpanded "
-                    "in url/headers (the plugin is not on the environment-expansion allowlist). "
+                    "in url/headers (the plugin is not allowed to expand them). "
                     "Only the variable names are logged.",
                     entry.name,
                     server_key,
@@ -240,6 +284,16 @@ class MarketplacePluginManager:
             resolved_command = _sub_lenient(command) if isinstance(command, str) else None
             resolved_args = tuple(_sub_lenient(a) for a in args_raw if isinstance(a, str))
             resolved_env = {k: _sub_lenient(v) for k, v in env_raw.items() if isinstance(k, str) and isinstance(v, str)}
+
+            if unexpanded_other_vars:
+                logger.warning(
+                    "Plugin '%s' MCP server '%s': leaving environment placeholder(s) %s unexpanded "
+                    "in command/args/env (the plugin is not allowed to expand them). "
+                    "Only the variable names are logged.",
+                    entry.name,
+                    server_key,
+                    sorted(set(unexpanded_other_vars)),
+                )
 
             mcp_entry = PluginMcpServerEntry(
                 server_key=server_key,

@@ -219,6 +219,15 @@ async def test_summaries_carry_digest_and_frontmatter_metadata(mock_mongo_databa
     assert summary.metadata["user_id"] == "a@example.com"
 
 
+async def test_summary_without_stored_digest_has_none(mock_mongo_database: MagicMock) -> None:
+    skill = _skill("a@example.com", "p1", "alpha")
+    del skill["digest"]
+
+    page = await _loader(mock_mongo_database, [skill]).list_all_summaries_page(limit=10)
+
+    assert page.summaries[0].digest is None
+
+
 async def test_never_reads_resource_or_script_collections(mock_mongo_database: MagicMock) -> None:
     loader = _loader(mock_mongo_database, _fixture_skills())
 

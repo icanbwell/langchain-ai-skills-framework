@@ -4,6 +4,7 @@ import logging
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from types import MappingProxyType
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
     AllAuthorsSummaryPageLoader,
@@ -62,7 +63,7 @@ def _to_skill_info(summary: SkillSummary) -> SkillInfo:
             else None
         ),
         digest=summary.digest,
-        metadata=summary.metadata,
+        metadata=MappingProxyType(dict(summary.metadata)),
     )
 
 

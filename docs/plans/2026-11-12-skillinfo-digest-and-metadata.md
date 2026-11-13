@@ -14,9 +14,7 @@
 
 ## Global Constraints
 
-- Additive only: new fields default to `None` / `{}`; no field removed or renamed.
 - `metadata` stays internal to the framework and the skills service (it contains `user_id`); consumers must not forward it to clients.
-- Commit messages start with `BAI-1499`; branch `IQ-BAI-1499`; no AI attribution.
 
 ## Review Focus
 

@@ -32,7 +32,7 @@ class SkillInfo:
     author: str | None = None
     digest: str | None = None
     """``sha256:<hex>`` of the SKILL.md content (see ``SkillSummary.digest``); ``None`` when none is stored."""
-    metadata: Mapping[str, object] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict, hash=False)
     """Frontmatter metadata from ``SkillSummary.metadata``. Internal: it can contain ``user_id``, so do not
     forward it to clients."""
 

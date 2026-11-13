@@ -332,3 +332,11 @@ async def test_author_still_derived_from_user_id_metadata(
     result = await ListSkillsService(skill_loader=mock_loader).execute(user_id="user123")
 
     assert result[0].author == expected_author
+
+
+def test_skill_info_with_metadata_stays_hashable() -> None:
+    from langchain_ai_skills_framework.services.list_skills_service import SkillInfo
+
+    info = SkillInfo(name="s", description="d", metadata={"k": "v"})
+
+    assert hash(info) == hash(SkillInfo(name="s", description="d", metadata={"k": "other"}))

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from langchain_ai_skills_framework.loaders.skill_loader_protocol import (
@@ -30,6 +30,11 @@ class SkillInfo:
     state: str = "published"
     date_modified: datetime | None = None
     author: str | None = None
+    digest: str | None = None
+    """``sha256:<hex>`` of the SKILL.md content (see ``SkillSummary.digest``); ``None`` when none is stored."""
+    metadata: Mapping[str, object] = field(default_factory=dict)
+    """Frontmatter metadata from ``SkillSummary.metadata``. Internal: it can contain ``user_id``, so do not
+    forward it to clients."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +61,8 @@ def _to_skill_info(summary: SkillSummary) -> SkillInfo:
             if summary.metadata and summary.metadata.get("user_id") not in (None, _SYSTEM_AUTHOR)
             else None
         ),
+        digest=summary.digest,
+        metadata=summary.metadata,
     )
 
 

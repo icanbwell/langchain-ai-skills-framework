@@ -283,3 +283,52 @@ async def test_list_skills_basic_functionality() -> None:
     assert result[0].folder == "test-folder"
     assert result[1].name == "zebra-skill"
     assert result[1].date_modified == date
+
+
+@pytest.mark.asyncio
+async def test_skill_info_carries_digest_and_metadata_from_summary() -> None:
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    mock_loader.list_all_summaries.return_value = [
+        SkillSummary(
+            name="skill1",
+            description="d",
+            digest="sha256:abc",
+            metadata={"user_id": "author-1", "team": "x"},
+        )
+    ]
+
+    result = await ListSkillsService(skill_loader=mock_loader).execute(user_id="user123")
+
+    assert result[0].digest == "sha256:abc"
+    assert result[0].metadata == {"user_id": "author-1", "team": "x"}
+
+
+@pytest.mark.asyncio
+async def test_skill_without_digest_or_metadata_uses_defaults() -> None:
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    mock_loader.list_all_summaries.return_value = [SkillSummary(name="skill1", description="d")]
+
+    result = await ListSkillsService(skill_loader=mock_loader).execute(user_id="user123")
+
+    assert result[0].digest is None
+    assert result[0].metadata == {}
+
+
+@pytest.mark.parametrize(
+    ("metadata", "expected_author"),
+    [
+        ({"user_id": "author-1"}, "author-1"),
+        ({"user_id": "system"}, None),
+        ({}, None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_author_still_derived_from_user_id_metadata(
+    metadata: dict[str, object], expected_author: str | None
+) -> None:
+    mock_loader = AsyncMock(spec=SkillLoaderProtocol)
+    mock_loader.list_all_summaries.return_value = [SkillSummary(name="skill1", description="d", metadata=metadata)]
+
+    result = await ListSkillsService(skill_loader=mock_loader).execute(user_id="user123")
+
+    assert result[0].author == expected_author

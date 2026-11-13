@@ -206,6 +206,28 @@ async def test_summaries_carry_author_and_no_content_or_manifest(mock_mongo_data
     assert query[MongoPluginSkillLoader.SCHEMA_VERSION_FIELD] == loader._schema_version
 
 
+async def test_summaries_carry_digest_and_frontmatter_metadata(mock_mongo_database: MagicMock) -> None:
+    skill = _skill("a@example.com", "p1", "alpha")
+    skill["metadata"] = {"version": "1.2", "user_id": "spoofed"}
+    loader = _loader(mock_mongo_database, [skill])
+
+    page = await loader.list_all_summaries_page(limit=10)
+
+    (summary,) = page.summaries
+    assert summary.digest == "sha256:" + "a" * 64
+    assert summary.metadata["version"] == "1.2"
+    assert summary.metadata["user_id"] == "a@example.com"
+
+
+async def test_summary_without_stored_digest_has_none(mock_mongo_database: MagicMock) -> None:
+    skill = _skill("a@example.com", "p1", "alpha")
+    del skill["digest"]
+
+    page = await _loader(mock_mongo_database, [skill]).list_all_summaries_page(limit=10)
+
+    assert page.summaries[0].digest is None
+
+
 async def test_never_reads_resource_or_script_collections(mock_mongo_database: MagicMock) -> None:
     loader = _loader(mock_mongo_database, _fixture_skills())
 

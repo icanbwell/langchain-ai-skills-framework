@@ -1304,11 +1304,12 @@ class MongoPluginSkillLoader:
             source_path=Path(f"mongodb://all/{doc.plugin_name}/{doc.skill_name}"),
             license=None,
             compatibility=None,
-            metadata={"source": "mongodb", "user_id": doc.author, "plugin_name": doc.plugin_name},
+            metadata=MongoPluginSkillLoader._summary_metadata(doc=doc),
             allowed_tools=doc.allowed_tools,
             date_modified=doc.date_modified,
             required_external_servers=doc.required_external_servers,
             manifest=None,
+            digest=doc.digest,
         )
 
     @_repairs_first

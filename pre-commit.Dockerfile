@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM public.ecr.aws/docker/library/python:3.12-alpine3.20
+FROM mirror.gcr.io/library/python:3.12-alpine3.20
 
 # Install git, build-essential, and uv
 RUN apk add --no-cache git build-base

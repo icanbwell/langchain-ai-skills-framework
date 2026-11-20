@@ -1352,6 +1352,7 @@ class MongoPluginSkillLoader:
             required_external_servers=doc.required_external_servers,
             manifest=manifest,
             digest=doc.digest,
+            frontmatter=self._summary_frontmatter(content=doc.content),
         )
         return SkillDetails(
             summary=summary,
@@ -1459,6 +1460,7 @@ class MongoPluginSkillLoader:
                 required_external_servers=doc.required_external_servers,
                 manifest=manifest,
                 digest=doc.digest,
+                frontmatter=self._summary_frontmatter(content=doc.content),
             )
             detail = SkillDetails(
                 summary=summary,
@@ -1598,6 +1600,21 @@ class MongoPluginSkillLoader:
             "user_id": doc.author,
             "plugin_name": doc.plugin_name,
         }
+
+    @staticmethod
+    def _summary_frontmatter(*, content: str) -> dict[str, object] | None:
+        """The leading ``---`` YAML mapping of SKILL.md content, verbatim; ``None`` if absent, invalid or not a mapping."""
+        match = _FRONTMATTER_RE.match(content)
+        if match is None:
+            return None
+        try:
+            frontmatter = yaml.safe_load(match.group(1))
+        except yaml.YAMLError as e:
+            logger.debug("Failed to parse YAML frontmatter in skill content: %s", e)
+            return None
+        if not isinstance(frontmatter, dict):
+            return None
+        return {str(key): value for key, value in frontmatter.items()}
 
     @staticmethod
     def _extract_description(content: str) -> str:

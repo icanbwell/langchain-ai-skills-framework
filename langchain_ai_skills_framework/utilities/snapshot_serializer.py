@@ -8,6 +8,7 @@ Handles non-JSON-native types:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -68,7 +69,15 @@ def _serialize_summary(*, summary: SkillSummary) -> dict[str, Any]:
         "required_external_servers": list(summary.required_external_servers),
         "manifest": _serialize_manifest(manifest=summary.manifest),
         "digest": summary.digest,
+        "frontmatter": _serialize_frontmatter(frontmatter=summary.frontmatter),
     }
+
+
+def _serialize_frontmatter(*, frontmatter: Mapping[str, object] | None) -> dict[str, Any] | None:
+    """YAML can yield non-JSON values (dates); ``default=str`` keeps the cached snapshot serializable."""
+    if frontmatter is None:
+        return None
+    return json.loads(json.dumps(dict(frontmatter), default=str))  # type: ignore[no-any-return]
 
 
 def _serialize_manifest(
@@ -91,6 +100,7 @@ def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
     metadata_raw = data.get("metadata", {})
     metadata: Mapping[str, object] = metadata_raw if isinstance(metadata_raw, dict) else {}
     source_path_raw = data.get("source_path")
+    frontmatter = data.get("frontmatter")
     return SkillSummary(
         name=data["name"],
         description=data["description"],
@@ -103,6 +113,7 @@ def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
         required_external_servers=tuple(data.get("required_external_servers", [])),
         manifest=_deserialize_manifest(data=data.get("manifest")),
         digest=data.get("digest"),
+        frontmatter=frontmatter if isinstance(frontmatter, dict) else None,
     )
 
 

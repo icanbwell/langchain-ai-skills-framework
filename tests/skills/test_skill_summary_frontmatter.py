@@ -131,3 +131,16 @@ async def test_frontmatter_alias_bomb_is_dropped_not_expanded(mock_mongo_databas
     summary = await _snapshot_summary_for(mock_mongo_database, content)
 
     assert summary.frontmatter is None
+
+
+async def test_impossible_yaml_date_gives_none_and_does_not_fail_snapshot(mock_mongo_database: MagicMock) -> None:
+    content = "---\nname: my-skill\ncreated: 2024-02-30\n---\nbody\n"
+
+    summary = await _snapshot_summary_for(mock_mongo_database, content)
+
+    assert summary.frontmatter is None
+
+
+@pytest.mark.parametrize("content", ["---\ncreated: 2024-02-30\n---\nb\n", "---\n" + "[" * 5000 + "\n---\nb\n"])
+def test_summary_frontmatter_never_raises(content: str) -> None:
+    assert MongoPluginSkillLoader._summary_frontmatter(content=content) is None

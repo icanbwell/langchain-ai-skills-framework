@@ -11,7 +11,6 @@ Replaces the legacy ``MongoUserSkillLoader``.
 from __future__ import annotations
 
 import asyncio
-import copy
 import functools
 import logging
 import re
@@ -88,23 +87,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(SRC_LOG_LEVELS["SKILLS"])
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-_YAML_SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-
-
-@functools.lru_cache(maxsize=512)
-def _parse_frontmatter_text(text: str) -> dict[str, object] | None:
-    """Parse frontmatter YAML once per distinct text (a pure function), so snapshot builds do not re-parse it.
-
-    Catches every failure (PyYAML raises ``ValueError`` for ``2024-02-30``, ``RecursionError`` for deep nesting);
-    only the exception type is logged, as YAML error messages quote the content.
-    """
-    try:
-        loaded = yaml.load(text, Loader=_YAML_SAFE_LOADER)  # safe loader
-        return json_safe_frontmatter(frontmatter=loaded) if isinstance(loaded, dict) else None
-    except Exception as e:  # noqa: BLE001  # any failure means no frontmatter, never a failed snapshot
-        logger.debug("Failed to parse YAML frontmatter in skill content: %s", type(e).__name__)
-        return None
-
 
 # Summary metadata keys set by the loader. ``user_id`` is used for authorization, so frontmatter never supplies them.
 SYSTEM_METADATA_KEYS = frozenset({"source", "user_id", "plugin_name"})
@@ -1625,13 +1607,19 @@ class MongoPluginSkillLoader:
         """The leading ``---`` YAML mapping of SKILL.md content as JSON-native values.
 
         ``None`` if absent, unparseable, not a mapping or too large. Never raises: one bad stored document
-        must not fail a snapshot. Returns a fresh copy, so callers cannot mutate the memoized parse.
+        must not fail a snapshot. PyYAML raises ``ValueError`` for ``2024-02-30`` and
+        ``RecursionError`` for deep nesting, so every failure maps to ``None``; only the exception type is
+        logged, as YAML error messages quote the content.
         """
         match = _FRONTMATTER_RE.match(content)
         if match is None:
             return None
-        parsed = _parse_frontmatter_text(match.group(1))
-        return None if parsed is None else copy.deepcopy(parsed)
+        try:
+            loaded = yaml.safe_load(match.group(1))
+            return json_safe_frontmatter(frontmatter=loaded) if isinstance(loaded, dict) else None
+        except Exception as e:  # noqa: BLE001  # any failure means no frontmatter, never a failed snapshot
+            logger.debug("Failed to parse YAML frontmatter in skill content: %s", type(e).__name__)
+            return None
 
     @staticmethod
     def _extract_description(content: str) -> str:

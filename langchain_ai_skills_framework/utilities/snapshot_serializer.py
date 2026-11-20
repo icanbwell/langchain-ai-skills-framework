@@ -8,6 +8,8 @@ Handles non-JSON-native types:
 
 from __future__ import annotations
 
+import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -68,7 +70,49 @@ def _serialize_summary(*, summary: SkillSummary) -> dict[str, Any]:
         "required_external_servers": list(summary.required_external_servers),
         "manifest": _serialize_manifest(manifest=summary.manifest),
         "digest": summary.digest,
+        "frontmatter": _serialize_frontmatter(frontmatter=summary.frontmatter),
     }
+
+
+_FRONTMATTER_MAX_NODES = 10_000
+_FRONTMATTER_MAX_DEPTH = 32
+
+
+def json_safe_frontmatter(*, frontmatter: Mapping[object, object]) -> dict[str, Any] | None:
+    """Copy parsed YAML into JSON-native values, or ``None`` if it is too large or too deeply nested.
+
+    YAML yields dates, sets and bytes, and aliases (``&a`` / ``*a``) share objects, so a small document can expand
+    exponentially once walked; the node and depth caps drop such a document instead of expanding it.
+    """
+    budget = [_FRONTMATTER_MAX_NODES]
+
+    def convert(value: object, depth: int) -> Any:
+        budget[0] -= 1
+        if budget[0] < 0 or depth > _FRONTMATTER_MAX_DEPTH:
+            raise OverflowError("frontmatter too large or too deeply nested")
+        if isinstance(value, Mapping):
+            return {str(k): convert(v, depth + 1) for k, v in value.items()}
+        if isinstance(value, list | tuple):
+            return [convert(v, depth + 1) for v in value]
+        if isinstance(value, set | frozenset):
+            return sorted((convert(v, depth + 1) for v in value), key=str)
+        if isinstance(value, float) and not math.isfinite(value):
+            return str(value)
+        if value is None or isinstance(value, str | int | float | bool):
+            return value
+        return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+    try:
+        return {str(k): convert(v, 1) for k, v in frontmatter.items()}
+    except OverflowError:
+        return None
+
+
+def _serialize_frontmatter(*, frontmatter: Mapping[str, object] | None) -> dict[str, Any] | None:
+    """YAML can yield non-JSON values (dates); ``default=str`` keeps the cached snapshot serializable."""
+    if frontmatter is None:
+        return None
+    return json.loads(json.dumps(dict(frontmatter), default=str))  # type: ignore[no-any-return]
 
 
 def _serialize_manifest(
@@ -91,6 +135,7 @@ def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
     metadata_raw = data.get("metadata", {})
     metadata: Mapping[str, object] = metadata_raw if isinstance(metadata_raw, dict) else {}
     source_path_raw = data.get("source_path")
+    frontmatter = data.get("frontmatter")
     return SkillSummary(
         name=data["name"],
         description=data["description"],
@@ -103,6 +148,7 @@ def _deserialize_summary(*, data: dict[str, Any]) -> SkillSummary:
         required_external_servers=tuple(data.get("required_external_servers", [])),
         manifest=_deserialize_manifest(data=data.get("manifest")),
         digest=data.get("digest"),
+        frontmatter=frontmatter if isinstance(frontmatter, dict) else None,
     )
 
 

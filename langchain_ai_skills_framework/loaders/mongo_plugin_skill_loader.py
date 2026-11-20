@@ -79,6 +79,7 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
+from langchain_ai_skills_framework.utilities.snapshot_serializer import json_safe_frontmatter
 
 SCRIPT_CONTENT_FETCH_CONCURRENCY = 8
 
@@ -1352,6 +1353,7 @@ class MongoPluginSkillLoader:
             required_external_servers=doc.required_external_servers,
             manifest=manifest,
             digest=doc.digest,
+            frontmatter=self._summary_frontmatter(content=doc.content),
         )
         return SkillDetails(
             summary=summary,
@@ -1459,6 +1461,7 @@ class MongoPluginSkillLoader:
                 required_external_servers=doc.required_external_servers,
                 manifest=manifest,
                 digest=doc.digest,
+                frontmatter=self._summary_frontmatter(content=doc.content),
             )
             detail = SkillDetails(
                 summary=summary,
@@ -1598,6 +1601,25 @@ class MongoPluginSkillLoader:
             "user_id": doc.author,
             "plugin_name": doc.plugin_name,
         }
+
+    @staticmethod
+    def _summary_frontmatter(*, content: str) -> dict[str, object] | None:
+        """The leading ``---`` YAML mapping of SKILL.md content as JSON-native values.
+
+        ``None`` if absent, unparseable, not a mapping or too large. Never raises: one bad stored document
+        must not fail a snapshot. PyYAML raises ``ValueError`` for ``2024-02-30`` and
+        ``RecursionError`` for deep nesting, so every failure maps to ``None``; only the exception type is
+        logged, as YAML error messages quote the content.
+        """
+        match = _FRONTMATTER_RE.match(content)
+        if match is None:
+            return None
+        try:
+            loaded = yaml.safe_load(match.group(1))
+            return json_safe_frontmatter(frontmatter=loaded) if isinstance(loaded, dict) else None
+        except Exception as e:  # noqa: BLE001  # any failure means no frontmatter, never a failed snapshot
+            logger.debug("Failed to parse YAML frontmatter in skill content: %s", type(e).__name__)
+            return None
 
     @staticmethod
     def _extract_description(content: str) -> str:

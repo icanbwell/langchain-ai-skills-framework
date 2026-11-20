@@ -9,6 +9,7 @@ Handles non-JSON-native types:
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -71,6 +72,40 @@ def _serialize_summary(*, summary: SkillSummary) -> dict[str, Any]:
         "digest": summary.digest,
         "frontmatter": _serialize_frontmatter(frontmatter=summary.frontmatter),
     }
+
+
+_FRONTMATTER_MAX_NODES = 10_000
+_FRONTMATTER_MAX_DEPTH = 32
+
+
+def json_safe_frontmatter(*, frontmatter: Mapping[object, object]) -> dict[str, Any] | None:
+    """Copy parsed YAML into JSON-native values, or ``None`` if it is too large or too deeply nested.
+
+    YAML yields dates, sets and bytes, and aliases (``&a`` / ``*a``) share objects, so a small document can expand
+    exponentially once walked; the node and depth caps drop such a document instead of expanding it.
+    """
+    budget = [_FRONTMATTER_MAX_NODES]
+
+    def convert(value: object, depth: int) -> Any:
+        budget[0] -= 1
+        if budget[0] < 0 or depth > _FRONTMATTER_MAX_DEPTH:
+            raise OverflowError("frontmatter too large or too deeply nested")
+        if isinstance(value, Mapping):
+            return {str(k): convert(v, depth + 1) for k, v in value.items()}
+        if isinstance(value, list | tuple):
+            return [convert(v, depth + 1) for v in value]
+        if isinstance(value, set | frozenset):
+            return sorted((convert(v, depth + 1) for v in value), key=str)
+        if isinstance(value, float) and not math.isfinite(value):
+            return str(value)
+        if value is None or isinstance(value, str | int | float | bool):
+            return value
+        return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+    try:
+        return {str(k): convert(v, 1) for k, v in frontmatter.items()}
+    except OverflowError:
+        return None
 
 
 def _serialize_frontmatter(*, frontmatter: Mapping[str, object] | None) -> dict[str, Any] | None:

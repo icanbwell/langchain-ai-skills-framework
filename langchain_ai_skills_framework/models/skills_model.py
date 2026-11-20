@@ -54,8 +54,9 @@ class SkillSummary:
     whenever SKILL.md is edited. ``None`` for skills with no stored digest
     (marketplace directory skills, or content written before the digest existed)."""
     frontmatter: Mapping[str, object] | None = None
-    """The YAML mapping at the top of the stored SKILL.md content, verbatim: original keys (``allowed-tools``,
-    unknown extra keys) and original value types, unlike ``metadata`` (a filtered, loader-augmented view) and
+    """The YAML mapping at the top of the stored SKILL.md content: original keys (``allowed-tools``, unknown extra
+    keys) with JSON-native values (dates become ISO strings, sets become lists), and ``None`` when the document is
+    too large or deeply nested (alias expansion guard), unlike ``metadata`` (a filtered, loader-augmented view) and
     ``allowed_tools`` (parsed). ``None`` means the content has no frontmatter, it is not valid YAML, or it is not a
     mapping, or the summary was built without the content (``MongoPluginSkillLoader.list_all_summaries_page`` reads
     no content, and marketplace directory skills do not populate it). Read it from ``SkillSnapshot`` /

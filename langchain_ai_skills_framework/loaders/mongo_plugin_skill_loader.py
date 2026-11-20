@@ -79,6 +79,7 @@ from langchain_ai_skills_framework.utilities.logger.log_levels import SRC_LOG_LE
 from langchain_ai_skills_framework.utilities.skill_name_normalizer import (
     normalize_skill_name,
 )
+from langchain_ai_skills_framework.utilities.snapshot_serializer import json_safe_frontmatter
 
 SCRIPT_CONTENT_FETCH_CONCURRENCY = 8
 
@@ -1614,7 +1615,7 @@ class MongoPluginSkillLoader:
             return None
         if not isinstance(frontmatter, dict):
             return None
-        return {str(key): value for key, value in frontmatter.items()}
+        return json_safe_frontmatter(frontmatter=frontmatter)
 
     @staticmethod
     def _extract_description(content: str) -> str:

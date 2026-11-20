@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -108,3 +109,25 @@ def test_none_frontmatter_round_trips_and_old_payloads_deserialize_as_none() -> 
     for entry in serialized["ordered_summaries"]:
         entry.pop("frontmatter")
     assert deserialize_snapshot(data=serialized).ordered_summaries[0].frontmatter is None
+
+
+async def test_frontmatter_values_are_json_safe(mock_mongo_database: MagicMock) -> None:
+    content = "---\nname: my-skill\nreviewed: 2026-01-01\nstamp: 2026-01-01 10:00:00\ntags: !!set {a, b}\n---\nbody\n"
+
+    summary = await _snapshot_summary_for(mock_mongo_database, content)
+
+    assert summary.frontmatter is not None
+    json.dumps(summary.frontmatter)
+    assert summary.frontmatter["reviewed"] == "2026-01-01"
+
+
+async def test_frontmatter_alias_bomb_is_dropped_not_expanded(mock_mongo_database: MagicMock) -> None:
+    refs = ", ".join(["*{prev}"] * 9)
+    lines = ["a: &a [x, x, x, x, x, x, x, x, x]"]
+    for prev, cur in zip("abcdefgh", "bcdefghi", strict=True):
+        lines.append(f"{cur}: &{cur} [" + refs.replace("{prev}", prev) + "]")
+    content = "---\nname: my-skill\n" + "\n".join(lines) + "\n---\nbody\n"
+
+    summary = await _snapshot_summary_for(mock_mongo_database, content)
+
+    assert summary.frontmatter is None
